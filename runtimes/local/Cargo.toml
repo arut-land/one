@@ -9,7 +9,7 @@ arut-feature-chat.workspace = true
 arut-product-session.workspace = true
 arut-protocol.workspace = true
 arut-rpc.workspace = true
-arut-storage.workspace = true
+arut-storage = { workspace = true, features = ["redb"] }
 arut-transport-connect-http.workspace = true
 arut-transport-ipc.workspace = true
 axum = "0.8.4"

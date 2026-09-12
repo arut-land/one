@@ -1,5 +1,5 @@
 use arut_conformance::*;
-use arut_storage::{BlobStore, Directory, FactLog, MemoryLog, MemoryStore};
+use arut_storage::{BlobStore, Directory, FactLog, KeyValue, MemoryLog, MemoryStore, Redb};
 use std::sync::{
     Arc,
     atomic::{AtomicU64, Ordering},
@@ -38,6 +38,76 @@ fn directory_storage_reopens_after_compaction() {
     assert_eq!(log.outcome_of("one").unwrap().unwrap().fact, "first");
     std::fs::remove_dir_all(path).unwrap();
 }
+#[test]
+fn redb_storage_reopens_after_compaction() {
+    let path = directory();
+    std::fs::create_dir_all(&path).unwrap();
+    let file = path.join("node.redb");
+    let store = Redb::open(&file).unwrap();
+    fact_log(&store.log::<String>());
+    key_value(&store);
+    let kept = store.log::<String>();
+    assert_eq!(kept.read_from(2).unwrap()[0].fact, "third");
+    drop(kept);
+    drop(store);
+
+    let reopened = Redb::open(&file).unwrap();
+    let log = reopened.log::<String>();
+    assert_eq!(log.read_from(2).unwrap()[0].fact, "third");
+    assert_eq!(log.outcome_of("one").unwrap().unwrap().fact, "first");
+    reopened.put("kept", b"across restarts").unwrap();
+    drop(log);
+    drop(reopened);
+
+    let again = Redb::open(&file).unwrap();
+    assert_eq!(
+        again.get("kept").unwrap(),
+        Some(b"across restarts".to_vec())
+    );
+    drop(again);
+    std::fs::remove_dir_all(path).unwrap();
+}
+
+/// One node owns its file. redb locks it, so a second opener is refused rather
+/// than allowed to interleave; other processes reach these facts over RPC.
+#[test]
+fn redb_refuses_a_second_holder_of_the_same_file() {
+    let path = directory();
+    std::fs::create_dir_all(&path).unwrap();
+    let file = path.join("node.redb");
+    let held = Redb::open(&file).unwrap();
+
+    assert!(Redb::open(&file).is_err());
+
+    drop(held);
+    assert!(Redb::open(&file).is_ok());
+    std::fs::remove_dir_all(path).unwrap();
+}
+
+/// Inside the owning process, two appenders behave as the directory log's two
+/// lock holders do: redb serializes the write transactions and one loses.
+#[test]
+fn redb_writers_compare_and_append_atomically() {
+    let path = directory();
+    std::fs::create_dir_all(&path).unwrap();
+    let store = Redb::open(path.join("node.redb")).unwrap();
+    let one = store.log::<String>();
+    let two = store.log::<String>();
+    let barrier = Arc::new(std::sync::Barrier::new(2));
+    let other = barrier.clone();
+    let thread = std::thread::spawn(move || {
+        other.wait();
+        one.append(0, 1, "one", "one".into())
+    });
+    barrier.wait();
+    let result = two.append(0, 1, "two", "two".into());
+    assert_ne!(thread.join().unwrap().is_ok(), result.is_ok());
+    assert_eq!(two.read_from(0).unwrap().len(), 1);
+    drop(two);
+    drop(store);
+    std::fs::remove_dir_all(path).unwrap();
+}
+
 #[test]
 fn independent_writers_compare_and_append_atomically() {
     let path = directory();

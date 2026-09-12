@@ -2,7 +2,8 @@ use std::{env, path::PathBuf};
 #[tokio::main]
 async fn main() {
     let data = PathBuf::from(env::var("ARUT_DATA").unwrap_or_else(|_| "arut-chat.pb".into()));
-    let app = arut_runtime_local::app(data).expect("initialize local node");
+    let app = arut_runtime_local::app_with(data, arut_runtime_local::NodeStorage::from_env())
+        .expect("initialize local node");
     #[cfg(unix)]
     if let Ok(socket) = env::var("ARUT_SOCKET") {
         use std::os::unix::fs::PermissionsExt;

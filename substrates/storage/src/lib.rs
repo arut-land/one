@@ -6,6 +6,11 @@
 //! renames it, and fsyncs the directory. Compaction requires a snapshot and retains
 //! outcomes for retry deduplication. It never rewrites all state on append.
 //!
+//! Redb, behind the off-by-default `redb` feature because the wasm core has no
+//! filesystem, gives the same contract in one crash-safe file with typed tables
+//! and no C dependency, and carries the KeyValue port beside it. Both pass the
+//! same conformance suite; a composition root picks one.
+//!
 //! BlobStore stores BLAKE3-addressed raw bytes and verifies them on read. BLAKE3 is
 //! what `iroh-blobs` hashes with, so an address minted here is the address a peer
 //! fetches by once that store backs the port. KeyValue stores each small value
@@ -15,8 +20,12 @@
 //! Separate durability contracts for facts, content, and small unordered values.
 mod directory;
 mod memory;
+#[cfg(feature = "redb")]
+mod redb;
 pub use directory::{Directory, DirectoryLog};
 pub use memory::{MemoryLog, MemoryStore};
+#[cfg(feature = "redb")]
+pub use redb::{Redb, RedbLog};
 
 /// Facts and snapshots are Protobuf rows, as every persisted contract is.
 pub trait Fact: prost::Message + Default + Clone + 'static {}

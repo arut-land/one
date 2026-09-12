@@ -4,9 +4,16 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 
+[features]
+default = []
+# Off by default so the wasm core, which has no filesystem, never resolves it.
+redb = ["dep:redb"]
+
 [dependencies]
 prost = "0.14.1"
+tracing = "0.1.44"
 blake3 = "1.8.7"
+redb = { version = "4.2.0", optional = true }
 
 [lints]
 workspace = true
