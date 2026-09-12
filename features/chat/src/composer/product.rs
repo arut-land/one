@@ -1,8 +1,6 @@
 use super::ComposerScope;
 use super::service::{scope_from_wire, scope_to_wire};
 use crate::ports::IdSource;
-#[cfg(test)]
-use crate::ports::NativeIds;
 use arut_protocol::chat::composer::v1::{
     ComposerServiceClient, ComposerSnapshot as WireSnapshot, GetComposerRequest,
     ReplaceComposerRequest, WatchComposerRequest, replace_composer_response,
@@ -43,11 +41,7 @@ pub struct ComposerClient {
 }
 
 impl ComposerClient {
-    #[cfg(test)]
-    pub(crate) fn new(service: ComposerServiceClient, scope: ComposerScope) -> Self {
-        Self::with_ids(service, scope, Arc::new(NativeIds))
-    }
-    pub(crate) fn with_ids(
+    pub(crate) fn new(
         service: ComposerServiceClient,
         scope: ComposerScope,
         ids: Arc<dyn IdSource>,
@@ -242,7 +236,11 @@ mod tests {
         let service = ComposerServiceClient::direct(Arc::new(ComposerServiceImpl::new(Arc::new(
             ComposerAuthority::default(),
         ))));
-        let composer = ComposerClient::new(service, ComposerScope::pending("account"));
+        let composer = ComposerClient::new(
+            service,
+            ComposerScope::pending("account"),
+            Arc::new(crate::ports::NativeIds),
+        );
         let snapshot = WireSnapshot {
             scope: Some(scope_to_wire(&ComposerScope::chat("other"))),
             authority_epoch: 1,

@@ -1,5 +1,6 @@
 //! Foreign exports over shared scope projections. Hosts are supplied by roots.
 pub use arut_feature_chat::composer::product::{ComposerState, ComposerStatus};
+use arut_feature_chat::ports::IdSource;
 pub use arut_feature_chat::product::{ChatMessage, ChatRole, ChatState, ChatStatus};
 use arut_feature_chat::{composer::product::ComposerClient, product::ChatClient};
 use arut_product_session::ProductSession;
@@ -25,13 +26,6 @@ pub struct AvailabilityHandle {
     session: Arc<ProductSession>,
 }
 
-impl ProductSessionHandle {
-    pub fn from_session(session: ProductSession) -> Self {
-        Self {
-            session: Arc::new(session),
-        }
-    }
-}
 #[export]
 impl ProductSessionHandle {
     pub async fn initialize(&self) -> bool {
@@ -126,9 +120,22 @@ impl ComposerHandle {
         ffi_subscription(self.client.changes())
     }
 }
+/// For hosts with a clock and entropy of their own. BoltFFI exports every
+/// annotated item on every target, so wasm keeps the symbol and refuses it here
+/// rather than compiling an ID source that cannot work; browsers call
+/// `create_browser_session`.
 #[export]
 pub fn create_product_session(pending_scope_id: String) -> ProductSessionHandle {
-    ProductSessionHandle::from_session(ProductSession::local_with_pending_scope(pending_scope_id))
+    #[cfg(target_arch = "wasm32")]
+    {
+        let _ = pending_scope_id;
+        panic!("a wasm host supplies its own IDs through create_browser_session")
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    session(
+        pending_scope_id,
+        Arc::new(arut_feature_chat::ports::NativeIds),
+    )
 }
 fn ffi_subscription(source: Arc<Subscription<u64>>) -> Arc<EventSubscription<u64>> {
     let target = Arc::new(EventSubscription::new(1));
@@ -150,20 +157,24 @@ pub trait HostIds: Send + Sync {
     fn new_id(&self) -> String;
 }
 struct BrowserIds(Arc<dyn HostIds>);
-impl arut_feature_chat::ports::IdSource for BrowserIds {
+impl IdSource for BrowserIds {
     fn new_id(&self) -> String {
         self.0.new_id()
     }
 }
+/// Hosts without a clock or entropy, such as a browser, supply their own IDs.
 #[export]
 pub fn create_browser_session(
     pending_scope_id: String,
     ids: Arc<dyn HostIds>,
 ) -> ProductSessionHandle {
-    ProductSessionHandle::from_session(ProductSession::local_with_ids(
-        pending_scope_id,
-        Arc::new(BrowserIds(ids)),
-    ))
+    session(pending_scope_id, Arc::new(BrowserIds(ids)))
+}
+
+fn session(pending_scope_id: String, ids: Arc<dyn IdSource>) -> ProductSessionHandle {
+    ProductSessionHandle {
+        session: Arc::new(ProductSession::local(pending_scope_id, ids)),
+    }
 }
 
 #[cfg(test)]

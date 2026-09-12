@@ -1,24 +1,20 @@
 //! Parent-owned construction and compile-time service capabilities.
-use arut_feature_chat::product::ChatClient;
 use arut_protocol::chat::{composer::v1::ComposerServiceClient, v1::ChatServiceClient};
 use arut_watch::Watch;
 use std::{collections::BTreeMap, sync::Arc};
 
-pub trait NodeRuntime: Send + Sync + 'static {}
-impl<T: Send + Sync + 'static> NodeRuntime for T {}
-pub trait ChatServices {
+/// The capability bundle chat needs. A node without it cannot build chat scopes.
+pub trait ChatRuntime: Send + Sync + 'static {
     fn chat_service(&self) -> ChatServiceClient;
     fn composer_service(&self) -> ComposerServiceClient;
 }
-pub trait ChatRuntime: NodeRuntime + ChatServices {}
-impl<T: NodeRuntime + ChatServices> ChatRuntime for T {}
 
 #[derive(Clone)]
 pub struct Services {
     pub chat: ChatServiceClient,
     pub composer: ComposerServiceClient,
 }
-impl ChatServices for Services {
+impl ChatRuntime for Services {
     fn chat_service(&self) -> ChatServiceClient {
         self.chat.clone()
     }
@@ -27,13 +23,13 @@ impl ChatServices for Services {
     }
 }
 
-pub struct Node<R: NodeRuntime> {
+pub struct Node<R> {
     pub runtime: Arc<R>,
     pub id: String,
     pub workspaces: Watch<Vec<String>>,
     config: BTreeMap<String, String>,
 }
-impl<R: NodeRuntime> Node<R> {
+impl<R> Node<R> {
     pub fn new(id: String, runtime: Arc<R>, config: BTreeMap<String, String>) -> Arc<Self> {
         Arc::new(Self {
             id,
@@ -60,12 +56,12 @@ impl<R: NodeRuntime> Node<R> {
     }
 }
 
-pub struct Workspace<R: NodeRuntime> {
+pub struct Workspace<R> {
     pub node: Arc<Node<R>>,
     pub id: String,
     config: BTreeMap<String, String>,
 }
-impl<R: NodeRuntime> Workspace<R> {
+impl<R> Workspace<R> {
     pub fn setting(&self, key: &str) -> Option<&str> {
         self.config
             .get(key)
@@ -74,31 +70,12 @@ impl<R: NodeRuntime> Workspace<R> {
     }
 }
 impl<R: ChatRuntime> Workspace<R> {
-    pub fn conversation(self: &Arc<Self>, client: ChatClient) -> Arc<Conversation<R>> {
-        Arc::new(Conversation {
-            workspace: Arc::clone(self),
-            client,
-        })
+    pub fn chat_service(&self) -> ChatServiceClient {
+        self.node.runtime.chat_service()
     }
-}
-
-pub struct Conversation<R: ChatRuntime> {
-    pub workspace: Arc<Workspace<R>>,
-    pub client: ChatClient,
-}
-impl<R: ChatRuntime> Conversation<R> {
-    pub fn operation(self: &Arc<Self>, id: String) -> Operation<R> {
-        Operation {
-            conversation: Arc::clone(self),
-            id,
-            progress: Watch::new(0),
-        }
+    pub fn composer_service(&self) -> ComposerServiceClient {
+        self.node.runtime.composer_service()
     }
-}
-pub struct Operation<R: ChatRuntime> {
-    pub conversation: Arc<Conversation<R>>,
-    pub id: String,
-    pub progress: Watch<u64>,
 }
 
 #[cfg(test)]
@@ -112,7 +89,7 @@ mod tests {
             BTreeMap::from([("model".into(), "mock".into())]),
         );
         let weak = Arc::downgrade(&node);
-        let workspace = node.workspace("default".into(), Default::default());
+        let workspace = node.workspace("default".into(), BTreeMap::new());
         assert_eq!(node.workspaces.get(), ["default"]);
         drop(node);
         assert_eq!(workspace.setting("model"), Some("mock"));

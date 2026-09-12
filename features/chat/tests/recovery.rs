@@ -1,5 +1,6 @@
 use arut_feature_chat::{
     composer::{ComposerScope, ReplaceComposer, authority::ComposerAuthority},
+    ports::NativeIds,
     service::ChatServiceImpl,
 };
 use arut_protocol::chat::v1::{ChatService, SendMessageRequest, StartChatRequest};
@@ -29,9 +30,12 @@ fn restart_recovers_transcript_operations_drafts_and_send_deduplication() {
         base_revision: 0,
         text: "first".into(),
     });
-    let service =
-        ChatServiceImpl::with_log(composer.clone(), Arc::new(directory.log("chat").unwrap()))
-            .unwrap();
+    let service = ChatServiceImpl::new(
+        composer.clone(),
+        Arc::new(directory.log("chat").unwrap()),
+        Arc::new(NativeIds),
+    )
+    .unwrap();
     let first = block_on(service.start_chat(Request::new(StartChatRequest {
         pending_scope_id: "owner".into(),
         command_id: "start".into(),
@@ -58,9 +62,10 @@ fn restart_recovers_transcript_operations_drafts_and_send_deduplication() {
     drop(service);
     drop(composer);
     let recovered_composer = Arc::new(ComposerAuthority::with_store(directory.clone()));
-    let recovered = ChatServiceImpl::with_log(
+    let recovered = ChatServiceImpl::new(
         recovered_composer.clone(),
         Arc::new(directory.log("chat").unwrap()),
+        Arc::new(NativeIds),
     )
     .unwrap();
     assert_eq!(transcript(&recovered, &first.chat_id), 4);

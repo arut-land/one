@@ -1,11 +1,21 @@
+import { randomBytes } from "node:crypto";
 import type { ProductSessionHandle } from "@arut/bindings-typescript";
 import * as vscode from "vscode";
+
+function nonce(): string {
+  return randomBytes(16).toString("base64");
+}
 
 export function registerChat(context: vscode.ExtensionContext, session: ProductSessionHandle): void {
   let panel: vscode.WebviewPanel | undefined;
   context.subscriptions.push(vscode.commands.registerCommand("arut.chat", () => {
     if (panel) { panel.reveal(vscode.ViewColumn.Beside); return; }
-    panel = vscode.window.createWebviewPanel("arut.chat", "Arut", vscode.ViewColumn.Beside, { enableScripts: true });
+    panel = vscode.window.createWebviewPanel("arut.chat", "Arut", vscode.ViewColumn.Beside, {
+      enableScripts: true,
+      // The core keeps running host-side; retaining the webview's DOM avoids
+      // re-running composer.initialize()/follow() every time the panel is hidden.
+      retainContextWhenHidden: true,
+    });
     panel.webview.html = markup();
     const current = panel;
     let chat = session.chat();
@@ -38,11 +48,13 @@ export function registerChat(context: vscode.ExtensionContext, session: ProductS
 }
 
 function markup(): string {
+  const scriptNonce = nonce();
   return `<!doctype html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-${scriptNonce}';">
   <style>
     * { box-sizing: border-box; }
     body { --sidebar: 210px; display: grid; grid-template-columns: var(--sidebar) minmax(0, 1fr); grid-template-rows: 58px minmax(0, 1fr) auto; height: 100vh; margin: 0; color: var(--vscode-foreground); background: var(--vscode-editor-background); font-family: var(--vscode-font-family); transition: grid-template-columns 160ms ease; }
@@ -89,7 +101,7 @@ function markup(): string {
   <aside id="history"><span>Recent</span></aside>
   <main id="messages"><p class="empty">Start a conversation.</p></main>
   <form><input autofocus aria-label="Message Arut" placeholder="Message Arut"><button>Send</button></form>
-  <script>
+  <script nonce="${scriptNonce}">
     const vscode = acquireVsCodeApi();
     const messages = document.querySelector('#messages');
     const history = document.querySelector('#history');

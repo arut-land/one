@@ -1,5 +1,6 @@
 use crate::command::{ChatCommand, Rejection};
 use crate::composer::authority::{ComposerAuthority, PromoteError};
+use crate::ports::IdSource;
 use crate::{
     composer::{ComposerScope, ComposerSnapshot},
     facts::ChatProjection,
@@ -10,7 +11,7 @@ use arut_protocol::chat::v1::{
     SendMessageResponse, StartChatRequest, StartChatResponse,
 };
 use arut_rpc::{Code, Request, Response, RpcFuture, Status};
-use arut_storage::{FactLog, MemoryLog, StorageError};
+use arut_storage::{FactLog, StorageError};
 use std::sync::{Arc, Mutex};
 use uuid::Uuid;
 
@@ -18,27 +19,13 @@ pub struct ChatServiceImpl {
     composer: Arc<ComposerAuthority>,
     authority: Authority<ChatCommand>,
     start_gate: Mutex<()>,
-    ids: Arc<dyn crate::ports::IdSource>,
-}
-impl Default for ChatServiceImpl {
-    fn default() -> Self {
-        Self::new(Arc::new(ComposerAuthority::default()))
-    }
+    ids: Arc<dyn IdSource>,
 }
 impl ChatServiceImpl {
-    pub fn new(composer: Arc<ComposerAuthority>) -> Self {
-        Self::with_log(composer, Arc::new(MemoryLog::default())).expect("empty memory log")
-    }
-    pub fn with_log(
+    pub fn new(
         composer: Arc<ComposerAuthority>,
         log: Arc<dyn FactLog<ChatFact>>,
-    ) -> Result<Self, StorageError> {
-        Self::with_log_and_ids(composer, log, Arc::new(crate::ports::NativeIds))
-    }
-    pub fn with_log_and_ids(
-        composer: Arc<ComposerAuthority>,
-        log: Arc<dyn FactLog<ChatFact>>,
-        ids: Arc<dyn crate::ports::IdSource>,
+        ids: Arc<dyn IdSource>,
     ) -> Result<Self, StorageError> {
         Ok(Self {
             ids,
@@ -201,9 +188,20 @@ impl ChatService for ChatServiceImpl {
 mod tests {
     use super::*;
     use crate::composer::{ComposerScope, ReplaceComposer};
+    use crate::ports::NativeIds;
     use arut_protocol::chat::v1::ChatServiceClient;
     use arut_rpc::Request;
+    use arut_storage::MemoryLog;
     use futures_executor::block_on;
+
+    fn service(composer: Arc<ComposerAuthority>) -> ChatServiceImpl {
+        ChatServiceImpl::new(
+            composer,
+            Arc::new(MemoryLog::default()),
+            Arc::new(NativeIds),
+        )
+        .expect("empty memory log")
+    }
 
     #[test]
     fn first_send_atomically_promotes_pending_composer() {
@@ -215,8 +213,7 @@ mod tests {
             base_revision: 0,
             text: "hello".into(),
         });
-        let client =
-            ChatServiceClient::direct(Arc::new(ChatServiceImpl::new(Arc::clone(&composer))));
+        let client = ChatServiceClient::direct(Arc::new(service(Arc::clone(&composer))));
 
         let response = block_on(client.start_chat(Request::new(StartChatRequest {
             pending_scope_id: "pending".into(),
@@ -253,7 +250,7 @@ mod tests {
             base_revision: 0,
             text: "hello".into(),
         });
-        let client = ChatServiceClient::direct(Arc::new(ChatServiceImpl::new(composer)));
+        let client = ChatServiceClient::direct(Arc::new(service(composer)));
         let request = StartChatRequest {
             pending_scope_id: "pending".into(),
             command_id: "stable-start".into(),

@@ -49,9 +49,14 @@ fn main() -> glib::ExitCode {
         let started = runtime.spawn(async move { host.connect().await });
         glib::spawn_future_local(async move {
             match started.await {
-                Ok(Ok(channel)) => {
-                    show_session(&window, Rc::new(ProductSession::remote(channel, "desktop")))
-                }
+                Ok(Ok(channel)) => show_session(
+                    &window,
+                    Rc::new(ProductSession::remote(
+                        channel,
+                        "desktop",
+                        std::sync::Arc::new(arut_feature_chat::ports::NativeIds),
+                    )),
+                ),
                 _ => window.set_child(Some(&gtk::Label::new(Some(
                     "Could not start the local node.",
                 )))),
