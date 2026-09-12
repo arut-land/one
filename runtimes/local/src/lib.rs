@@ -3,7 +3,12 @@
 //! `arutd` hosts chat and composer services over Connect HTTP or a private Unix
 //! socket. Directory storage contains immutable chat facts, raw blobs, and local
 //! draft recovery values. ARUT_DATA selects the directory; ARUT_SOCKET selects IPC;
-//! ARUT_ADDRESS selects TCP.
+//! ARUT_ADDRESS selects TCP; ARUT_STORAGE selects which implementation holds the
+//! facts and the drafts.
+//!
+//! Which one backs a node is a composition-root choice, not a storage one: both
+//! pass the same conformance suite, so `app` picks and everything above the port
+//! is unaware. The directory tree stays the default until redb has run here.
 //!
 //! TokioSpawner receives an executor handle from the composition root. ChannelHost
 //! provides scheduled RPC for foreign pollers. ChildHost starts arutd and awaits its
@@ -20,23 +25,52 @@ use arut_feature_chat::service::ChatServiceImpl;
 use arut_protocol::capability::v1::CapabilityServiceRouter;
 use arut_protocol::capability_manifest::CapabilityServiceImpl;
 use arut_protocol::chat::composer::v1::ComposerServiceRouter;
+use arut_protocol::chat::v1::ChatFact;
 use arut_protocol::chat::v1::ChatServiceRouter;
 use arut_rpc::{RpcRegistry, RpcService};
-use arut_storage::StorageError;
+use arut_storage::{FactLog, KeyValue, Redb, StorageError};
 use axum::Router;
 use std::path::PathBuf;
 use std::sync::Arc;
 
+/// Which storage implementation this node's composition root hands the feature.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum NodeStorage {
+    /// A directory tree: one Protobuf record per file. The default until redb
+    /// has run in front of real conversations.
+    #[default]
+    Directory,
+    /// One redb file holding the fact log and the drafts beside it. This node
+    /// owns that file exclusively while it runs.
+    Redb,
+}
+
+impl NodeStorage {
+    /// Reads the choice from `ARUT_STORAGE`; anything unrecognised is the default.
+    pub fn from_env() -> Self {
+        match std::env::var("ARUT_STORAGE").as_deref() {
+            Ok("redb") => Self::Redb,
+            _ => Self::default(),
+        }
+    }
+}
+
 pub fn app(data_path: PathBuf) -> Result<Router, StorageError> {
-    let directory = Arc::new(arut_storage::Directory::open(data_path)?);
-    let authority = Arc::new(ComposerAuthority::with_store(directory.clone()));
+    app_with(data_path, NodeStorage::default())
+}
+
+pub fn app_with(data_path: PathBuf, storage: NodeStorage) -> Result<Router, StorageError> {
+    let directory = Arc::new(arut_storage::Directory::open(&data_path)?);
+    let (log, drafts): (Arc<dyn FactLog<ChatFact>>, Arc<dyn KeyValue>) = match storage {
+        NodeStorage::Directory => (Arc::new(directory.log("chat")?), directory),
+        NodeStorage::Redb => {
+            let redb = Redb::open(data_path.join("node.redb"))?;
+            (Arc::new(redb.log()), Arc::new(redb))
+        }
+    };
+    let authority = Arc::new(ComposerAuthority::with_store(drafts));
     let composer = Arc::new(ComposerServiceImpl::new(Arc::clone(&authority)));
-    let log = directory.log("chat")?;
-    let chat = Arc::new(ChatServiceImpl::new(
-        authority,
-        Arc::new(log),
-        Arc::new(NativeIds),
-    )?);
+    let chat = Arc::new(ChatServiceImpl::new(authority, log, Arc::new(NativeIds))?);
     let composer_router: Arc<dyn RpcService> = Arc::new(ComposerServiceRouter::new(composer));
     let chat_router: Arc<dyn RpcService> = Arc::new(ChatServiceRouter::new(chat));
     let registry = RpcRegistry::default()
@@ -71,6 +105,46 @@ mod tests {
 
     fn wire_scope(scope: &ComposerScope) -> arut_protocol::chat::composer::v1::ComposerScope {
         arut_feature_chat::composer::service::scope_to_wire(scope)
+    }
+
+    #[tokio::test]
+    async fn either_storage_implementation_serves_the_same_node() {
+        for storage in [NodeStorage::Directory, NodeStorage::Redb] {
+            let path = std::env::temp_dir()
+                .join(format!("arut-storage-{storage:?}-{}", std::process::id()));
+            let _ = std::fs::remove_dir_all(&path);
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let address = listener.local_addr().unwrap();
+            let server = tokio::spawn(async move {
+                axum::serve(listener, app_with(path, storage).unwrap())
+                    .await
+                    .unwrap();
+            });
+            let channel: Arc<dyn RpcChannel> =
+                Arc::new(HttpRpcChannel::new(format!("http://{address}")));
+            let chat = ChatServiceClient::remote(channel);
+            let request = StartChatRequest {
+                pending_scope_id: "account".into(),
+                command_id: "start".into(),
+                expected_revision: 0,
+                text: String::new(),
+            };
+
+            let first = chat
+                .start_chat(Request::new(request.clone()))
+                .await
+                .unwrap()
+                .message;
+            let retry = chat
+                .start_chat(Request::new(request))
+                .await
+                .unwrap()
+                .message;
+
+            assert_eq!(retry.chat_id, first.chat_id, "{storage:?}");
+            assert_eq!(first.messages.len(), 2, "{storage:?}");
+            server.abort();
+        }
     }
 
     #[tokio::test]

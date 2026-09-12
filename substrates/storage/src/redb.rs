@@ -1,0 +1,366 @@
+//! A `FactLog` and a `KeyValue` in one redb file, with typed tables.
+//!
+//! The directory implementation gets its atomicity from an advisory lock plus a
+//! create-new rename per record, which costs one file per fact and a directory
+//! scan per read. redb gives the same guarantees in one crash-safe file with
+//! real transactions, in pure Rust: no C toolchain to cross-compile for five
+//! targets, which is what rules SQLite out of this particular job. The log is
+//! six operations over opaque Protobuf rows with no relational schema, so SQL
+//! would type-check nothing, while a `TableDefinition` fixes the key and value
+//! types at compile time. SQLite is still the right answer for a full-text
+//! search read model later, behind its own port, not for the log.
+//!
+//! Facts stay Protobuf rows (ADR 0015): the tables carry the sequence, the
+//! command index, and the compaction watermark; the bytes are `StoredRecord`.
+//!
+//! Cross-process safety is exclusive rather than shared: redb takes a lock on
+//! the file for as long as the `Database` is open, so a second process opening
+//! the same path is refused rather than allowed to interleave. The daemon owns
+//! its file, and every other process reaches these facts through the daemon's
+//! `RpcChannel`. Inside the daemon, redb serializes write transactions, so two
+//! appenders behave exactly as the directory log's two lock holders do.
+
+use crate::{
+    Fact, FactLog, KeyValue, Record, Result, Snapshot, StorageError, StoredRecord, StoredSnapshot,
+};
+use prost::Message;
+use redb::{
+    Database, Error as RedbError, ReadableDatabase, ReadableTable, TableDefinition,
+    WriteTransaction,
+};
+use std::{io::ErrorKind, marker::PhantomData, path::Path, sync::Arc};
+
+/// The transcript itself: sequence to the Protobuf row of that fact.
+const RECORDS: TableDefinition<u64, &[u8]> = TableDefinition::new("records");
+/// The deduplication index over live records: command ID to its sequence.
+const COMMANDS: TableDefinition<&str, u64> = TableDefinition::new("commands");
+/// Rows kept past compaction so a retry still learns what its command did.
+const OUTCOMES: TableDefinition<&str, &[u8]> = TableDefinition::new("outcomes");
+/// One row, under [`SNAPSHOT_KEY`]: the projection the log can resume from.
+const SNAPSHOT: TableDefinition<&str, &[u8]> = TableDefinition::new("snapshot");
+/// Small unordered values: the `KeyValue` port, drafts included.
+const VALUES: TableDefinition<&str, &[u8]> = TableDefinition::new("values");
+/// The schema version and the compaction watermark.
+const META: TableDefinition<&str, u64> = TableDefinition::new("meta");
+
+const SNAPSHOT_KEY: &str = "snapshot";
+const SCHEMA_VERSION_KEY: &str = "schema_version";
+const COMPACTED_KEY: &str = "compacted";
+
+/// What this build of the code writes. Bump it and add a step to [`migration`].
+const SCHEMA_VERSION: u64 = 1;
+
+/// One redb file: one fact log plus the key-value table beside it.
+#[derive(Clone)]
+pub struct Redb {
+    database: Arc<Database>,
+}
+
+impl Redb {
+    /// Opens or creates the database at `path` and brings its schema current.
+    ///
+    /// Fails while another process holds the same file, which is the intended
+    /// answer: one node owns its storage.
+    pub fn open(path: impl AsRef<Path>) -> Result<Self> {
+        let database = Database::create(path)?;
+        migrate(&database)?;
+        Ok(Self {
+            database: Arc::new(database),
+        })
+    }
+
+    /// The fact log in this file. One file holds one log.
+    pub fn log<F: Fact>(&self) -> RedbLog<F> {
+        RedbLog {
+            database: Arc::clone(&self.database),
+            fact: PhantomData,
+        }
+    }
+}
+
+/// Every table this version expects, created before anything reads one.
+fn create_tables(write: &WriteTransaction) -> Result<u64> {
+    write.open_table(RECORDS)?;
+    write.open_table(COMMANDS)?;
+    write.open_table(OUTCOMES)?;
+    write.open_table(SNAPSHOT)?;
+    write.open_table(VALUES)?;
+    Ok(1)
+}
+
+/// One step per version, each a plain function over one write transaction, so a
+/// schema change is code to review rather than a migration language to trust.
+fn migration(write: &WriteTransaction, from: u64) -> Result<u64> {
+    match from {
+        0 => create_tables(write),
+        _ => Err(StorageError::Corrupt),
+    }
+}
+
+fn migrate(database: &Database) -> Result<()> {
+    let write = database.begin_write()?;
+    let mut version = {
+        let meta = write.open_table(META)?;
+        meta.get(SCHEMA_VERSION_KEY)?
+            .map_or(0, |value| value.value())
+    };
+    if version > SCHEMA_VERSION {
+        // A newer build wrote this file. Refuse rather than reinterpret it.
+        return Err(StorageError::Corrupt);
+    }
+    while version < SCHEMA_VERSION {
+        version = migration(&write, version)?;
+    }
+    write
+        .open_table(META)?
+        .insert(SCHEMA_VERSION_KEY, version)?;
+    write.commit()?;
+    Ok(())
+}
+
+pub struct RedbLog<F> {
+    database: Arc<Database>,
+    fact: PhantomData<F>,
+}
+
+/// The state an append has to fence against, read inside its own transaction.
+struct Head {
+    sequence: u64,
+    epoch: u64,
+}
+
+fn head(write: &WriteTransaction) -> Result<Head> {
+    let compacted = watermark(write)?;
+    let snapshot = saved(write)?;
+    let newest = write
+        .open_table(RECORDS)?
+        .last()?
+        .map(|(_, value)| StoredRecord::decode(value.value()))
+        .transpose()?;
+    Ok(Head {
+        sequence: newest
+            .as_ref()
+            .map(|record| record.sequence)
+            .or_else(|| snapshot.as_ref().map(|s| s.sequence))
+            .unwrap_or(0)
+            .max(compacted),
+        epoch: newest
+            .as_ref()
+            .map(|record| record.epoch)
+            .or_else(|| snapshot.as_ref().map(|s| s.epoch))
+            .unwrap_or(1),
+    })
+}
+
+fn watermark(write: &WriteTransaction) -> Result<u64> {
+    Ok(write
+        .open_table(META)?
+        .get(COMPACTED_KEY)?
+        .map_or(0, |value| value.value()))
+}
+
+fn saved(write: &WriteTransaction) -> Result<Option<Snapshot>> {
+    write
+        .open_table(SNAPSHOT)?
+        .get(SNAPSHOT_KEY)?
+        .map(|value| Ok(StoredSnapshot::decode(value.value())?.into()))
+        .transpose()
+}
+
+/// A command's record, whether it is still live or already an outcome.
+fn outcome<F: Fact>(write: &WriteTransaction, id: &str) -> Result<Option<Record<F>>> {
+    if let Some(sequence) = write.open_table(COMMANDS)?.get(id)?
+        && let Some(value) = write.open_table(RECORDS)?.get(sequence.value())?
+    {
+        return Ok(Some(StoredRecord::decode(value.value())?.into_record()?));
+    }
+    write
+        .open_table(OUTCOMES)?
+        .get(id)?
+        .map(|value| StoredRecord::decode(value.value())?.into_record())
+        .transpose()
+}
+
+impl<F: Fact> FactLog<F> for RedbLog<F> {
+    fn append(&self, expected: u64, epoch: u64, id: &str, fact: F) -> Result<Record<F>> {
+        let write = self.database.begin_write()?;
+        let head = head(&write)?;
+        if epoch < head.epoch {
+            return Err(StorageError::Epoch {
+                current: head.epoch,
+            });
+        }
+        if let Some(record) = outcome(&write, id)? {
+            return Ok(record);
+        }
+        if expected != head.sequence {
+            return Err(StorageError::Conflict {
+                actual: head.sequence,
+            });
+        }
+        let record = Record {
+            sequence: head.sequence + 1,
+            epoch,
+            command_id: id.to_owned(),
+            fact,
+        };
+        {
+            let mut records = write.open_table(RECORDS)?;
+            let mut commands = write.open_table(COMMANDS)?;
+            records.insert(
+                record.sequence,
+                StoredRecord::from(&record).encode_to_vec().as_slice(),
+            )?;
+            commands.insert(id, record.sequence)?;
+        }
+        write.commit()?;
+        tracing::debug!(sequence = record.sequence, epoch, "fact appended");
+        Ok(record)
+    }
+
+    fn outcome_of(&self, id: &str) -> Result<Option<Record<F>>> {
+        // A write transaction, not a read one: `outcome` reads three tables and
+        // must not see a half-finished compaction between them.
+        outcome(&self.database.begin_write()?, id)
+    }
+
+    fn read_from(&self, cursor: u64) -> Result<Vec<Record<F>>> {
+        let read = self.database.begin_read()?;
+        let through = read
+            .open_table(META)?
+            .get(COMPACTED_KEY)?
+            .map_or(0, |value| value.value());
+        if cursor < through {
+            return Err(StorageError::CursorUnavailable { through });
+        }
+        let records = read.open_table(RECORDS)?;
+        let mut result = Vec::new();
+        for entry in records.range(cursor.saturating_add(1)..)? {
+            let (_, value) = entry?;
+            result.push(StoredRecord::decode(value.value())?.into_record()?);
+        }
+        Ok(result)
+    }
+
+    fn snapshot(&self) -> Result<Option<Snapshot>> {
+        saved(&self.database.begin_write()?)
+    }
+
+    fn save_snapshot(&self, snapshot: Snapshot) -> Result<()> {
+        let write = self.database.begin_write()?;
+        let through = watermark(&write)?;
+        let newest = write
+            .open_table(RECORDS)?
+            .last()?
+            .map_or(through, |(key, _)| key.value());
+        if snapshot.sequence > newest || snapshot.sequence < through {
+            return Err(StorageError::SnapshotRequired);
+        }
+        {
+            let mut table = write.open_table(SNAPSHOT)?;
+            table.insert(
+                SNAPSHOT_KEY,
+                StoredSnapshot::from(&snapshot).encode_to_vec().as_slice(),
+            )?;
+        }
+        write.commit()?;
+        Ok(())
+    }
+
+    fn compact(&self, through: u64) -> Result<()> {
+        let write = self.database.begin_write()?;
+        if saved(&write)?.is_none_or(|snapshot| snapshot.sequence < through) {
+            return Err(StorageError::SnapshotRequired);
+        }
+        let reached = watermark(&write)?.max(through);
+        {
+            let mut records = write.open_table(RECORDS)?;
+            let mut commands = write.open_table(COMMANDS)?;
+            let mut outcomes = write.open_table(OUTCOMES)?;
+            let compacted: Vec<(u64, Vec<u8>)> = records
+                .range(..=through)?
+                .map(|entry| {
+                    let (key, value) = entry?;
+                    Ok((key.value(), value.value().to_vec()))
+                })
+                .collect::<Result<_>>()?;
+            for (sequence, stored) in compacted {
+                let command_id = StoredRecord::decode(&stored[..])?.command_id;
+                outcomes.insert(command_id.as_str(), stored.as_slice())?;
+                commands.remove(command_id.as_str())?;
+                records.remove(sequence)?;
+            }
+            write.open_table(META)?.insert(COMPACTED_KEY, reached)?;
+        }
+        write.commit()?;
+        tracing::debug!(through = reached, "fact log compacted");
+        Ok(())
+    }
+}
+
+impl KeyValue for Redb {
+    fn get(&self, key: &str) -> Result<Option<Vec<u8>>> {
+        Ok(self
+            .database
+            .begin_read()?
+            .open_table(VALUES)?
+            .get(key)?
+            .map(|value| value.value().to_vec()))
+    }
+
+    fn put(&self, key: &str, value: &[u8]) -> Result<()> {
+        let write = self.database.begin_write()?;
+        write.open_table(VALUES)?.insert(key, value)?;
+        write.commit()?;
+        Ok(())
+    }
+
+    fn remove(&self, key: &str) -> Result<()> {
+        let write = self.database.begin_write()?;
+        write.open_table(VALUES)?.remove(key)?;
+        write.commit()?;
+        Ok(())
+    }
+}
+
+impl From<RedbError> for StorageError {
+    fn from(error: RedbError) -> Self {
+        match error {
+            RedbError::Corrupted(_)
+            | RedbError::UpgradeRequired(_)
+            | RedbError::TableTypeMismatch { .. }
+            | RedbError::TypeDefinitionChanged { .. } => Self::Corrupt,
+            // One node owns its file; a second opener is told so, not queued.
+            RedbError::DatabaseAlreadyOpen => Self::Io(ErrorKind::ResourceBusy),
+            RedbError::ValueTooLarge(_) => Self::Io(ErrorKind::InvalidInput),
+            RedbError::Io(error) => Self::Io(error.kind()),
+            _ => Self::Io(ErrorKind::Other),
+        }
+    }
+}
+
+impl From<redb::DatabaseError> for StorageError {
+    fn from(error: redb::DatabaseError) -> Self {
+        RedbError::from(error).into()
+    }
+}
+impl From<redb::TransactionError> for StorageError {
+    fn from(error: redb::TransactionError) -> Self {
+        RedbError::from(error).into()
+    }
+}
+impl From<redb::TableError> for StorageError {
+    fn from(error: redb::TableError) -> Self {
+        RedbError::from(error).into()
+    }
+}
+impl From<redb::CommitError> for StorageError {
+    fn from(error: redb::CommitError) -> Self {
+        RedbError::from(error).into()
+    }
+}
+impl From<redb::StorageError> for StorageError {
+    fn from(error: redb::StorageError) -> Self {
+        RedbError::from(error).into()
+    }
+}
