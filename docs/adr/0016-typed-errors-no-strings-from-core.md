@@ -1,5 +1,6 @@
 ---
 status: accepted
+amended-by: 0022 (surfaces render strings from one shared Fluent source through their native resource system; the core still emits no text)
 ---
 
 # The core returns typed errors and outcomes; surfaces own every user-facing string

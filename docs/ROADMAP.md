@@ -34,6 +34,7 @@ The scope in `docs/PRD.md`.
 9. Encrypted backup and restore through the relay's store, sealed under the root key.
 10. Linux surface rewritten with relm4 (ADR 0020); SwiftUI macOS surface; Compose Android surface with the core in a foreground service.
 11. Capability manifest negotiated at session connect; two-minor-version window enforced. Config chain through `figment`.
+12. Strings from one Fluent source generated into native resources (ADR 0022); English only, with the key-completeness test and the stale-resource check in `mise run check`.
 
 Exit: every v1 scenario passes on real devices; the author uses it daily.
 
