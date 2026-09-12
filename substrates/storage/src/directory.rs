@@ -42,11 +42,11 @@ impl KeyValue for Directory {
     }
     fn remove(&self, key: &str) -> Result<()> {
         let path = self.root.join("values").join(digest(key.as_bytes()));
-        if path.exists() {
-            fs::remove_file(path)?;
-            sync(&self.root.join("values"))?;
+        match fs::remove_file(path) {
+            Ok(()) => sync(&self.root.join("values")),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+            Err(error) => Err(error.into()),
         }
-        Ok(())
     }
 }
 impl BlobStore for Directory {
@@ -97,9 +97,15 @@ impl<F: Fact> DirectoryLog<F> {
             .map(Snapshot::from))
     }
     fn compacted(&self) -> Result<u64> {
-        Ok(read_optional(&self.root.join("compacted"))?
-            .and_then(|bytes| bytes.try_into().ok())
-            .map_or(0, u64::from_be_bytes))
+        read_optional(&self.root.join("compacted"))?
+            .map(|bytes| {
+                bytes
+                    .try_into()
+                    .map(u64::from_be_bytes)
+                    .map_err(|_| StorageError::Corrupt)
+            })
+            .transpose()
+            .map(|through| through.unwrap_or(0))
     }
     fn record_path(&self, sequence: u64) -> PathBuf {
         self.root.join("records").join(format!("{sequence:020}.pb"))
@@ -128,26 +134,28 @@ impl<F: Fact> FactLog<F> for DirectoryLog<F> {
         }
         let mut records = self.records()?;
         let snapshot = self.saved()?;
-        let actual = records.last().map_or_else(
-            || snapshot.as_ref().map_or(0, |s| s.sequence),
-            |r| r.sequence,
-        );
+        let actual = records
+            .last()
+            .map_or(0, |r| r.sequence)
+            .max(snapshot.as_ref().map_or(0, |s| s.sequence))
+            .max(through);
         let current = records
             .last()
-            .map_or_else(|| snapshot.as_ref().map_or(1, |s| s.epoch), |r| r.epoch);
+            .map_or(1, |r| r.epoch)
+            .max(snapshot.as_ref().map_or(1, |s| s.epoch));
         if epoch < current {
             return Err(StorageError::Epoch { current });
+        }
+        if cursor.is_some_and(|cursor| cursor > actual) {
+            return Err(StorageError::Conflict { actual });
         }
         let duplicate = self.outcome(id, &records)?;
         records.retain(|record| cursor.is_some_and(|cursor| record.sequence > cursor));
         let Some(fact) = decide(actual, &records, duplicate)? else {
             return Ok(None);
         };
-        if cursor.is_some_and(|cursor| cursor > actual) {
-            return Err(StorageError::Conflict { actual });
-        }
         let record = Record {
-            sequence: actual + 1,
+            sequence: actual.checked_add(1).ok_or(StorageError::Corrupt)?,
             epoch,
             command_id: id.into(),
             fact,
@@ -183,7 +191,8 @@ impl<F: Fact> FactLog<F> for DirectoryLog<F> {
         let head = self
             .records()?
             .last()
-            .map_or(self.compacted()?, |r| r.sequence);
+            .map_or(0, |r| r.sequence)
+            .max(self.compacted()?);
         if snapshot.sequence > head || snapshot.sequence < self.compacted()? {
             return Err(StorageError::SnapshotRequired);
         }
@@ -240,4 +249,59 @@ fn atomic(path: &Path, bytes: &[u8]) -> Result<()> {
     file.as_file().sync_all()?;
     file.persist(path).map_err(|error| error.error)?;
     sync(parent)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn interrupted_compaction_keeps_the_durable_head_and_epoch() {
+        let root = tempfile::tempdir().unwrap();
+        let directory = Directory::open(root.path()).unwrap();
+        let log = directory.log::<String>("chat").unwrap();
+        log.append(0, 1, "first", "one".into()).unwrap();
+        log.append(1, 2, "second", "two".into()).unwrap();
+        let leftover = fs::read(log.record_path(1)).unwrap();
+        log.save_snapshot(Snapshot {
+            sequence: 2,
+            epoch: 2,
+            data: vec![],
+        })
+        .unwrap();
+        log.compact(2).unwrap();
+        // A crash after the watermark fsync can leave any subset of old files.
+        fs::write(log.record_path(1), leftover).unwrap();
+        drop(log);
+        let log = directory.log::<String>("chat").unwrap();
+        assert_eq!(
+            log.append(2, 1, "stale", "bad".into()),
+            Err(StorageError::Epoch { current: 2 })
+        );
+        log.save_snapshot(Snapshot {
+            sequence: 2,
+            epoch: 2,
+            data: vec![],
+        })
+        .unwrap();
+        assert_eq!(
+            log.append(2, 2, "third", "three".into()).unwrap().sequence,
+            3
+        );
+        assert_eq!(log.read_from(2).unwrap()[0].fact, "three");
+        assert_eq!(log.outcome_of("second").unwrap().unwrap().sequence, 2);
+    }
+
+    #[test]
+    fn corrupt_watermark_is_not_an_uncompacted_log() {
+        let root = tempfile::tempdir().unwrap();
+        let directory = Directory::open(root.path()).unwrap();
+        let log = directory.log::<String>("chat").unwrap();
+        fs::write(log.root.join("compacted"), [1, 2]).unwrap();
+        assert_eq!(log.read_from(0), Err(StorageError::Corrupt));
+        assert_eq!(
+            log.append(0, 1, "first", "one".into()),
+            Err(StorageError::Corrupt)
+        );
+    }
 }

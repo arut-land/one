@@ -120,7 +120,11 @@ pub fn digest(bytes: &[u8]) -> String {
     blake3::hash(bytes).to_hex().to_string()
 }
 pub(crate) fn checked_digest(id: &str) -> Result<&str> {
-    if id.len() == 64 && id.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+    if id.len() == 64
+        && id
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+    {
         Ok(id)
     } else {
         Err(StorageError::Corrupt)

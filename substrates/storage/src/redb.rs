@@ -185,6 +185,11 @@ impl<F: Fact> FactLog<F> for RedbLog<F> {
                 current: head.epoch,
             });
         }
+        if cursor.is_some_and(|cursor| cursor > head.sequence) {
+            return Err(StorageError::Conflict {
+                actual: head.sequence,
+            });
+        }
         let duplicate = outcome(&write, id)?;
         let records = write.open_table(RECORDS)?;
         let mut unseen = Vec::new();
@@ -201,13 +206,8 @@ impl<F: Fact> FactLog<F> for RedbLog<F> {
         let Some(fact) = decide(head.sequence, &unseen, duplicate)? else {
             return Ok(None);
         };
-        if cursor.is_some_and(|cursor| cursor > head.sequence) {
-            return Err(StorageError::Conflict {
-                actual: head.sequence,
-            });
-        }
         let record = Record {
-            sequence: head.sequence + 1,
+            sequence: head.sequence.checked_add(1).ok_or(StorageError::Corrupt)?,
             epoch,
             command_id: id.into(),
             fact,

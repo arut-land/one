@@ -105,6 +105,12 @@ pub fn fact_log(log: &dyn FactLog<String>) {
         )),
         Err(StorageError::Epoch { current: 2 })
     );
+    assert_eq!(
+        log.commit(Some(3), 2, "future", &mut |_, _, _| panic!(
+            "future cursor must not decide"
+        )),
+        Err(StorageError::Conflict { actual: 2 })
+    );
     assert!(matches!(
         log.compact(2),
         Err(StorageError::SnapshotRequired)
@@ -177,7 +183,14 @@ pub fn blobs(store: &dyn BlobStore) {
     // A well-formed digest nobody stored is absent, not an error.
     assert!(store.get_blob(&"0".repeat(64)).unwrap().is_none());
     // Anything that is not a digest is refused before it can reach a path.
-    for malformed in ["", "0", &"0".repeat(63), &"g".repeat(64), "../values/key"] {
+    for malformed in [
+        "",
+        "0",
+        &"0".repeat(63),
+        &"g".repeat(64),
+        &CONTENT_DIGEST.to_uppercase(),
+        "../values/key",
+    ] {
         assert_eq!(store.get_blob(malformed), Err(StorageError::Corrupt));
     }
 }
