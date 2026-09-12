@@ -21,6 +21,7 @@ Ordered by when they pay off. Each is small enough to be one commit.
 5. **Spike the `connectrpc` crate** (0.9, Apache-2.0, passes the Connect conformance suite) against `transports/connect-http`; if it holds, ADR 0009's "immature" note is retired and the hand-written framing goes.
 6. **`thiserror` for ADR 0016** typed errors; `snafu` rejected because its context idiom pushes strings back into the core.
 7. **BLAKE3 digests** for `BlobStore` when `iroh-blobs` lands, replacing SHA-256.
+   **Fact log store: `redb` typed tables, not SQL.** The log is six statements over opaque protobuf rows with no relational schema, so Diesel or SQLx would type-check nothing; `redb`'s `TableDefinition<K, V>` types keys and values at compile time, adds no C build, and needs no migration tooling beyond a `meta` schema-version table with Rust migration functions at open. SQLite returns later for a full-text-search read model (FTS5) behind a separate port, with `rusqlite_migration` for automatic versioning; never for the log.
 8. **Pairing:** QR needs no PAKE; the short-code path runs SPAKE2 before any identity is revealed. Envelopes: sign, then `crypto_box::seal`; backup keys via HKDF from the root key.
 9. **`keyring` 4 needs explicit store crates** per platform; mobile secrets go through the native side over FFI, not through the young mobile store crates.
 10. **OpenTelemetry crates pull js-sys on wasm**; gate export behind a feature that is off in the wasm core.
