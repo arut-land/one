@@ -6,10 +6,10 @@ license.workspace = true
 
 [dependencies]
 tokio = { version = "1", default-features = false, features = ["sync"] }
-futures-util = "0.3.31"
+futures-lite = { version = "2.6.1", default-features = false, features = ["alloc"] }
 
 [dev-dependencies]
-futures-executor = "0.3.31"
+futures-lite = { version = "2.6.1", default-features = false, features = ["std"] }
 
 [lints]
 workspace = true
