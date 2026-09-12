@@ -9,7 +9,7 @@ export function useChat(session: ProductSessionHandle) {
   const transcript = useMemo(() => observeScope({ state: () => chat.state(), changes: cb => chat.chatChanges(cb) }), [chat]);
   const draft = useMemo(() => observeScope({ state: () => composer.state(), changes: cb => composer.composerChanges(cb) }), [composer]);
   const list = useMemo(() => observeScope({ state: () => session.conversations().state(), changes: cb => session.conversations().listChanges(cb) }), [session]);
-  useEffect(() => { void composer.initialize(); return () => { transcript.dispose(); draft.dispose(); }; }, [composer, transcript, draft]);
+  useEffect(() => { void composer.initialize(); void composer.follow(); return () => { transcript.dispose(); draft.dispose(); }; }, [composer, transcript, draft]);
   useEffect(() => () => list.dispose(), [list]);
   const state = useObservable(transcript);
   const composerState = useObservable(draft);

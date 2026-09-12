@@ -42,7 +42,7 @@ private fun ConversationView(chat: ChatHandle) {
         AutoCloseable { subscription.cancel() }
     } }
     DisposableEffect(chat) { onDispose { transcript.close(); draft.close() } }
-    LaunchedEffect(composer) { composer.initialize() }
+    LaunchedEffect(composer) { composer.initialize(); composer.follow() }
     val state by transcript.state.collectAsState()
     val composing by draft.state.collectAsState()
     val scope = rememberCoroutineScope()

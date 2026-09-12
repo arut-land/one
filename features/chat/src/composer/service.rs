@@ -11,7 +11,7 @@ use arut_protocol::chat::composer::v1::{
     GetComposerResponse, ReplaceComposerRequest, ReplaceComposerResponse, WatchComposerRequest,
     WatchComposerResponse, composer_scope, replace_composer_response,
 };
-use arut_rpc::{Code, Request, Response, RpcFuture, Status};
+use arut_rpc::{Code, Request, Response, RpcFuture, RpcStream, Status};
 use std::sync::Arc;
 
 type PersistCheckpoint = dyn Fn(&ComposerCheckpoint) -> Result<(), String> + Send + Sync;
@@ -88,18 +88,30 @@ impl ComposerService for ComposerServiceImpl {
     fn watch_composer(
         &self,
         request: Request<WatchComposerRequest>,
-    ) -> RpcFuture<Response<WatchComposerResponse>> {
-        let message = request.message;
-        let Some(scope) = message.scope.and_then(scope_from_wire) else {
+    ) -> RpcFuture<Response<RpcStream<WatchComposerResponse>>> {
+        let Some(scope) = request.message.scope.and_then(scope_from_wire) else {
             return Box::pin(async { Err(invalid_scope()) });
         };
-        let facts = self.authority.facts_after(&scope, message.after_revision);
-        let snapshot = self.authority.snapshot(&scope);
+        let authority = self.authority.clone();
+        let changes = authority.changes(&scope);
         Box::pin(async move {
-            Ok(Response::new(WatchComposerResponse {
-                facts: facts.into_iter().map(Into::into).collect(),
-                snapshot: Some(snapshot.into()),
-            }))
+            let stream = futures_util::stream::unfold(
+                (authority, changes, scope),
+                |(authority, changes, scope)| async move {
+                    changes.changed().await?;
+                    let snapshot = authority.snapshot(&scope);
+                    Some((
+                        Ok(WatchComposerResponse {
+                            facts: vec![],
+                            snapshot: Some(snapshot.into()),
+                        }),
+                        (authority, changes, scope),
+                    ))
+                },
+            );
+            Ok(Response::new(
+                Box::pin(stream) as RpcStream<WatchComposerResponse>
+            ))
         })
     }
 }

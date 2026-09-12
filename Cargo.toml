@@ -1,6 +1,8 @@
 [workspace]
 resolver = "3"
 members = [
+    "transports/memory",
+    "transports/ipc",
     "bindings/observation",
     "bindings/ffi",
     "runtimes/local",
@@ -11,7 +13,7 @@ members = [
     "product/session",
     "substrates/watch",
     "surfaces/linux-gtk",
-    "transports/http",
+    "transports/connect-http",
 ]
 
 [workspace.package]
@@ -25,6 +27,9 @@ arut-protocol = { path = "protocols" }
 arut-product-session = { path = "product/session" }
 arut-rpc = { path = "protocols/rpc" }
 arut-watch = { path = "substrates/watch" }
-arut-transport-http = { path = "transports/http" }
+arut-transport-connect-http = { path = "transports/connect-http" }
 
 arut-observation = { path = "bindings/observation" }
+
+arut-transport-memory = { path = "transports/memory" }
+arut-transport-ipc = { path = "transports/ipc" }

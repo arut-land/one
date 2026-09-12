@@ -56,6 +56,6 @@ private struct ConversationView: View {
                 TextField("Message Arut", text: Binding(get: { draft.state.text }, set: { text in Task { _ = await composer.replace(text: text) } }))
                 Button("Send") { Task { _ = await chat.send(text: composer.state().text) } }
             }
-        }.task { _ = await composer.initialize() }
+        }.task { _ = await composer.initialize(); await composer.follow() }
     }
 }
