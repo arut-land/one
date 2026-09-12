@@ -15,6 +15,9 @@ pub type RpcStream<T> = Pin<Box<dyn Stream<Item = Result<T, Status>> + Send + 's
 pub struct Metadata(BTreeMap<String, Vec<u8>>);
 
 impl Metadata {
+    pub fn iter(&self) -> impl Iterator<Item = (&str, &[u8])> {
+        self.0.iter().map(|(k, v)| (k.as_str(), v.as_slice()))
+    }
     pub fn insert(&mut self, name: impl Into<String>, value: impl Into<Vec<u8>>) {
         self.0.insert(name.into(), value.into());
     }

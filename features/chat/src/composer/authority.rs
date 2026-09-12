@@ -13,6 +13,7 @@ pub struct ComposerAuthority {
 #[derive(Clone)]
 struct ScopeState {
     snapshot: ComposerSnapshot,
+    watch: std::sync::Arc<arut_watch::Watch<ComposerSnapshot>>,
     commands: HashMap<String, AppliedCommand>,
     facts: Vec<DraftReplaced>,
 }
@@ -26,6 +27,9 @@ pub enum PromoteError {
 impl ScopeState {
     fn empty(scope: ComposerScope) -> Self {
         Self {
+            watch: std::sync::Arc::new(arut_watch::Watch::new(ComposerSnapshot::empty(
+                scope.clone(),
+            ))),
             snapshot: ComposerSnapshot::empty(scope),
             commands: HashMap::new(),
             facts: Vec::new(),
@@ -34,6 +38,15 @@ impl ScopeState {
 }
 
 impl ComposerAuthority {
+    pub fn changes(&self, scope: &ComposerScope) -> std::sync::Arc<arut_watch::Subscription<u64>> {
+        let mut scopes = self.inner.lock().expect("composer authority poisoned");
+        scopes
+            .entry(scope.clone())
+            .or_insert_with(|| ScopeState::empty(scope.clone()))
+            .watch
+            .subscribe()
+    }
+
     pub fn from_checkpoint(checkpoint: ComposerCheckpoint) -> Self {
         let scopes = checkpoint
             .chat_scopes
@@ -42,6 +55,7 @@ impl ComposerAuthority {
             .map(|checkpoint| {
                 let scope = checkpoint.snapshot.scope.clone();
                 let state = ScopeState {
+                    watch: std::sync::Arc::new(arut_watch::Watch::new(checkpoint.snapshot.clone())),
                     snapshot: checkpoint.snapshot,
                     commands: checkpoint
                         .commands
@@ -132,6 +146,7 @@ impl ComposerAuthority {
             candidate.insert(next.snapshot.scope.clone(), next.clone());
             persist(&checkpoint(&candidate))?;
         }
+        next.watch.set(next.snapshot.clone());
         scopes.insert(next.snapshot.scope.clone(), next);
         Ok(outcome)
     }

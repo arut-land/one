@@ -1,0 +1,7 @@
+[package]
+name = "arut-transport-memory"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+[dependencies]
+arut-rpc.workspace = true

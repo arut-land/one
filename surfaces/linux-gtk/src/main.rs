@@ -115,6 +115,11 @@ fn show_chat(body: &gtk::Box, chat: arut_feature_chat::product::ChatClient) {
             }
         }
     });
+    let follow_composer = composer.clone();
+    let follow = glib::spawn_future_local(async move {
+        follow_composer.follow().await;
+    });
+    entry.connect_destroy(move |_| follow.abort());
     let changes = composer.changes();
     let weak_entry = entry.downgrade();
     glib::spawn_future_local(async move {

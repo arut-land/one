@@ -1,3 +1,5 @@
+#[cfg(unix)]
+pub mod child;
 pub mod hosting;
 use arut_feature_chat::composer::ComposerCheckpoint;
 use arut_feature_chat::composer::authority::ComposerAuthority;
@@ -11,18 +13,12 @@ use arut_protocol::chat::composer::v1::{
     ComposerAuthorityCheckpoint as WireCheckpoint, ComposerServiceRouter,
 };
 use arut_protocol::chat::v1::ChatServiceRouter;
-use arut_rpc::{Code, Request, RpcChannel, RpcRegistry, RpcService, Status};
+use arut_rpc::{RpcRegistry, RpcService};
 use axum::Router;
-use axum::body::Bytes;
-use axum::extract::{Path as AxumPath, State};
-use axum::http::{HeaderValue, StatusCode, header};
-use axum::response::{IntoResponse, Response};
-use axum::routing::{get, post};
 use prost::Message;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use tower_http::cors::{Any, CorsLayer};
 
 pub fn app(data_path: PathBuf) -> Result<Router, String> {
     let authority = Arc::new(ComposerAuthority::from_checkpoint(load_checkpoint(
@@ -50,73 +46,7 @@ pub fn app(data_path: PathBuf) -> Result<Router, String> {
             .expect("capability RPC routes must be unique"),
     );
 
-    Ok(Router::new()
-        .route("/health", get(|| async { StatusCode::NO_CONTENT }))
-        .route("/{*procedure}", post(invoke))
-        .layer(
-            CorsLayer::new()
-                .allow_origin(Any)
-                .allow_methods(Any)
-                .allow_headers([header::CONTENT_TYPE]),
-        )
-        .with_state(registry))
-}
-
-async fn invoke(
-    State(registry): State<Arc<RpcRegistry>>,
-    AxumPath(procedure): AxumPath<String>,
-    body: Bytes,
-) -> ProtoResponse {
-    let procedure = format!("/{procedure}");
-    match registry
-        .unary(&procedure, Request::new(body.to_vec()))
-        .await
-    {
-        Ok(response) => ProtoResponse::ok(response.message),
-        Err(error) => ProtoResponse::error(error),
-    }
-}
-
-struct ProtoResponse {
-    status: StatusCode,
-    body: Vec<u8>,
-}
-
-impl ProtoResponse {
-    fn ok(body: Vec<u8>) -> Self {
-        Self {
-            status: StatusCode::OK,
-            body,
-        }
-    }
-
-    fn error(error: Status) -> Self {
-        Self {
-            status: match error.code {
-                Code::InvalidArgument => StatusCode::BAD_REQUEST,
-                Code::Unauthenticated => StatusCode::UNAUTHORIZED,
-                Code::PermissionDenied => StatusCode::FORBIDDEN,
-                Code::NotFound | Code::Unimplemented => StatusCode::NOT_FOUND,
-                Code::AlreadyExists | Code::Aborted => StatusCode::CONFLICT,
-                Code::FailedPrecondition => StatusCode::PRECONDITION_FAILED,
-                Code::ResourceExhausted => StatusCode::TOO_MANY_REQUESTS,
-                Code::Unavailable => StatusCode::SERVICE_UNAVAILABLE,
-                _ => StatusCode::INTERNAL_SERVER_ERROR,
-            },
-            body: error.message.into_bytes(),
-        }
-    }
-}
-
-impl IntoResponse for ProtoResponse {
-    fn into_response(self) -> Response {
-        let mut response = (self.status, self.body).into_response();
-        response.headers_mut().insert(
-            header::CONTENT_TYPE,
-            HeaderValue::from_static("application/x-protobuf"),
-        );
-        response
-    }
+    Ok(arut_transport_connect_http::router(registry))
 }
 
 fn load_checkpoint(path: &Path) -> Result<ComposerCheckpoint, String> {
@@ -163,8 +93,9 @@ mod tests {
         COMPOSER_SERVICE_DESCRIPTOR, ComposerServiceClient, ReplaceComposerRequest,
     };
     use arut_protocol::chat::v1::{ChatServiceClient, StartChatRequest};
-    use arut_rpc::Request;
-    use arut_transport_http::HttpRpcChannel;
+    use arut_rpc::{Request, RpcChannel};
+    use arut_transport_connect_http::HttpRpcChannel;
+    use futures_util::StreamExt;
 
     fn wire_scope(scope: &ComposerScope) -> arut_protocol::chat::composer::v1::ComposerScope {
         arut_feature_chat::composer::service::scope_to_wire(scope)
@@ -217,6 +148,41 @@ mod tests {
             .message;
         assert_eq!(retry.chat_id, first.chat_id);
         assert_eq!(retry.messages, first.messages);
+        let mut stream = composer
+            .watch_composer(Request::new(
+                arut_protocol::chat::composer::v1::WatchComposerRequest {
+                    scope: Some(wire_scope(&ComposerScope::chat(first.chat_id.clone()))),
+                    after_revision: 0,
+                },
+            ))
+            .await
+            .unwrap()
+            .message;
+        assert_eq!(
+            stream
+                .next()
+                .await
+                .unwrap()
+                .unwrap()
+                .snapshot
+                .unwrap()
+                .revision,
+            0
+        );
+        composer
+            .replace_composer(Request::new(ReplaceComposerRequest {
+                scope: Some(wire_scope(&ComposerScope::chat(first.chat_id))),
+                command_id: "stream-edit".into(),
+                authority_epoch: 1,
+                base_revision: 0,
+                text: "streamed draft".into(),
+            }))
+            .await
+            .unwrap();
+        assert_eq!(
+            stream.next().await.unwrap().unwrap().snapshot.unwrap().text,
+            "streamed draft"
+        );
 
         let manifest = capabilities
             .get_capabilities(Request::new(GetCapabilitiesRequest {}))

@@ -105,6 +105,9 @@ impl ChatHandle {
 }
 #[export]
 impl ComposerHandle {
+    pub async fn follow(&self) {
+        self.client.follow().await;
+    }
     pub fn state(&self) -> ComposerState {
         self.client.state()
     }

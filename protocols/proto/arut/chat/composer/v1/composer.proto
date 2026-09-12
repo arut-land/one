@@ -5,7 +5,7 @@ package arut.chat.composer.v1;
 service ComposerService {
   rpc GetComposer(GetComposerRequest) returns (GetComposerResponse);
   rpc ReplaceComposer(ReplaceComposerRequest) returns (ReplaceComposerResponse);
-  rpc WatchComposer(WatchComposerRequest) returns (WatchComposerResponse);
+  rpc WatchComposer(WatchComposerRequest) returns (stream WatchComposerResponse);
 }
 
 message ComposerScope {

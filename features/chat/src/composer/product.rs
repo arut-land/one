@@ -1,14 +1,15 @@
 use super::service::{scope_from_wire, scope_to_wire};
 use super::{ComposerScope, ComposerSnapshot};
 use arut_protocol::chat::composer::v1::{
-    ComposerServiceClient, ComposerSnapshot as WireSnapshot, DraftReplaced as WireDraftReplaced,
-    GetComposerRequest, ReplaceComposerRequest, WatchComposerRequest, replace_composer_response,
+    ComposerServiceClient, ComposerSnapshot as WireSnapshot, GetComposerRequest,
+    ReplaceComposerRequest, WatchComposerRequest, replace_composer_response,
 };
 use arut_rpc::Request;
 use arut_watch::{Subscription, Watch};
 use futures_util::lock::Mutex as AsyncMutex;
+use futures_util::{FutureExt, StreamExt};
+use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, Mutex};
 use uuid::Uuid;
 
 #[boltffi::data]
@@ -32,7 +33,7 @@ pub struct ComposerState {
 pub struct ComposerClient {
     service: ComposerServiceClient,
     state: Arc<Watch<ComposerState>>,
-    scope: Arc<Mutex<ComposerScope>>,
+    scope: Arc<Watch<ComposerScope>>,
     client_id: String,
     next_command: Arc<AtomicU64>,
     authority_epoch: Arc<AtomicU64>,
@@ -49,7 +50,7 @@ impl ComposerClient {
                 status: ComposerStatus::Connecting,
                 error: String::new(),
             })),
-            scope: Arc::new(Mutex::new(scope)),
+            scope: Arc::new(Watch::new(scope)),
             client_id: Uuid::new_v4().to_string(),
             next_command: Arc::new(AtomicU64::new(1)),
             authority_epoch: Arc::new(AtomicU64::new(1)),
@@ -58,10 +59,7 @@ impl ComposerClient {
     }
 
     pub fn scope(&self) -> ComposerScope {
-        self.scope
-            .lock()
-            .expect("composer scope lock poisoned")
-            .clone()
+        self.scope.get()
     }
 
     pub fn state(&self) -> ComposerState {
@@ -96,6 +94,7 @@ impl ComposerClient {
     }
 
     pub(crate) async fn replace_unlocked(&self, text: String) -> ComposerState {
+        self.state.update(|state| state.text.clone_from(&text));
         let sequence = self.next_command.fetch_add(1, Ordering::Relaxed);
         let response = self
             .service
@@ -135,27 +134,41 @@ impl ComposerClient {
         }
     }
 
-    pub async fn sync_once(&self) -> ComposerState {
-        let _operation = self.operations.lock().await;
-        let response = self
-            .service
-            .watch_composer(Request::new(WatchComposerRequest {
-                scope: Some(scope_to_wire(&self.scope())),
-                after_revision: self.state.get().revision,
-            }))
-            .await;
-        match response {
-            Ok(response) => {
-                for fact in response.message.facts {
-                    self.apply_fact(fact);
+    /// The host polls this future for the lifetime of the visible composer.
+    pub async fn follow(&self) {
+        loop {
+            let scope_changes = self.scope.subscribe();
+            let _ = scope_changes.changed().await;
+            let response = self
+                .service
+                .watch_composer(Request::new(WatchComposerRequest {
+                    scope: Some(scope_to_wire(&self.scope())),
+                    after_revision: self.state.get().revision,
+                }))
+                .await;
+            let mut stream = match response {
+                Ok(response) => response.message,
+                Err(error) => {
+                    self.apply_error(error.to_string());
+                    return;
                 }
-                response
-                    .message
-                    .snapshot
-                    .map(|snapshot| self.apply_snapshot(snapshot, false))
-                    .unwrap_or_else(|| self.state.get())
+            };
+            loop {
+                let next = stream.next().fuse();
+                let rebound = scope_changes.changed().fuse();
+                futures_util::pin_mut!(next, rebound);
+                futures_util::select! {
+                    _ = rebound => break,
+                    item = next => match item {
+                        Some(Ok(response)) => { if let Some(snapshot) = response.snapshot {
+                            let _operation = self.operations.lock().await;
+                            if snapshot.scope.clone().and_then(scope_from_wire) == Some(self.scope()) { self.apply_snapshot(snapshot, false); }
+                        } },
+                        Some(Err(error)) => { self.apply_error(error.to_string()); return; },
+                        None => break,
+                    }
+                }
             }
-            Err(error) => self.apply_error(error.to_string()),
         }
     }
 
@@ -164,7 +177,7 @@ impl ComposerClient {
         if snapshot.scope.clone().and_then(scope_from_wire) != Some(expected.clone()) {
             return Err("start chat composer scope did not match the new chat".into());
         }
-        *self.scope.lock().expect("composer scope lock poisoned") = ComposerScope::chat(chat_id);
+        self.scope.set(ComposerScope::chat(chat_id));
         self.apply_snapshot(snapshot, false);
         Ok(())
     }
@@ -198,26 +211,6 @@ impl ComposerClient {
                 String::new()
             };
         })
-    }
-
-    fn apply_fact(&self, fact: WireDraftReplaced) {
-        if fact
-            .scope
-            .as_ref()
-            .and_then(|scope| scope_from_wire(scope.clone()))
-            .as_ref()
-            != Some(&self.scope())
-        {
-            return;
-        }
-        self.state.update(|state| {
-            if fact.revision == state.revision + 1 {
-                state.text = fact.text;
-                state.revision = fact.revision;
-                state.status = ComposerStatus::Synced;
-                state.error.clear();
-            }
-        });
     }
 
     fn apply_error(&self, error: String) -> ComposerState {
