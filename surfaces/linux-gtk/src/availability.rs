@@ -17,6 +17,7 @@ impl SimpleComponent for Availability {
     type Output = FeatureAvailability;
     view! {
         gtk::Label {
+            add_css_class: "arut-availability",
             #[watch]
             set_label: strings::availability(model.value),
             set_wrap: true,

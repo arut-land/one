@@ -25,6 +25,7 @@ pub struct Shell {
     restore_pending: bool,
     error: &'static str,
     _tasks: Tasks,
+    _theme: crate::theme::Theme,
 }
 
 #[derive(Debug)]
@@ -48,6 +49,7 @@ impl Component for Shell {
         #[name = "window"]
         gtk::ApplicationWindow {
             set_title: Some("Arut"),
+            add_css_class: "arut-window",
             set_default_size: (900, 600),
             gtk::Box {
                 set_orientation: gtk::Orientation::Vertical,
@@ -129,6 +131,7 @@ impl Component for Shell {
             restore_pending: true,
             error: "",
             _tasks: tasks,
+            _theme: crate::theme::Theme::install(&root),
         };
         let conversations = model.conversations.widget();
         let availability = model.availability.widget();
@@ -151,7 +154,19 @@ impl Component for Shell {
             glib::Propagation::Stop
         });
         root.add_controller(keys);
-        root.connect_map(|_| eprintln!("arut-linux-gtk: shell mapped"));
+        root.connect_map(|window| {
+            eprintln!("arut-linux-gtk: shell mapped");
+            if let Some(clock) = window.frame_clock() {
+                let handler = Rc::new(std::cell::RefCell::new(None));
+                let disconnect = handler.clone();
+                *handler.borrow_mut() = Some(clock.connect_after_paint(move |clock| {
+                    eprintln!("arut-linux-gtk: first frame painted");
+                    if let Some(handler) = disconnect.borrow_mut().take() {
+                        clock.disconnect(handler);
+                    }
+                }));
+            }
+        });
         ComponentParts { model, widgets }
     }
     fn update_with_view(
