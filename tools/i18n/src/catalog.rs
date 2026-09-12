@@ -36,11 +36,12 @@ pub enum Message {
 }
 
 /// A pattern is literal text with argument placeholders punched through it.
-#[derive(Default)]
+#[derive(Clone, Default)]
 pub struct Pattern {
     pub parts: Vec<Part>,
 }
 
+#[derive(Clone)]
 pub enum Part {
     Text(String),
     Argument(Argument),
@@ -391,24 +392,13 @@ fn lower(
         .into_iter()
         .map(|(category, body)| {
             let mut parts = Vec::new();
-            parts.extend(clone_parts(&prefix));
+            parts.extend(prefix.parts.iter().cloned());
             parts.extend(body.parts);
-            parts.extend(clone_parts(&suffix));
+            parts.extend(suffix.parts.iter().cloned());
             (category, Pattern { parts })
         })
         .collect();
     Ok(Message::Plural { selector, variants })
-}
-
-fn clone_parts(pattern: &Pattern) -> Vec<Part> {
-    pattern
-        .parts
-        .iter()
-        .map(|part| match part {
-            Part::Text(text) => Part::Text(text.clone()),
-            Part::Argument(argument) => Part::Argument(argument.clone()),
-        })
-        .collect()
 }
 
 fn lower_selection(

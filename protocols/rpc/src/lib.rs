@@ -395,8 +395,7 @@ where
     T: Send + 'static,
     U: Send + 'static,
 {
-    let map = Arc::new(map);
-    Box::pin(stream.map(move |item| item.and_then(|item| map(item))))
+    Box::pin(stream.map(move |item| item.and_then(&map)))
 }
 
 /// Runs work on an executor owned by the composition root.

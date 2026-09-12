@@ -442,24 +442,16 @@ pub fn typescript(default_locale: &str, locales: &[Locale]) -> String {
             let values = arguments
                 .iter()
                 .map(|argument| {
-                    if argument.name == camel(&argument.name) {
+                    let key = if argument.name == camel(&argument.name) {
                         argument.name.clone()
                     } else {
-                        format!("\"{}\": args.{}", argument.name, camel(&argument.name))
-                    }
+                        format!("{:?}", argument.name)
+                    };
+                    format!("{key}: args.{}", camel(&argument.name))
                 })
                 .collect::<Vec<_>>()
                 .join(", ");
-            let body = if values.contains(':') {
-                format!("{{ {values} }}")
-            } else {
-                let spread = arguments
-                    .iter()
-                    .map(|argument| format!("{}: args.{}", argument.name, camel(&argument.name)))
-                    .collect::<Vec<_>>()
-                    .join(", ");
-                format!("{{ {spread} }}")
-            };
+            let body = format!("{{ {values} }}");
             let _ = writeln!(
                 out,
                 "  {}: (bundle: L10nBundle, args: {{ {fields} }}): string =>\n    bundle.format(keys.{}, {body}),",

@@ -8,7 +8,6 @@ use std::{
     io::Write,
     marker::PhantomData,
     path::{Path, PathBuf},
-    sync::atomic::{AtomicU64, Ordering},
 };
 pub struct Directory {
     root: PathBuf,
@@ -235,18 +234,10 @@ fn sync(path: &Path) -> Result<()> {
     Ok(())
 }
 fn atomic(path: &Path, bytes: &[u8]) -> Result<()> {
-    static NEXT: AtomicU64 = AtomicU64::new(0);
-    let temp = path.with_extension(format!(
-        "{}-{}.tmp",
-        std::process::id(),
-        NEXT.fetch_add(1, Ordering::Relaxed)
-    ));
-    let mut file = OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .open(&temp)?;
+    let parent = path.parent().expect("storage file has a parent");
+    let mut file = tempfile::NamedTempFile::new_in(parent)?;
     file.write_all(bytes)?;
-    file.sync_all()?;
-    fs::rename(&temp, path)?;
-    sync(path.parent().expect("storage file has a parent"))
+    file.as_file().sync_all()?;
+    file.persist(path).map_err(|error| error.error)?;
+    sync(parent)
 }

@@ -37,7 +37,7 @@ export function registerChat(context: vscode.ExtensionContext, session: ProductS
           ? describeComposerError(composerState.error)
           : null;
       current.webview.postMessage({ type: "state", state: {
-        generation, status: chatState.status, chatId: chat.id(), draft: composerState.text, history: list.state(), error,
+        generation, status: chatState.status, chatId: chatState.id, draft: composerState.text, history: list.state(), error,
         messages: added.map(message => ({ ...message, id: message.id.toString() })),
       } });
     };
