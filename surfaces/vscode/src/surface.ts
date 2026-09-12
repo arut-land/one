@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { followComposer, type ChatHandle, describeChatError, describeComposerError, type ProductSessionHandle } from "@arut/bindings-typescript";
+import { strings, t, followComposer, type ChatHandle, describeChatError, describeComposerError, type ProductSessionHandle } from "@arut/bindings-typescript";
 import * as vscode from "vscode";
 
 function nonce(): string {
@@ -71,6 +71,13 @@ export function registerChat(context: vscode.ExtensionContext, session: ProductS
 
 function markup(): string {
   const scriptNonce = nonce();
+  const labels = JSON.stringify({
+    newConversation: t.actionNewConversation(strings),
+    placeholder: t.composerPlaceholder(strings),
+    send: t.actionSend(strings),
+    you: t.chatRoleYou(strings),
+    assistant: t.chatRoleAssistant(strings),
+  }).replace(/</g, "\\u003c");
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -119,13 +126,14 @@ function markup(): string {
   </style>
 </head>
 <body>
-  <header><button id="toggle-history" type="button" title="Toggle chat history (Alt+S)" aria-label="Toggle chat history"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 5.5h16v13H4zM9 5.5v13" /></svg></button><strong id="title">New conversation</strong><button id="new-chat" type="button" title="New chat (Alt+N)"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" /></svg> New chat</button></header>
+  <header><button id="toggle-history" type="button" title="Toggle chat history (Alt+S)" aria-label="Toggle chat history"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 5.5h16v13H4zM9 5.5v13" /></svg></button><strong id="title"></strong><button id="new-chat" type="button" title="New chat (Alt+N)"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" /></svg> New chat</button></header>
   <button id="scrim" type="button" aria-label="Close chat history"></button>
   <aside id="history"><span>Recent</span></aside>
   <main id="messages"><p class="empty">Start a conversation.</p></main>
   <p id="error" hidden></p>
-  <form><input autofocus aria-label="Message Arut" placeholder="Message Arut"><button>Send</button></form>
+  <form><input autofocus><button></button></form>
   <script nonce="${scriptNonce}">
+    const labels = ${labels};
     const vscode = acquireVsCodeApi();
     const messages = document.querySelector('#messages');
     const history = document.querySelector('#history');
@@ -136,6 +144,10 @@ function markup(): string {
     const scrim = document.querySelector('#scrim');
     const title = document.querySelector('#title');
     const error = document.querySelector('#error');
+    title.textContent = labels.newConversation;
+    input.placeholder = labels.placeholder;
+    input.setAttribute('aria-label', labels.placeholder);
+    send.textContent = labels.send;
     const saved = vscode.getState() || {};
     let sidebarOpen = saved.sidebarOpen ?? window.innerWidth > 560;
     const applySidebar = () => {
@@ -189,7 +201,7 @@ function markup(): string {
         });
         history.append(item);
       }
-      title.textContent = data.state.history.find(chat => chat.id === data.state.chatId)?.title || 'New conversation';
+      title.textContent = data.state.history.find(chat => chat.id === data.state.chatId)?.title || labels.newConversation;
       if (data.state.messages.length > 0) messages.querySelector('.empty')?.remove();
       if (!messages.firstChild && data.state.messages.length === 0) {
         const empty = document.createElement('p');
@@ -201,7 +213,7 @@ function markup(): string {
         const item = document.createElement('article');
         item.className = message.role === 0 ? 'user' : 'assistant';
         const role = document.createElement('span');
-        role.textContent = message.role === 0 ? 'You' : 'Arut';
+        role.textContent = message.role === 0 ? labels.you : labels.assistant;
         const text = document.createElement('p');
         text.textContent = message.text;
         item.append(role, text);
