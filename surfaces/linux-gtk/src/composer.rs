@@ -108,6 +108,7 @@ impl Component for Composer {
             }
         });
         let keys = gtk::EventControllerKey::new();
+        keys.set_name(Some("arut-composer-keys"));
         keys.connect_key_pressed(move |_, key, _, modifiers| {
             if matches!(key, gtk::gdk::Key::Return | gtk::gdk::Key::KP_Enter)
                 && !modifiers.contains(gtk::gdk::ModifierType::SHIFT_MASK)

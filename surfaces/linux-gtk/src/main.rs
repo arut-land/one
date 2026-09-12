@@ -5,6 +5,9 @@
 //! navigation is persisted here, under XDG_STATE_HOME/arut/linux-ui.
 //! Chat and composer errors are currently strings in the core; strings.rs maps
 //! their typed statuses and the typed availability/RPC errors to English.
+//! GTK reads scheme and contrast from its portal settings. Theme colors come
+//! from named GTK colors; ashpd supplies live accent and reduced-motion settings.
+//! Only Arut classes receive additional CSS, and icons come from the desktop.
 //! Non-Linux builds have no UI dependencies and run an empty main.
 
 #[cfg(target_os = "linux")]
@@ -21,6 +24,8 @@ mod observe;
 mod shell;
 #[cfg(target_os = "linux")]
 mod strings;
+#[cfg(target_os = "linux")]
+mod theme;
 #[cfg(target_os = "linux")]
 mod transcript;
 
@@ -72,3 +77,6 @@ fn main() {
     gtk::Window::set_default_icon_name("dev.arut.Arut");
     app.run::<shell::Shell>(session);
 }
+
+#[cfg(all(test, target_os = "linux"))]
+mod component_tests;

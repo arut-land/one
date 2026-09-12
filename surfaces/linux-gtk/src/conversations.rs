@@ -61,6 +61,7 @@ impl SimpleComponent for Conversations {
     view! {
         gtk::ScrolledWindow {
             set_vexpand: true,
+            add_css_class: "arut-conversations",
             set_min_content_width: 220,
             set_hscrollbar_policy: gtk::PolicyType::Never,
             update_property: &[gtk::accessible::Property::Label("Conversations")],
