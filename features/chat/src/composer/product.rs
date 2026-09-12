@@ -1,5 +1,6 @@
 use super::ComposerScope;
 use super::service::{scope_from_wire, scope_to_wire};
+use crate::errors::ComposerError;
 use crate::ports::IdSource;
 use arut_protocol::chat::composer::v1::{
     ComposerServiceClient, ComposerSnapshot as WireSnapshot, GetComposerRequest,
@@ -26,7 +27,8 @@ pub struct ComposerState {
     pub text: String,
     pub revision: u64,
     pub status: ComposerStatus,
-    pub error: String,
+    /// Set exactly when `status` is `Failed`; a surface reads the variant.
+    pub error: Option<ComposerError>,
 }
 
 #[derive(Clone)]
@@ -54,7 +56,7 @@ impl ComposerClient {
                 text: String::new(),
                 revision: 0,
                 status: ComposerStatus::Connecting,
-                error: String::new(),
+                error: None,
             })),
             scope: Arc::new(Watch::new(scope)),
             client_id: ids.new_id(),
@@ -87,10 +89,10 @@ impl ComposerClient {
             .await;
         match response {
             Ok(response) => response.message.snapshot.map_or_else(
-                || self.apply_error("composer read omitted its snapshot".into()),
+                || self.apply_error(ComposerError::SnapshotMissing),
                 |snapshot| self.apply_snapshot(snapshot, false),
             ),
-            Err(error) => self.apply_error(error.to_string()),
+            Err(error) => self.apply_error(error.into()),
         }
     }
 
@@ -116,27 +118,26 @@ impl ComposerClient {
             Ok(response) => match response.message.outcome {
                 Some(replace_composer_response::Outcome::Applied(applied)) => {
                     applied.snapshot.map_or_else(
-                        || self.apply_error("composer commit omitted its snapshot".into()),
+                        || self.apply_error(ComposerError::SnapshotMissing),
                         |snapshot| self.apply_snapshot(snapshot, false),
                     )
                 }
                 Some(replace_composer_response::Outcome::RevisionConflict(conflict)) => {
                     conflict.snapshot.map_or_else(
-                        || self.apply_error("composer conflict omitted its snapshot".into()),
+                        || self.apply_error(ComposerError::SnapshotMissing),
                         |snapshot| self.apply_snapshot(snapshot, true),
                     )
                 }
                 Some(replace_composer_response::Outcome::AuthorityMismatch(mismatch)) => {
                     self.authority_epoch
                         .store(mismatch.current_epoch, Ordering::Release);
-                    self.apply_error(format!(
-                        "composer authority changed to epoch {}",
-                        mismatch.current_epoch
-                    ))
+                    self.apply_error(ComposerError::AuthorityChanged {
+                        current_epoch: mismatch.current_epoch,
+                    })
                 }
-                None => self.apply_error("composer commit omitted its outcome".into()),
+                None => self.apply_error(ComposerError::OutcomeMissing),
             },
-            Err(error) => self.apply_error(error.to_string()),
+            Err(error) => self.apply_error(error.into()),
         }
     }
 
@@ -168,7 +169,7 @@ impl ComposerClient {
             let mut stream = match response {
                 Ok(response) => response.message,
                 Err(error) => {
-                    self.apply_error(error.to_string());
+                    self.apply_error(error.into());
                     return;
                 }
             };
@@ -185,7 +186,7 @@ impl ComposerClient {
                             let _operation = self.operations.lock().await;
                             if snapshot.scope.clone().and_then(scope_from_wire) == Some(self.scope()) { self.apply_snapshot(snapshot, false); }
                         } },
-                        Some(Err(error)) => { self.apply_error(error.to_string()); return; },
+                        Some(Err(error)) => { self.apply_error(error.into()); return; },
                         None => break,
                     }
                 }
@@ -193,10 +194,14 @@ impl ComposerClient {
         }
     }
 
-    pub(crate) fn promote(&self, chat_id: &str, snapshot: WireSnapshot) -> Result<(), String> {
+    pub(crate) fn promote(
+        &self,
+        chat_id: &str,
+        snapshot: WireSnapshot,
+    ) -> Result<(), ComposerError> {
         let expected = ComposerScope::chat(chat_id);
         if snapshot.scope.clone().and_then(scope_from_wire) != Some(expected) {
-            return Err("start chat composer scope did not match the new chat".into());
+            return Err(ComposerError::ScopeMismatch);
         }
         self.scope.set(ComposerScope::chat(chat_id));
         self.apply_snapshot(snapshot, false);
@@ -209,13 +214,14 @@ impl ComposerClient {
 
     fn apply_snapshot(&self, snapshot: WireSnapshot, conflict: bool) -> ComposerState {
         let Some(scope) = snapshot.scope.clone().and_then(scope_from_wire) else {
-            return self.apply_error("composer response omitted its scope".into());
+            return self.apply_error(ComposerError::ScopeMissing);
         };
         if scope != self.scope() {
-            return self.apply_error("composer response scope did not match this chat".into());
+            return self.apply_error(ComposerError::ScopeMismatch);
         }
         self.authority_epoch
             .store(snapshot.authority_epoch, Ordering::Release);
+        let current = snapshot.revision;
         self.state.update(|state| {
             if snapshot.revision >= state.revision || snapshot.revision == 0 {
                 state.text = snapshot.text;
@@ -226,18 +232,14 @@ impl ComposerClient {
             } else {
                 ComposerStatus::Synced
             };
-            state.error = if conflict {
-                "composer draft changed before this edit was committed".into()
-            } else {
-                String::new()
-            };
+            state.error = conflict.then_some(ComposerError::RevisionConflict { current });
         })
     }
 
-    fn apply_error(&self, error: String) -> ComposerState {
+    fn apply_error(&self, error: ComposerError) -> ComposerState {
         self.state.update(|state| {
             state.status = ComposerStatus::Failed;
-            state.error = error;
+            state.error = Some(error);
         })
     }
 }

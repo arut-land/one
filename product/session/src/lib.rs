@@ -404,6 +404,40 @@ mod tests {
     }
 
     #[test]
+    fn a_refused_send_reaches_the_projection_as_a_typed_reason() {
+        use arut_feature_chat::errors::{ChatError, NodeFailure};
+        let session = session();
+        let started = block_on(session.chat().send("first".into()));
+        assert_eq!(started.error, None);
+
+        // The node has no such conversation, so it answers NotFound; the
+        // projection keeps the reason and drops the status message.
+        let unknown = ChatClient::established(
+            session.workspace.chat_service(),
+            session.workspace.composer_service(),
+            "no-such-conversation".into(),
+            Vec::new(),
+            Arc::new(NativeIds),
+            session.workspace.conversation_cancellation(),
+        );
+        let failed = block_on(unknown.send("nowhere".into()));
+
+        assert_eq!(failed.error, Some(ChatError::Node(NodeFailure::Missing)));
+    }
+
+    #[test]
+    fn a_cancelled_conversation_scope_refuses_to_send() {
+        use arut_feature_chat::errors::ChatError;
+        let session = session();
+        let chat = session.chat();
+        chat.cancellation().cancel();
+
+        let state = block_on(chat.send("after cancellation".into()));
+
+        assert_eq!(state.error, Some(ChatError::Cancelled));
+    }
+
+    #[test]
     fn established_chats_keep_independent_drafts() {
         let session = session();
         let first = session.chat();

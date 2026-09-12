@@ -1,5 +1,6 @@
 //! Foreign exports over shared scope projections. Hosts are supplied by roots.
 pub use arut_feature_chat::composer::product::{ComposerState, ComposerStatus};
+pub use arut_feature_chat::errors::{ChatError, ComposerError, NodeFailure};
 use arut_feature_chat::ports::IdSource;
 pub use arut_feature_chat::product::{ChatMessage, ChatRole, ChatState, ChatStatus};
 use arut_feature_chat::{composer::product::ComposerClient, product::ChatClient};

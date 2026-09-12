@@ -1,5 +1,6 @@
 use crate::composer::ComposerScope;
-use crate::composer::product::{ComposerClient, ComposerStatus};
+use crate::composer::product::ComposerClient;
+use crate::errors::{ChatError, ComposerError};
 use crate::ports::IdSource;
 use arut_protocol::chat::composer::v1::ComposerServiceClient;
 use arut_protocol::chat::v1::{
@@ -41,7 +42,8 @@ pub struct ChatState {
     pub id: Option<String>,
     pub messages: Vec<ChatMessage>,
     pub status: ChatStatus,
-    pub error: String,
+    /// Set exactly when `status` is `Failed`; a surface reads the variant.
+    pub error: Option<ChatError>,
 }
 
 /// The session learns here that a pending chat became a conversation.
@@ -152,28 +154,28 @@ impl ChatClient {
             return self.state.get();
         }
         if self.cancellation.is_cancelled() {
-            return self.fail("conversation scope was cancelled".into());
+            return self.fail(ChatError::Cancelled);
         }
         let _send = self.send_lock.lock().await;
         let operations = self.composer.operations();
         let _composer_operation = operations.lock().await;
         self.state.update(|state| {
             state.status = ChatStatus::Sending;
-            state.error.clear();
+            state.error = None;
         });
 
         match (self.id(), &self.start) {
             (Some(chat_id), _) => self.send_established(chat_id, text).await,
             (None, Some(start)) => self.start(start, text).await,
-            (None, None) => self.fail("chat has no conversation to send to".into()),
+            (None, None) => self.fail(ChatError::NoConversation),
         }
     }
 
     async fn start(&self, start: &PendingStart, text: String) -> ChatState {
         if self.composer.state().text != text {
             let composer = self.composer.replace_unlocked(text.clone()).await;
-            if composer.status == ComposerStatus::Failed {
-                return self.fail(composer.error);
+            if let Some(error) = composer.error {
+                return self.fail(error.into());
             }
         }
         let composer = self.composer.state();
@@ -191,13 +193,13 @@ impl ChatClient {
                 let response = response.message;
                 let chat_id = response.chat_id;
                 if chat_id.is_empty() {
-                    return self.fail("start chat omitted its chat ID".into());
+                    return self.fail(ChatError::ChatIdMissing);
                 }
                 let Some(snapshot) = response.composer else {
-                    return self.fail("start chat omitted its composer snapshot".into());
+                    return self.fail(ComposerError::SnapshotMissing.into());
                 };
                 if let Err(error) = self.composer.promote(&chat_id, snapshot) {
-                    return self.fail(error);
+                    return self.fail(error.into());
                 }
                 let state = self.state.update(|state| {
                     state.id = Some(chat_id.clone());
@@ -207,14 +209,14 @@ impl ChatClient {
                         .filter_map(from_wire)
                         .collect();
                     state.status = ChatStatus::Idle;
-                    state.error.clear();
+                    state.error = None;
                 });
                 if let Some(callback) = &start.on_started {
                     callback.chat_started(chat_id, self.clone());
                 }
                 state
             }
-            Err(error) => self.fail(error.to_string()),
+            Err(error) => self.fail(error.into()),
         }
     }
 
@@ -230,25 +232,25 @@ impl ChatClient {
         {
             Ok(response) => {
                 let cleared = self.composer.replace_unlocked(String::new()).await;
-                if cleared.status == ComposerStatus::Failed {
-                    return self.fail(cleared.error);
+                if let Some(error) = cleared.error {
+                    return self.fail(error.into());
                 }
                 self.state.update(|state| {
                     state
                         .messages
                         .extend(response.message.messages.into_iter().filter_map(from_wire));
                     state.status = ChatStatus::Idle;
-                    state.error.clear();
+                    state.error = None;
                 })
             }
-            Err(error) => self.fail(error.to_string()),
+            Err(error) => self.fail(error.into()),
         }
     }
 
-    fn fail(&self, error: String) -> ChatState {
+    fn fail(&self, error: ChatError) -> ChatState {
         self.state.update(|state| {
             state.status = ChatStatus::Failed;
-            state.error = error;
+            state.error = Some(error);
         })
     }
 }
