@@ -1,7 +1,5 @@
 #[cfg(not(target_arch = "wasm32"))]
 use arut_rpc::{Code, Request, Response, RpcChannel, RpcFuture, RpcStream, Status};
-#[cfg(not(target_arch = "wasm32"))]
-use std::sync::OnceLock;
 
 #[cfg(not(target_arch = "wasm32"))]
 pub struct HttpRpcChannel {
@@ -12,10 +10,7 @@ pub struct HttpRpcChannel {
 #[cfg(not(target_arch = "wasm32"))]
 impl HttpRpcChannel {
     pub fn new(endpoint: impl Into<String>) -> Self {
-        let client = {
-            let _runtime = http_runtime().enter();
-            reqwest::Client::new()
-        };
+        let client = reqwest::Client::new();
         Self {
             endpoint: endpoint.into().trim_end_matches('/').to_owned(),
             client,
@@ -28,38 +23,28 @@ impl RpcChannel for HttpRpcChannel {
     fn unary(&self, procedure: &str, request: Request<Vec<u8>>) -> RpcFuture<Response<Vec<u8>>> {
         let client = self.client.clone();
         let url = format!("{}{procedure}", self.endpoint);
-        let (send, receive) = tokio::sync::oneshot::channel();
-        http_runtime().spawn(async move {
-            let result = async move {
-                let response = client
-                    .post(url)
-                    .header("content-type", "application/x-protobuf")
-                    .body(request.message)
-                    .send()
-                    .await
-                    .map_err(|error| Status::new(Code::Unavailable, error.to_string()))?;
-                let status = response.status().as_u16();
-                let body = response
-                    .bytes()
-                    .await
-                    .map_err(|error| Status::new(Code::Unavailable, error.to_string()))?
-                    .to_vec();
-                if (200..300).contains(&status) {
-                    Ok(Response::new(body))
-                } else {
-                    Err(Status::new(
-                        status_code(status),
-                        String::from_utf8_lossy(&body),
-                    ))
-                }
-            }
-            .await;
-            let _ = send.send(result);
-        });
         Box::pin(async move {
-            receive
+            let response = client
+                .post(url)
+                .header("content-type", "application/x-protobuf")
+                .body(request.message)
+                .send()
                 .await
-                .map_err(|_| Status::new(Code::Unavailable, "HTTP transport runtime stopped"))?
+                .map_err(|error| Status::new(Code::Unavailable, error.to_string()))?;
+            let status = response.status().as_u16();
+            let body = response
+                .bytes()
+                .await
+                .map_err(|error| Status::new(Code::Unavailable, error.to_string()))?
+                .to_vec();
+            if (200..300).contains(&status) {
+                Ok(Response::new(body))
+            } else {
+                Err(Status::new(
+                    status_code(status),
+                    String::from_utf8_lossy(&body),
+                ))
+            }
         })
     }
 
@@ -91,14 +76,6 @@ impl RpcChannel for HttpRpcChannel {
 #[cfg(not(target_arch = "wasm32"))]
 fn unsupported<T>(message: &'static str) -> RpcFuture<T> {
     Box::pin(async move { Err(Status::new(Code::Unimplemented, message)) })
-}
-
-#[cfg(not(target_arch = "wasm32"))]
-fn http_runtime() -> &'static tokio::runtime::Runtime {
-    static RUNTIME: OnceLock<tokio::runtime::Runtime> = OnceLock::new();
-    RUNTIME.get_or_init(|| {
-        tokio::runtime::Runtime::new().expect("failed to create the HTTP transport runtime")
-    })
 }
 
 #[cfg(not(target_arch = "wasm32"))]

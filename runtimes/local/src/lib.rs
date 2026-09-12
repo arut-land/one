@@ -1,3 +1,4 @@
+pub mod hosting;
 use arut_feature_chat::composer::ComposerCheckpoint;
 use arut_feature_chat::composer::authority::ComposerAuthority;
 use arut_feature_chat::composer::service::{

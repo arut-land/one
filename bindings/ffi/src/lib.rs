@@ -9,8 +9,6 @@ use arut_product_session::{
     ChatSummary as ProductChatSummary, FeatureAvailability as ProductFeatureAvailability,
     ProductSession, SessionAvailability as ProductSessionAvailability,
 };
-#[cfg(not(target_arch = "wasm32"))]
-use arut_rpc::RpcChannel;
 use arut_watch::Subscription;
 use boltffi::{EventSubscription, data, export};
 use std::sync::Arc;
@@ -197,38 +195,16 @@ impl ComposerHandle {
     }
 }
 
+impl ProductSessionHandle {
+    /// Native composition roots supply a session constructed from their Host port.
+    pub fn from_session(session: ProductSession) -> Self {
+        Self { session }
+    }
+}
+
 #[export]
-pub fn create_product_session(
-    backend_url: String,
-    pending_scope_id: String,
-) -> ProductSessionHandle {
-    assert!(
-        !pending_scope_id.is_empty(),
-        "pending scope ID must not be empty"
-    );
-    ProductSessionHandle {
-        session: product_session(&backend_url, pending_scope_id),
-    }
-}
-
-fn product_session(backend_url: &str, pending_scope_id: String) -> ProductSession {
-    if backend_url.is_empty() {
-        ProductSession::local_with_pending_scope(pending_scope_id)
-    } else {
-        remote_product_session(backend_url, pending_scope_id)
-    }
-}
-
-#[cfg(not(target_arch = "wasm32"))]
-fn remote_product_session(backend_url: &str, pending_scope_id: String) -> ProductSession {
-    let channel: Arc<dyn RpcChannel> =
-        Arc::new(arut_transport_http::HttpRpcChannel::new(backend_url));
-    ProductSession::remote(channel, pending_scope_id)
-}
-
-#[cfg(target_arch = "wasm32")]
-fn remote_product_session(_backend_url: &str, _pending_scope_id: String) -> ProductSession {
-    panic!("browser RPC transport is not implemented")
+pub fn create_product_session(pending_scope_id: String) -> ProductSessionHandle {
+    ProductSessionHandle::from_session(ProductSession::local_with_pending_scope(pending_scope_id))
 }
 
 fn ffi_subscription(source: Arc<Subscription<u64>>) -> Arc<EventSubscription<u64>> {
@@ -345,7 +321,7 @@ mod tests {
 
     #[test]
     fn exposes_feature_handles_from_one_session() {
-        let session = create_product_session(String::new(), "test-owner".into());
+        let session = create_product_session("test-owner".into());
         assert_eq!(
             futures_executor::block_on(session.chat().send("session".into())).messages[1].text,
             "You said: session"

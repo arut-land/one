@@ -24,20 +24,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "330a5ed07fa54e4702c9d6c4174f74427fc0ef6e214bbd677ae50a5099946470"
 
 [[package]]
-name = "arut-backend-composer"
-version = "0.1.0"
-dependencies = [
- "arut-feature-chat",
- "arut-protocol",
- "arut-rpc",
- "arut-transport-http",
- "axum",
- "prost",
- "tokio",
- "tower-http",
-]
-
-[[package]]
 name = "arut-bindings-qt"
 version = "0.1.0"
 dependencies = [
@@ -120,12 +106,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "arut-runtime-local"
+version = "0.1.0"
+dependencies = [
+ "arut-feature-chat",
+ "arut-product-session",
+ "arut-protocol",
+ "arut-rpc",
+ "arut-transport-http",
+ "axum",
+ "prost",
+ "tokio",
+ "tower-http",
+]
+
+[[package]]
 name = "arut-transport-http"
 version = "0.1.0"
 dependencies = [
  "arut-rpc",
  "reqwest",
- "tokio",
 ]
 
 [[package]]
@@ -145,7 +145,6 @@ dependencies = [
  "arut-observation",
  "arut-product-session",
  "arut-rpc",
- "arut-transport-http",
  "arut-watch",
  "boltffi",
  "futures-executor",

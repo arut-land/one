@@ -1,10 +1,11 @@
 [package]
-name = "arut-backend-composer"
+name = "arut-runtime-local"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 
 [dependencies]
+arut-product-session.workspace = true
 arut-feature-chat.workspace = true
 arut-protocol.workspace = true
 arut-rpc.workspace = true
@@ -15,3 +16,7 @@ tower-http = { version = "0.6.6", features = ["cors"] }
 
 [dev-dependencies]
 arut-transport-http.workspace = true
+
+[[bin]]
+name = "arutd"
+path = "src/main.rs"
