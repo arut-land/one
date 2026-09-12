@@ -5,6 +5,11 @@
 //! object-safe `RpcChannel`, and the registry that routes procedures to
 //! services. Nothing here knows a wire format or a product rule.
 //!
+//! Dispatch is instrumented: every routed procedure runs inside a span naming
+//! the procedure and its streaming kind, and an unroutable one records why. No
+//! request or response bytes are ever recorded, and no crate here installs a
+//! subscriber -- that is the composition root's call.
+//!
 //! It also holds the two execution ports a composition root supplies, because
 //! they are what a channel's callers need and no library crate may create an
 //! executor of its own: `Spawner` and `LocalSpawner` run futures, and
@@ -21,6 +26,7 @@ use std::sync::Arc;
 use std::sync::RwLock;
 pub use tokio_util::sync::CancellationToken;
 use tokio_util::sync::DropGuard;
+use tracing::Instrument;
 
 pub type RpcFuture<T> = Pin<Box<dyn Future<Output = Result<T, Status>> + Send + 'static>>;
 pub type RpcStream<T> = Pin<Box<dyn Stream<Item = Result<T, Status>> + Send + 'static>>;
@@ -316,11 +322,23 @@ impl RpcRegistry {
     }
 }
 
+/// One span per dispatched call, naming the procedure and never its bytes.
+fn dispatch(kind: &'static str, procedure: &str) -> tracing::Span {
+    tracing::debug_span!("rpc.dispatch", kind, procedure)
+}
+
+/// Records the miss inside the same span shape a routed call would have used.
+fn unroutable<T: Send + 'static>(span: &tracing::Span, error: Status) -> RpcFuture<T> {
+    span.in_scope(|| tracing::debug!(code = ?error.code, "no service claims this procedure"));
+    Box::pin(async move { Err(error) })
+}
+
 impl RpcChannel for RpcRegistry {
     fn unary(&self, procedure: &str, request: Request<Vec<u8>>) -> RpcFuture<Response<Vec<u8>>> {
+        let span = dispatch("unary", procedure);
         match self.route(procedure) {
-            Ok(service) => service.unary(procedure, request),
-            Err(error) => Box::pin(async move { Err(error) }),
+            Ok(service) => Box::pin(service.unary(procedure, request).instrument(span)),
+            Err(error) => unroutable(&span, error),
         }
     }
 
@@ -329,9 +347,10 @@ impl RpcChannel for RpcRegistry {
         procedure: &str,
         request: Request<Vec<u8>>,
     ) -> RpcFuture<Response<RpcStream<Vec<u8>>>> {
+        let span = dispatch("server_stream", procedure);
         match self.route(procedure) {
-            Ok(service) => service.server_stream(procedure, request),
-            Err(error) => Box::pin(async move { Err(error) }),
+            Ok(service) => Box::pin(service.server_stream(procedure, request).instrument(span)),
+            Err(error) => unroutable(&span, error),
         }
     }
 
@@ -340,9 +359,10 @@ impl RpcChannel for RpcRegistry {
         procedure: &str,
         request: Request<RpcStream<Vec<u8>>>,
     ) -> RpcFuture<Response<Vec<u8>>> {
+        let span = dispatch("client_stream", procedure);
         match self.route(procedure) {
-            Ok(service) => service.client_stream(procedure, request),
-            Err(error) => Box::pin(async move { Err(error) }),
+            Ok(service) => Box::pin(service.client_stream(procedure, request).instrument(span)),
+            Err(error) => unroutable(&span, error),
         }
     }
 
@@ -351,9 +371,10 @@ impl RpcChannel for RpcRegistry {
         procedure: &str,
         request: Request<RpcStream<Vec<u8>>>,
     ) -> RpcFuture<Response<RpcStream<Vec<u8>>>> {
+        let span = dispatch("bidirectional", procedure);
         match self.route(procedure) {
-            Ok(service) => service.bidirectional(procedure, request),
-            Err(error) => Box::pin(async move { Err(error) }),
+            Ok(service) => Box::pin(service.bidirectional(procedure, request).instrument(span)),
+            Err(error) => unroutable(&span, error),
         }
     }
 }

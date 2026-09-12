@@ -145,6 +145,7 @@ impl<F: Fact> FactLog<F> for DirectoryLog<F> {
             &self.record_path(record.sequence),
             &StoredRecord::from(&record).encode_to_vec(),
         )?;
+        tracing::debug!(sequence = record.sequence, epoch, "fact appended");
         Ok(record)
     }
     fn outcome_of(&self, id: &str) -> Result<Option<Record<F>>> {
@@ -207,6 +208,7 @@ impl<F: Fact> FactLog<F> for DirectoryLog<F> {
         for record in &compacted {
             fs::remove_file(self.record_path(record.sequence))?;
         }
+        tracing::debug!(through, "fact log compacted");
         sync(&self.root.join("records"))
     }
 }

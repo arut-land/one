@@ -12,6 +12,10 @@
 //! A failed projection carries a typed variant from `errors`, never a sentence
 //! (ADR 0016); a transport status reaches it as a product failure and leaves its
 //! developer text at the boundary.
+//!
+//! Both ends of a composer stream record the cursor they resume from, and
+//! nothing else: a scope ID addresses a draft and a draft is a person's words.
+//! No subscriber is installed here.
 
 pub mod command;
 pub mod composer;

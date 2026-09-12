@@ -8,6 +8,11 @@
 //!
 //! Snapshot and compaction are explicit maintenance operations. Draft replication
 //! stays outside this durable authority, as required by ADR 0018.
+//!
+//! Every acceptance runs inside one span carrying the command ID, the epoch, and
+//! the outcome it reached. The command ID is the surface's own retry key, which
+//! is what makes a duplicate legible in a trace; nothing a person wrote is ever
+//! recorded. No subscriber is installed here.
 
 //! Generic acceptance with pure command application and projection reduction.
 use arut_storage::{Fact, FactLog, Record, Snapshot, StorageError};
@@ -107,6 +112,12 @@ impl<C: Command> Authority<C> {
         command: C,
         now: u64,
     ) -> Result<Outcome<C::Fact, C::Rejection>, StorageError> {
+        let commit = tracing::debug_span!(
+            "authority.commit",
+            command_id = command.command_id(),
+            epoch = command.epoch()
+        );
+        let _commit = commit.enter();
         let mut state = self.state.lock().unwrap();
         if command.epoch() != self.epoch {
             return Ok(Outcome::AuthorityMismatch {
@@ -123,6 +134,7 @@ impl<C: Command> Authority<C> {
             state.cursor = record.sequence;
         }
         if let Some(record) = self.log.outcome_of(command.command_id())? {
+            tracing::debug!(outcome = "duplicate", sequence = record.sequence);
             return Ok(Outcome::Duplicate(record));
         }
         if command.expires_at().is_some_and(|expiry| now >= expiry) {
@@ -164,10 +176,17 @@ impl<C: Command> Authority<C> {
         };
         state.projection.reduce(&record.fact);
         state.cursor = record.sequence;
+        tracing::debug!(outcome = "applied", sequence = record.sequence);
         Ok(Outcome::Applied(record))
     }
     pub fn checkpoint(&self, compact: bool) -> Result<(), StorageError> {
         let state = self.state.lock().unwrap();
+        tracing::debug!(
+            sequence = state.cursor,
+            epoch = self.epoch,
+            compact,
+            "checkpointing the fact log"
+        );
         self.log.save_snapshot(Snapshot {
             sequence: state.cursor,
             epoch: self.epoch,

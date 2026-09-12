@@ -159,6 +159,11 @@ impl ComposerClient {
                 }
             }
             let after_revision = self.state.read(|state| state.revision);
+            tracing::debug!(
+                stream = "composer",
+                after_revision,
+                "resuming a composer stream"
+            );
             let response = self
                 .service
                 .watch_composer(Request::new(WatchComposerRequest {
