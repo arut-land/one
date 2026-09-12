@@ -8,3 +8,10 @@ One product, native on every device, executed on whichever of your nodes you cho
 - [docs/ROADMAP.md](docs/ROADMAP.md): phases and exit criteria
 - [docs/GLOSSARY.md](docs/GLOSSARY.md): engineering vocabulary
 - [docs/adr/](docs/adr/README.md): decisions and why
+
+## License
+
+Licensing follows [ADR 0017](docs/adr/0017-license-split.md):
+
+- `features/`, `product/`, `surfaces/`, `backend/` are licensed under the Functional Source License, Version 1.1, Apache 2.0 Future License ([LICENSE-FSL](LICENSE-FSL)).
+- `protocols/`, `substrates/`, `transports/`, `runtimes/`, `bindings/`, `tools/` are dual-licensed under [MIT](LICENSE-MIT) OR [Apache-2.0](LICENSE-APACHE).
