@@ -24,7 +24,7 @@ fn apple_placeholder(index: usize, argument: &Argument) -> String {
     format!(
         "%{}${}",
         index + 1,
-        if argument.numeric { "lld" } else { "@" }
+        if argument.numeric() { "lld" } else { "@" }
     )
 }
 
@@ -34,7 +34,7 @@ fn android_placeholder(index: usize, argument: &Argument) -> String {
     format!(
         "%{}${}",
         index + 1,
-        if argument.numeric { "d" } else { "s" }
+        if argument.numeric() { "d" } else { "s" }
     )
 }
 
@@ -269,12 +269,11 @@ const RESW_HEADER: &str = r#"<root>
 #[cfg(test)]
 mod tests {
     use super::{resw, strings_xml, xcstrings};
-    use crate::catalog::parse;
 
     const PLURAL: &str = "unread = You have { $count ->\n    [one] { NUMBER($count) } unread message\n   *[other] { NUMBER($count) } unread messages\n }.\n";
 
     fn locale(source: &str) -> crate::catalog::Locale {
-        parse("en", &[("test.ftl", source)]).ok().expect("parsed")
+        crate::catalog::tests::locale("en", source)
     }
 
     #[test]

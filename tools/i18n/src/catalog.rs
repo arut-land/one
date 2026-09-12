@@ -5,8 +5,14 @@
 //! message the target cannot express, the parser refuses it by name, which is
 //! what ADR 0022 asks for: the string source is allowed to grow only in ways
 //! that survive the trip to all four platforms.
+//!
+//! Arguments are typed here too, because every generated accessor needs a
+//! parameter type. A variable a plural selects on, or one wrapped in
+//! `NUMBER()`, is a number; one wrapped in `DATETIME()` is a date; anything
+//! else is text. A comment line on the message overrides that:
+//! `# $current: integer`.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 
 use fluent_syntax::ast;
@@ -40,13 +46,33 @@ pub enum Part {
     Argument(Argument),
 }
 
-/// One Fluent variable. `numeric` is set by wrapping the variable in `NUMBER()`
-/// at the call site, which is how the source says "this is an integer" so a
-/// target can emit `%lld` rather than `%@`.
+/// What a generated accessor takes for one Fluent variable.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Kind {
+    /// An integer: `u64`, `Int`, `Long`, `long`, `number`.
+    Number,
+    /// A date. It reaches Fluent already formatted, because `fluent-rs` has no
+    /// datetime value to hand a bundle, so the carrier type is text on every
+    /// platform; the kind exists so `DATETIME()` is recognized rather than
+    /// refused, and so a translator sees what the argument means.
+    Date,
+    /// Anything else.
+    Text,
+}
+
+/// One Fluent variable and the type its accessor takes.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Argument {
     pub name: String,
-    pub numeric: bool,
+    pub kind: Kind,
+}
+
+impl Argument {
+    /// Whether a target should emit its integer placeholder for this argument.
+    #[must_use]
+    pub fn numeric(&self) -> bool {
+        self.kind == Kind::Number
+    }
 }
 
 /// The CLDR plural categories Fluent, Apple and Android all share.
@@ -118,8 +144,8 @@ impl Message {
     /// Every argument the message uses, in first-appearance order.
     ///
     /// The order is the placeholder index on Apple, Android and Windows alike,
-    /// and it is shared across a plural's variants so `%1$d` means the same
-    /// thing in every one of them.
+    /// the parameter order of every generated accessor, and it is shared across
+    /// a plural's variants so `%1$d` means the same thing in every one of them.
     #[must_use]
     pub fn arguments(&self) -> Vec<Argument> {
         let mut order: Vec<Argument> = Vec::new();
@@ -138,6 +164,15 @@ impl Message {
             }
         }
         order
+    }
+
+    /// The argument a plural selects on, if this message is one.
+    #[must_use]
+    pub fn selector(&self) -> Option<&Argument> {
+        match self {
+            Self::Simple(_) => None,
+            Self::Plural { selector, .. } => Some(selector),
+        }
     }
 }
 
@@ -197,7 +232,14 @@ pub fn parse(tag: &str, resources: &[(&str, &str)]) -> Result<Locale, Vec<Refusa
                         refusals.push(refuse(&id, "it is defined twice in this locale".to_owned()));
                         continue;
                     }
-                    match lower(&value) {
+                    let overrides = match kind_overrides(message.comment.as_ref()) {
+                        Ok(overrides) => overrides,
+                        Err(reason) => {
+                            refusals.push(refuse(&id, reason));
+                            continue;
+                        }
+                    };
+                    match lower(&value, &overrides) {
                         Ok(lowered) => {
                             messages.insert(id, lowered);
                         }
@@ -236,9 +278,77 @@ pub fn parse(tag: &str, resources: &[(&str, &str)]) -> Result<Locale, Vec<Refusa
     }
 }
 
+/// Every locale has to define exactly the same ids, or a generated accessor
+/// would compile against a string one language does not have.
+///
+/// # Errors
+///
+/// Names the locale and the ids it is missing or holds alone.
+pub fn require_identical_key_sets(locales: &[Locale]) -> Result<(), String> {
+    let Some(first) = locales.first() else {
+        return Ok(());
+    };
+    let expected: BTreeSet<&String> = first.messages.keys().collect();
+    let mut problems = Vec::new();
+    for locale in &locales[1..] {
+        let ids: BTreeSet<&String> = locale.messages.keys().collect();
+        let missing: Vec<&&String> = expected.difference(&ids).collect();
+        let extra: Vec<&&String> = ids.difference(&expected).collect();
+        if !missing.is_empty() {
+            problems.push(format!(
+                "locale {} is missing {:?}, which {} defines",
+                locale.tag, missing, first.tag
+            ));
+        }
+        if !extra.is_empty() {
+            problems.push(format!(
+                "locale {} defines {:?}, which {} does not",
+                locale.tag, extra, first.tag
+            ));
+        }
+    }
+    if problems.is_empty() {
+        Ok(())
+    } else {
+        Err(problems.join("\n"))
+    }
+}
+
+/// Read `# $name: integer` lines off a message's comment.
+fn kind_overrides(comment: Option<&ast::Comment<&str>>) -> Result<BTreeMap<String, Kind>, String> {
+    let mut overrides = BTreeMap::new();
+    let Some(comment) = comment else {
+        return Ok(overrides);
+    };
+    for line in &comment.content {
+        let Some(rest) = line.trim().strip_prefix('$') else {
+            continue;
+        };
+        let Some((name, kind)) = rest.split_once(':') else {
+            continue;
+        };
+        let kind = match kind.trim() {
+            "integer" | "number" => Kind::Number,
+            "date" => Kind::Date,
+            "string" | "text" => Kind::Text,
+            other => {
+                return Err(format!(
+                    "its comment types `${}` as `{other}`; use integer, number, date, string or text",
+                    name.trim()
+                ));
+            }
+        };
+        overrides.insert(name.trim().to_owned(), kind);
+    }
+    Ok(overrides)
+}
+
 /// Turn one Fluent pattern into a [`Message`], folding a single selector into a
 /// plural and refusing everything a target cannot carry.
-fn lower(pattern: &ast::Pattern<&str>) -> Result<Message, String> {
+fn lower(
+    pattern: &ast::Pattern<&str>,
+    overrides: &BTreeMap<String, Kind>,
+) -> Result<Message, String> {
     let mut prefix = Pattern::default();
     let mut suffix = Pattern::default();
     let mut selection: Option<(Argument, Vec<(Category, Pattern)>)> = None;
@@ -257,10 +367,10 @@ fn lower(pattern: &ast::Pattern<&str>) -> Result<Message, String> {
                     if selection.is_some() {
                         return Err("it has two selectors; a target resource can carry one plural selection per string".to_owned());
                     }
-                    selection = Some(lower_selection(selector, variants)?);
+                    selection = Some(lower_selection(selector, variants, overrides)?);
                 }
                 ast::Expression::Inline(inline) => {
-                    let part = Part::Argument(lower_argument(inline)?);
+                    let part = Part::Argument(lower_argument(inline, overrides)?);
                     let target = if selection.is_some() {
                         &mut suffix
                     } else {
@@ -304,8 +414,13 @@ fn clone_parts(pattern: &Pattern) -> Vec<Part> {
 fn lower_selection(
     selector: &ast::InlineExpression<&str>,
     variants: &[ast::Variant<&str>],
+    overrides: &BTreeMap<String, Kind>,
 ) -> Result<(Argument, Vec<(Category, Pattern)>), String> {
-    let selector = lower_argument(selector)?;
+    let mut selector = lower_argument(selector, overrides)?;
+    // A plural selects on a count, whatever the source wrote around it.
+    if !overrides.contains_key(&selector.name) {
+        selector.kind = Kind::Number;
+    }
     let mut by_category: BTreeMap<&'static str, Pattern> = BTreeMap::new();
     for variant in variants {
         let name = match &variant.key {
@@ -330,7 +445,11 @@ fn lower_selection(
                         return Err("it nests a selector inside a variant, which no target resource format can express".to_owned());
                     }
                     ast::Expression::Inline(inline) => {
-                        body.parts.push(Part::Argument(lower_argument(inline)?));
+                        let mut argument = lower_argument(inline, overrides)?;
+                        if argument.name == selector.name {
+                            argument.kind = selector.kind;
+                        }
+                        body.parts.push(Part::Argument(argument));
                     }
                 },
             }
@@ -351,31 +470,40 @@ fn lower_selection(
     Ok((selector, ordered))
 }
 
-fn lower_argument(inline: &ast::InlineExpression<&str>) -> Result<Argument, String> {
+fn lower_argument(
+    inline: &ast::InlineExpression<&str>,
+    overrides: &BTreeMap<String, Kind>,
+) -> Result<Argument, String> {
+    let typed = |name: &str, inferred: Kind| Argument {
+        name: name.to_owned(),
+        kind: overrides.get(name).copied().unwrap_or(inferred),
+    };
     match inline {
-        ast::InlineExpression::VariableReference { id } => Ok(Argument {
-            name: (*id.name).to_owned(),
-            numeric: false,
-        }),
+        ast::InlineExpression::VariableReference { id } => Ok(typed(id.name, Kind::Text)),
         ast::InlineExpression::FunctionReference { id, arguments } => {
-            if id.name != "NUMBER" {
+            let inferred = match id.name {
+                "NUMBER" => Kind::Number,
+                "DATETIME" => Kind::Date,
+                other => {
+                    return Err(format!(
+                        "it calls `{other}()`; only NUMBER() and DATETIME() survive into a native resource string"
+                    ));
+                }
+            };
+            if !arguments.named.is_empty() {
                 return Err(format!(
-                    "it calls `{}()`; only NUMBER() survives into a native resource string",
+                    "it passes options to {}(); a native placeholder carries no formatting options",
                     id.name
                 ));
             }
-            if !arguments.named.is_empty() {
-                return Err(
-                    "it passes options to NUMBER(); a native placeholder carries no formatting options"
-                        .to_owned(),
-                );
-            }
             match arguments.positional.as_slice() {
-                [ast::InlineExpression::VariableReference { id }] => Ok(Argument {
-                    name: (*id.name).to_owned(),
-                    numeric: true,
-                }),
-                _ => Err("it calls NUMBER() on something other than one variable".to_owned()),
+                [ast::InlineExpression::VariableReference { id: variable }] => {
+                    Ok(typed(variable.name, inferred))
+                }
+                _ => Err(format!(
+                    "it calls {}() on something other than one variable",
+                    id.name
+                )),
             }
         }
         ast::InlineExpression::TermReference { id, .. } => Err(format!(
@@ -397,8 +525,13 @@ fn lower_argument(inline: &ast::InlineExpression<&str>) -> Result<Argument, Stri
 }
 
 #[cfg(test)]
-mod tests {
-    use super::{Category, Message, Part, parse};
+pub(crate) mod tests {
+    use super::{Category, Kind, Locale, Message, Part, parse, require_identical_key_sets};
+
+    /// One locale from one inline source; the emitter tests build theirs here.
+    pub(crate) fn locale(tag: &str, source: &str) -> Locale {
+        parse(tag, &[("test.ftl", source)]).ok().expect("parsed")
+    }
 
     fn refusal(source: &str) -> String {
         let refusals = parse("en", &[("test.ftl", source)]).err().expect("refused");
@@ -410,8 +543,11 @@ mod tests {
     }
 
     fn only(source: &str) -> Message {
-        let locale = parse("en", &[("test.ftl", source)]).ok().expect("parsed");
-        locale.messages.into_values().next().expect("one message")
+        locale("en", source)
+            .messages
+            .into_values()
+            .next()
+            .expect("one message")
     }
 
     #[test]
@@ -423,9 +559,26 @@ mod tests {
         assert!(matches!(&pattern.parts[0], Part::Text(text) if text == "a "));
         let arguments = Message::Simple(pattern).arguments();
         assert_eq!(arguments[0].name, "one");
-        assert!(!arguments[0].numeric);
+        assert_eq!(arguments[0].kind, Kind::Text);
         assert_eq!(arguments[1].name, "two");
-        assert!(arguments[1].numeric);
+        assert_eq!(arguments[1].kind, Kind::Number);
+    }
+
+    #[test]
+    fn datetime_types_an_argument_as_a_date_rather_than_being_refused() {
+        assert_eq!(
+            only("k = last seen { DATETIME($when) }").arguments()[0].kind,
+            Kind::Date
+        );
+    }
+
+    #[test]
+    fn a_comment_overrides_the_inferred_type() {
+        assert_eq!(
+            only("# $count: integer\nk = { $count } left").arguments()[0].kind,
+            Kind::Number
+        );
+        assert!(refusal("# $count: colour\nk = { $count }").contains("use integer"));
     }
 
     #[test]
@@ -437,6 +590,8 @@ mod tests {
             panic!("expected a plural");
         };
         assert_eq!(selector.name, "count");
+        // Selecting on a variable is what makes it a number, with no NUMBER().
+        assert_eq!(selector.kind, Kind::Number);
         assert_eq!(variants.len(), 2);
         assert_eq!(variants[0].0, Category::One);
         assert_eq!(variants[1].0, Category::Other);
@@ -447,6 +602,7 @@ mod tests {
         // The selector counts as the first argument even where a variant does
         // not interpolate it, so `%1$d` means the same in both.
         assert_eq!(message.arguments().len(), 1);
+        assert_eq!(message.arguments()[0].kind, Kind::Number);
     }
 
     #[test]
@@ -479,7 +635,7 @@ mod tests {
 
     #[test]
     fn an_unknown_function_and_number_options_are_refused() {
-        assert!(refusal("k = { DATETIME($when) }").contains("DATETIME()"));
+        assert!(refusal("k = { CURRENCY($amount) }").contains("CURRENCY()"));
         assert!(
             refusal("k = { NUMBER($n, minimumFractionDigits: 2) }").contains("options to NUMBER()")
         );
@@ -495,5 +651,24 @@ mod tests {
     fn two_selectors_in_one_message_are_refused() {
         let refused = refusal("k = { $a ->\n   *[other] x\n } and { $b ->\n   *[other] y\n }");
         assert!(refused.contains("two selectors"), "{refused}");
+    }
+
+    #[test]
+    fn locales_that_do_not_define_the_same_ids_are_refused_by_name() {
+        let same = [
+            locale("en", "a = x\nb = y\n"),
+            locale("fr", "a = x\nb = y\n"),
+        ];
+        assert!(require_identical_key_sets(&same).is_ok());
+        let short = [locale("en", "a = x\nb = y\n"), locale("fr", "a = x\n")];
+        let error = require_identical_key_sets(&short).expect_err("refused");
+        assert!(error.contains("fr"), "{error}");
+        assert!(error.contains('b'), "{error}");
+        let long = [locale("en", "a = x\n"), locale("fr", "a = x\nc = z\n")];
+        assert!(
+            require_identical_key_sets(&long)
+                .expect_err("refused")
+                .contains('c')
+        );
     }
 }

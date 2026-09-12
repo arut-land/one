@@ -6,6 +6,7 @@ license-file = "../../LICENSE-FSL"
 
 [dependencies]
 arut-authority.workspace = true
+arut-i18n-macros.workspace = true
 arut-protocol.workspace = true
 arut-rpc.workspace = true
 arut-storage.workspace = true

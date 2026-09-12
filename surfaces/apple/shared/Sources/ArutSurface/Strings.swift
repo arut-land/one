@@ -1,39 +1,24 @@
 import ArutFfi
-import Foundation
 
 // The core returns typed outcomes only (ADR 0016) and every sentence lives once
-// in product/i18n as Fluent (ADR 0022). This file is only the mapping from a
-// variant to its key in Resources/Localizable.xcstrings, which `mise run i18n`
-// generates; the lookup and the language negotiation are Foundation's, so this
+// in product/i18n as Fluent (ADR 0022). All this file does is choose which
+// generated L10n accessor a typed variant means; the key, the lookup and the
+// language negotiation are in Generated/L10n.swift and Foundation, so this
 // surface localizes exactly the way any other Apple app does.
-//
-// Keys match `message_key` on the same enum in `arut_feature_chat::errors`.
-
-private func localized(_ key: String) -> String {
-    String(localized: String.LocalizationValue(key), bundle: .module)
-}
-
-private func localized(_ key: String, _ argument: CVarArg) -> String {
-    String(format: localized(key), argument)
-}
-
-func messageKey(_ failure: NodeFailure) -> String {
-    switch failure {
-    case .unreachable: return "node-failure-unreachable"
-    case .timedOut: return "node-failure-timed-out"
-    case .cancelled: return "node-failure-cancelled"
-    case .refused: return "node-failure-refused"
-    case .overloaded: return "node-failure-overloaded"
-    case .rejected: return "node-failure-rejected"
-    case .missing: return "node-failure-missing"
-    case .conflict: return "node-failure-conflict"
-    case .unsupported: return "node-failure-unsupported"
-    case .internal: return "node-failure-internal"
-    }
-}
 
 func describe(_ failure: NodeFailure) -> String {
-    localized(messageKey(failure))
+    switch failure {
+    case .unreachable: return L10n.nodeFailureUnreachable()
+    case .timedOut: return L10n.nodeFailureTimedOut()
+    case .cancelled: return L10n.nodeFailureCancelled()
+    case .refused: return L10n.nodeFailureRefused()
+    case .overloaded: return L10n.nodeFailureOverloaded()
+    case .rejected: return L10n.nodeFailureRejected()
+    case .missing: return L10n.nodeFailureMissing()
+    case .conflict: return L10n.nodeFailureConflict()
+    case .unsupported: return L10n.nodeFailureUnsupported()
+    case .internal: return L10n.nodeFailureInternal()
+    }
 }
 
 func describe(_ error: ComposerError) -> String {
@@ -41,31 +26,22 @@ func describe(_ error: ComposerError) -> String {
     case .node(let failure):
         return describe(failure)
     case .revisionConflict(let current):
-        return localized("composer-error-revision-conflict", Int64(bitPattern: current))
+        return L10n.composerErrorRevisionConflict(current: Int(current))
     case .authorityChanged(let currentEpoch):
-        return localized("composer-error-authority-changed", Int64(bitPattern: currentEpoch))
-    case .snapshotMissing:
-        return localized("composer-error-snapshot-missing")
-    case .outcomeMissing:
-        return localized("composer-error-outcome-missing")
-    case .scopeMissing:
-        return localized("composer-error-scope-missing")
-    case .scopeMismatch:
-        return localized("composer-error-scope-mismatch")
+        return L10n.composerErrorAuthorityChanged(currentEpoch: Int(currentEpoch))
+    case .snapshotMissing: return L10n.composerErrorSnapshotMissing()
+    case .outcomeMissing: return L10n.composerErrorOutcomeMissing()
+    case .scopeMissing: return L10n.composerErrorScopeMissing()
+    case .scopeMismatch: return L10n.composerErrorScopeMismatch()
     }
 }
 
 func describe(_ error: ChatError) -> String {
     switch error {
-    case .node(let failure):
-        return describe(failure)
-    case .noConversation:
-        return localized("chat-error-no-conversation")
-    case .cancelled:
-        return localized("chat-error-cancelled")
-    case .draft(let composerError):
-        return describe(composerError)
-    case .chatIdMissing:
-        return localized("chat-error-chat-id-missing")
+    case .node(let failure): return describe(failure)
+    case .noConversation: return L10n.chatErrorNoConversation()
+    case .cancelled: return L10n.chatErrorCancelled()
+    case .draft(let composerError): return describe(composerError)
+    case .chatIdMissing: return L10n.chatErrorChatIdMissing()
     }
 }

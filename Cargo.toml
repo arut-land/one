@@ -4,6 +4,7 @@ members = [
     "bindings/ffi",
     "features/chat",
     "product/i18n",
+    "product/i18n/macros",
     "product/session",
     "protocols",
     "protocols/build",
@@ -29,6 +30,7 @@ license = "MIT OR Apache-2.0"
 arut-authority = { path = "substrates/authority" }
 arut-feature-chat = { path = "features/chat" }
 arut-i18n = { path = "product/i18n" }
+arut-i18n-macros = { path = "product/i18n/macros" }
 arut-product-session = { path = "product/session" }
 arut-protocol = { path = "protocols" }
 arut-rpc = { path = "protocols/rpc" }
