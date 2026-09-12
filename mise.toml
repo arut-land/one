@@ -13,6 +13,10 @@ description = "Generate the wasm bindings and install the JavaScript workspace"
 depends = ["ffi:wasm"]
 run = "pnpm install"
 
+[tasks.i18n]
+description = "Generate every surface's string resources from product/i18n/locales"
+run = "cargo run --quiet -p arut-i18n-gen"
+
 [tasks.check]
 description = "Check Rust, protocols, and TypeScript"
 depends = ["install"]
@@ -28,6 +32,10 @@ run = [
   "test -z \"$(cargo tree -i wasm-bindgen --target wasm32-unknown-unknown -p arut-i18n 2>/dev/null)\" || (echo 'wasm-bindgen leaked into the arut-i18n wasm dependency graph; see docs/ECOSYSTEM.md wasm rule' && exit 1)",
   "buf lint",
   "pnpm check",
+  # ADR 0022: the .ftl files are the source, so a generated resource that
+  # disagrees with them is a change nobody made on purpose.
+  "cargo run --quiet -p arut-i18n-gen",
+  "test -z \"$(git status --porcelain -- surfaces/apple/shared/Sources/ArutSurface/Resources surfaces/android/src/main/res surfaces/windows/Strings surfaces/web/public/locales surfaces/vscode/locales)\" || (echo 'generated string resources are out of date; run `mise run i18n` and commit the result' && git status --porcelain -- surfaces/apple/shared/Sources/ArutSurface/Resources surfaces/android/src/main/res surfaces/windows/Strings surfaces/web/public/locales surfaces/vscode/locales && exit 1)",
 ]
 
 [tasks.build]

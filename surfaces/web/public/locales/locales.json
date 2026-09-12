@@ -1,0 +1,4 @@
+{
+  "locales": ["en"],
+  "files": ["errors.ftl", "ui.ftl"]
+}
