@@ -6,7 +6,8 @@ dist/
 node_modules/
 
 # Android
-build/
+/surfaces/android/build/
+/surfaces/android/*/build/
 .gradle/
 
 # Apple
