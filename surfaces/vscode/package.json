@@ -25,7 +25,8 @@
     "check": "tsc --noEmit"
   },
   "dependencies": {
-    "@arut/bindings-typescript": "workspace:*"
+    "@arut/bindings-typescript": "workspace:*",
+    "@arut/runtime-browser": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^22.13.1",

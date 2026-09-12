@@ -27,7 +27,7 @@ run = [
 description = "Build locally supported surfaces"
 depends = ["install"]
 run = [
-  "cargo build -p arut-linux",
+  "cargo build -p arut-linux-gtk",
   "pnpm build",
 ]
 
@@ -71,12 +71,12 @@ description = "Lint Protobuf contracts"
 run = "buf lint"
 
 [tasks."surface:linux"]
-description = "Run the Linux Qt/QML surface"
-run = "cargo run -p arut-linux"
+description = "Run the Linux GTK4 surface"
+run = "cargo run -p arut-linux-gtk"
 
-[tasks."backend:composer"]
-description = "Run the standalone Chat Composer synchronization backend"
-run = "cargo run -p arut-backend-composer"
+[tasks."node:local"]
+description = "Run the local node daemon"
+run = "cargo run -p arut-runtime-local --bin arutd"
 
 [tasks."surface:web"]
 description = "Run the web surface"

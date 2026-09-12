@@ -1,0 +1,1 @@
+{"name":"@arut/runtime-browser","private":true,"type":"module","exports":"./src/index.ts","dependencies":{"@arut/ffi":"workspace:*"}}

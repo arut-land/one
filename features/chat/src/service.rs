@@ -18,6 +18,7 @@ pub struct ChatServiceImpl {
     composer: Arc<ComposerAuthority>,
     authority: Authority<ChatCommand>,
     start_gate: Mutex<()>,
+    ids: Arc<dyn crate::ports::IdSource>,
 }
 impl Default for ChatServiceImpl {
     fn default() -> Self {
@@ -32,7 +33,15 @@ impl ChatServiceImpl {
         composer: Arc<ComposerAuthority>,
         log: Arc<dyn FactLog<ChatFact>>,
     ) -> Result<Self, StorageError> {
+        Self::with_log_and_ids(composer, log, Arc::new(crate::ports::NativeIds))
+    }
+    pub fn with_log_and_ids(
+        composer: Arc<ComposerAuthority>,
+        log: Arc<dyn FactLog<ChatFact>>,
+        ids: Arc<dyn crate::ports::IdSource>,
+    ) -> Result<Self, StorageError> {
         Ok(Self {
+            ids,
             composer,
             authority: Authority::open(log, 1)?,
             start_gate: Mutex::new(()),
@@ -163,7 +172,7 @@ impl ChatService for ChatServiceImpl {
             {
                 return Ok(Response::new(start_response(record.fact)));
             }
-            let chat_id = Uuid::now_v7().to_string();
+            let chat_id = self.ids.new_id();
             let command = ChatCommand {
                 command_id: message.command_id.clone(),
                 chat_id: chat_id.clone(),

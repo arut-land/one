@@ -1,3 +1,4 @@
+use arut_feature_chat::ports::{IdSource, NativeIds};
 pub mod hosting;
 pub mod scopes;
 use arut_feature_chat::composer::authority::ComposerAuthority;
@@ -24,6 +25,7 @@ pub struct ProductSession {
 }
 
 struct SessionChats {
+    ids: Arc<dyn IdSource>,
     state: Arc<Mutex<ChatRegistry>>,
     pending: Mutex<ChatClient>,
     current: Mutex<ChatClient>,
@@ -87,7 +89,7 @@ impl ChatStarted for RegisterChat {
 
 impl SessionChats {
     fn pending(&self) -> ChatClient {
-        ChatClient::pending(
+        ChatClient::pending_with_ids(
             self.chat_service.clone(),
             self.composer_service.clone(),
             self.pending_scope_id.clone(),
@@ -95,6 +97,7 @@ impl SessionChats {
                 Arc::downgrade(&self.state),
                 self.conversations.clone(),
             ))),
+            self.ids.clone(),
         )
     }
     fn with<T>(&self, read: impl FnOnce(&ChatRegistry) -> T) -> T {
@@ -135,6 +138,7 @@ impl ProductSession {
                 self.chats.composer_service.clone(),
                 conversation.id.clone(),
                 conversation.messages,
+                self.chats.ids.clone(),
             );
             RegisterChat(
                 Arc::downgrade(&self.chats.state),
@@ -150,15 +154,25 @@ impl ProductSession {
     }
 
     pub fn local_with_pending_scope(pending_scope_id: impl Into<String>) -> Self {
+        Self::local_with_ids(pending_scope_id, Arc::new(NativeIds))
+    }
+    pub fn local_with_ids(pending_scope_id: impl Into<String>, ids: Arc<dyn IdSource>) -> Self {
         let authority = Arc::new(ComposerAuthority::default());
-        let chat =
-            ChatServiceClient::direct(Arc::new(ChatServiceImpl::new(Arc::clone(&authority))));
+        let chat = ChatServiceClient::direct(Arc::new(
+            ChatServiceImpl::with_log_and_ids(
+                Arc::clone(&authority),
+                Arc::new(arut_storage::MemoryLog::default()),
+                ids.clone(),
+            )
+            .expect("empty local log"),
+        ));
         let composer = ComposerServiceClient::direct(Arc::new(ComposerServiceImpl::new(authority)));
         let capabilities = CapabilityServiceClient::direct(Arc::new(CapabilityServiceImpl::new([
             ServiceRegistration::new(&CHAT_SERVICE_DESCRIPTOR, ServiceMetadata::default()),
             ServiceRegistration::new(&COMPOSER_SERVICE_DESCRIPTOR, ServiceMetadata::default()),
         ])));
-        Self::new(chat, composer, pending_scope_id).with_capability_service(capabilities)
+        Self::new_with_ids(chat, composer, pending_scope_id.into(), ids)
+            .with_capability_service(capabilities)
     }
 
     pub fn remote(channel: Arc<dyn RpcChannel>, pending_scope_id: impl Into<String>) -> Self {
@@ -175,7 +189,14 @@ impl ProductSession {
         composer: ComposerServiceClient,
         pending_scope_id: impl Into<String>,
     ) -> Self {
-        let pending_scope_id = pending_scope_id.into();
+        Self::new_with_ids(chat, composer, pending_scope_id.into(), Arc::new(NativeIds))
+    }
+    fn new_with_ids(
+        chat: ChatServiceClient,
+        composer: ComposerServiceClient,
+        pending_scope_id: String,
+        ids: Arc<dyn IdSource>,
+    ) -> Self {
         assert!(
             !pending_scope_id.is_empty(),
             "pending scope ID must not be empty"
@@ -188,7 +209,7 @@ impl ProductSession {
         let workspace = node.workspace("default".into(), Default::default());
         let conversations = Arc::new(Watch::new(Vec::new()));
         let state = Arc::new(Mutex::new(ChatRegistry::default()));
-        let pending = ChatClient::pending(
+        let pending = ChatClient::pending_with_ids(
             chat.clone(),
             composer.clone(),
             pending_scope_id.clone(),
@@ -196,8 +217,10 @@ impl ProductSession {
                 Arc::downgrade(&state),
                 conversations.clone(),
             ))),
+            ids.clone(),
         );
         let chats = Arc::new(SessionChats {
+            ids,
             conversations: conversations.clone(),
             state,
             pending: Mutex::new(pending.clone()),

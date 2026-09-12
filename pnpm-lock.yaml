@@ -174,6 +174,12 @@ importers:
         specifier: 'catalog:'
         version: 5.9.3
 
+  runtimes/browser:
+    dependencies:
+      '@arut/ffi':
+        specifier: workspace:*
+        version: link:../../bindings/generated/wasm/pkg
+
   surfaces/browser-extension/chromium:
     dependencies:
       '@arut/bindings-react':
@@ -205,11 +211,14 @@ importers:
         specifier: 'catalog:'
         version: 8.3.0(@types/node@22.20.2)
 
-  surfaces/ide-extensions/vscode:
+  surfaces/vscode:
     dependencies:
       '@arut/bindings-typescript':
         specifier: workspace:*
-        version: link:../../../bindings/typescript
+        version: link:../../bindings/typescript
+      '@arut/runtime-browser':
+        specifier: workspace:*
+        version: link:../../runtimes/browser
     devDependencies:
       '@types/node':
         specifier: ^22.13.1
@@ -229,6 +238,9 @@ importers:
       '@arut/bindings-react':
         specifier: workspace:*
         version: link:../../bindings/react
+      '@arut/runtime-browser':
+        specifier: workspace:*
+        version: link:../../runtimes/browser
       react:
         specifier: 'catalog:'
         version: 19.3.0

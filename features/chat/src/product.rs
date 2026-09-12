@@ -1,5 +1,6 @@
 use crate::composer::ComposerScope;
 use crate::composer::product::{ComposerClient, ComposerStatus};
+use crate::ports::{IdSource, NativeIds};
 use arut_protocol::chat::composer::v1::ComposerServiceClient;
 use arut_protocol::chat::v1::{
     ChatMessage as WireMessage, ChatRole as WireRole, ChatServiceClient, SendMessageRequest,
@@ -9,7 +10,6 @@ use arut_rpc::Request;
 use arut_watch::{Subscription, Watch};
 use futures_util::lock::Mutex as AsyncMutex;
 use std::sync::Arc;
-use uuid::Uuid;
 
 #[boltffi::data]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -58,6 +58,7 @@ pub struct ChatClient {
     pending_scope_id: Option<String>,
     on_started: Option<Arc<dyn ChatStarted>>,
     start_command_id: String,
+    ids: Arc<dyn IdSource>,
 }
 
 impl ChatClient {
@@ -66,9 +67,16 @@ impl ChatClient {
         composer_service: ComposerServiceClient,
         id: String,
         messages: Vec<WireMessage>,
+        ids: Arc<dyn IdSource>,
     ) -> Self {
-        let mut client = Self::pending(service, composer_service.clone(), "unused".into(), None);
-        client.composer = ComposerClient::new(composer_service, ComposerScope::chat(&id));
+        let mut client = Self::pending_with_ids(
+            service,
+            composer_service.clone(),
+            "unused".into(),
+            None,
+            ids.clone(),
+        );
+        client.composer = ComposerClient::with_ids(composer_service, ComposerScope::chat(&id), ids);
         client.state.set(ChatState {
             id: Some(id),
             messages: messages.into_iter().filter_map(from_wire).collect(),
@@ -84,17 +92,35 @@ impl ChatClient {
         pending_scope_id: String,
         on_started: Option<Arc<dyn ChatStarted>>,
     ) -> Self {
+        Self::pending_with_ids(
+            service,
+            composer_service,
+            pending_scope_id,
+            on_started,
+            Arc::new(NativeIds),
+        )
+    }
+
+    pub fn pending_with_ids(
+        service: ChatServiceClient,
+        composer_service: ComposerServiceClient,
+        pending_scope_id: String,
+        on_started: Option<Arc<dyn ChatStarted>>,
+        ids: Arc<dyn IdSource>,
+    ) -> Self {
         Self {
             service,
-            composer: ComposerClient::new(
+            composer: ComposerClient::with_ids(
                 composer_service,
                 ComposerScope::pending(pending_scope_id.clone()),
+                ids.clone(),
             ),
             state: Arc::new(Watch::new(ChatState::default())),
             send_lock: Arc::new(AsyncMutex::new(())),
             pending_scope_id: Some(pending_scope_id),
             on_started,
-            start_command_id: Uuid::now_v7().to_string(),
+            start_command_id: ids.new_id(),
+            ids,
         }
     }
 
@@ -191,7 +217,7 @@ impl ChatClient {
             .send_message(Request::new(SendMessageRequest {
                 chat_id,
                 text,
-                command_id: Uuid::now_v7().to_string(),
+                command_id: self.ids.new_id(),
             }))
             .await
         {

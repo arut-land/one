@@ -79,6 +79,13 @@ impl Host for ChannelHost {
     }
 }
 
+/// Executor ownership is retained by the native composition root.
+pub fn desktop_executor() -> std::io::Result<tokio::runtime::Runtime> {
+    tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
