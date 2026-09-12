@@ -1,4 +1,4 @@
-import type { ChatHandle, ChatMessage } from "@arut/ffi";
+import type { ChatHandle, ChatMessage, ComposerHandle } from "@arut/ffi";
 import type { StreamCancellable } from "@boltffi/runtime";
 
 export interface ObservableStore<T> {
@@ -77,4 +77,14 @@ export function chatReader(chat: ChatHandle) {
     if (added.length) messages = messages.concat(added);
     return { ...chat.state(), messages };
   };
+}
+
+/** The native AbortSignal cancels both initialization and the stream follower. */
+export function followComposer(composer: ComposerHandle): () => void {
+  const lifetime = new AbortController();
+  const options = { signal: lifetime.signal };
+  void composer.initialize(options).then(() => composer.follow(options)).catch(error => {
+    if (!lifetime.signal.aborted) console.error(error);
+  });
+  return () => lifetime.abort();
 }

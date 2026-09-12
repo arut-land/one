@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { describeChatError, describeComposerError, type ProductSessionHandle } from "@arut/bindings-typescript";
+import { followComposer, type ChatHandle, describeChatError, describeComposerError, type ProductSessionHandle } from "@arut/bindings-typescript";
 import * as vscode from "vscode";
 
 function nonce(): string {
@@ -44,30 +44,27 @@ export function registerChat(context: vscode.ExtensionContext, session: ProductS
     let chatChanges = chat.chatChanges(() => { void publish(); });
     let composerChanges = composer.composerChanges(() => { void publish(); });
     const listChanges = list.listChanges(() => { void publish(); });
-    // `follow()` runs for the composer's lifetime, resuming the draft's
-    // remote-edit stream until its scope is cancelled (matching every other
-    // surface); it must be restarted whenever `bind` swaps in a new composer.
-    void composer.initialize();
-    void composer.follow();
-    const bind = () => {
-      chatChanges.cancel(); composerChanges.cancel(); composer.dispose();
+    let stopFollowing = followComposer(composer);
+    const bind = (next: ChatHandle) => {
+      chatChanges.cancel(); composerChanges.cancel(); stopFollowing();
+      composer.dispose(); chat.dispose();
+      chat = next;
       composer = chat.composer();
       lastPostedId = 0n;
       generation++;
       chatChanges = chat.chatChanges(() => { void publish(); });
       composerChanges = composer.composerChanges(() => { void publish(); });
-      void composer.initialize();
-      void composer.follow();
+      stopFollowing = followComposer(composer);
       void publish();
     };
     current.webview.onDidReceiveMessage(async (message: { type: string; text: string; chatId: string }) => {
       if (message.type === "ready") { lastPostedId = 0n; generation++; publish(); }
-      else if (message.type === "newChat") { chat = session.newChat(); bind(); }
-      else if (message.type === "selectChat") { const next = session.selectChat(message.chatId); if (next) { chat = next; bind(); } }
+      else if (message.type === "newChat") { bind(session.newChat()); }
+      else if (message.type === "selectChat") { const next = session.selectChat(message.chatId); if (next) { bind(next); } }
       else if (message.type === "draft") { await composer.replace(message.text); }
       else if (message.type === "send") { await chat.send(message.text); }
     }, undefined, context.subscriptions);
-    current.onDidDispose(() => { chatChanges.cancel(); composerChanges.cancel(); listChanges.cancel(); panel = undefined; });
+    current.onDidDispose(() => { chatChanges.cancel(); composerChanges.cancel(); listChanges.cancel(); stopFollowing(); composer.dispose(); chat.dispose(); list.dispose(); panel = undefined; });
     void publish();
   }));
 }

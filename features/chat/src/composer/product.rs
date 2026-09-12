@@ -141,59 +141,68 @@ impl ComposerClient {
         }
     }
 
-    /// The host polls this future for the lifetime of the visible composer.
-    ///
-    /// It returns as soon as the conversation scope is cancelled, so a surface
-    /// that navigates away drops the scope rather than aborting the future.
+    /// Follow while the surface owns this future. Dropping the future cancels
+    /// the subscription; cancelling the conversation also stops any pending I/O.
     pub async fn follow(&self) {
         let cancelled = self.cancellation.token();
+        let following = self.follow_scopes().fuse();
+        let stop = cancelled.cancelled().fuse();
+        futures_util::pin_mut!(following, stop);
+        futures_util::select_biased! { () = stop => {}, () = following => {} }
+    }
+
+    async fn follow_scopes(&self) {
         loop {
-            let scope_changes = self.scope.subscribe();
-            {
-                let rebound = scope_changes.changed().fuse();
-                let stop = cancelled.cancelled().fuse();
-                futures_util::pin_mut!(rebound, stop);
-                futures_util::select! {
-                    () = stop => return,
-                    _ = rebound => {}
-                }
+            let changes = self.scope.subscribe();
+            changes.changed().await;
+            let ended = {
+                let follow = self.follow_scope().fuse();
+                let rebound = changes.changed().fuse();
+                futures_util::pin_mut!(follow, rebound);
+                futures_util::select! { () = follow => true, _ = rebound => false }
+            };
+            // A closed stream is not a retry timer. Wait for promotion instead
+            // of repeatedly requesting the same scope when a peer closes it.
+            if ended {
+                changes.changed().await;
             }
-            let after_revision = self.state.read(|state| state.revision);
-            tracing::debug!(
-                stream = "composer",
+        }
+    }
+
+    async fn follow_scope(&self) {
+        let after_revision = self.state.read(|state| state.revision);
+        tracing::debug!(
+            stream = "composer",
+            after_revision,
+            "resuming a composer stream"
+        );
+        let response = self
+            .service
+            .watch_composer(Request::new(WatchComposerRequest {
+                scope: Some(scope_to_wire(&self.scope())),
                 after_revision,
-                "resuming a composer stream"
-            );
-            let response = self
-                .service
-                .watch_composer(Request::new(WatchComposerRequest {
-                    scope: Some(scope_to_wire(&self.scope())),
-                    after_revision,
-                }))
-                .await;
-            let mut stream = match response {
-                Ok(response) => response.message,
+            }))
+            .await;
+        let mut stream = match response {
+            Ok(response) => response.message,
+            Err(error) => {
+                self.apply_error(error.into());
+                return;
+            }
+        };
+        while let Some(response) = stream.next().await {
+            match response {
+                Ok(response) => {
+                    if let Some(snapshot) = response.snapshot {
+                        let _operation = self.operations.lock().await;
+                        if snapshot.scope.clone().and_then(scope_from_wire) == Some(self.scope()) {
+                            self.apply_snapshot(snapshot, false);
+                        }
+                    }
+                }
                 Err(error) => {
                     self.apply_error(error.into());
                     return;
-                }
-            };
-            loop {
-                let next = stream.next().fuse();
-                let rebound = scope_changes.changed().fuse();
-                let stop = cancelled.cancelled().fuse();
-                futures_util::pin_mut!(next, rebound, stop);
-                futures_util::select! {
-                    () = stop => return,
-                    _ = rebound => break,
-                    item = next => match item {
-                        Some(Ok(response)) => { if let Some(snapshot) = response.snapshot {
-                            let _operation = self.operations.lock().await;
-                            if snapshot.scope.clone().and_then(scope_from_wire) == Some(self.scope()) { self.apply_snapshot(snapshot, false); }
-                        } },
-                        Some(Err(error)) => { self.apply_error(error.into()); return; },
-                        None => break,
-                    }
                 }
             }
         }
@@ -277,6 +286,78 @@ mod tests {
 
         assert!(composer.promote("expected", snapshot).is_err());
         assert_eq!(composer.scope(), ComposerScope::pending("account"));
+    }
+
+    #[test]
+    fn closed_stream_waits_for_promotion_and_pending_request_can_be_cancelled() {
+        use arut_protocol::chat::composer::v1::{
+            ComposerService, GetComposerResponse, ReplaceComposerResponse, WatchComposerResponse,
+        };
+        use arut_rpc::{Response, RpcFuture, RpcStream};
+        use std::future::Future;
+        use std::task::{Context, Poll};
+
+        struct ClosingService(ComposerServiceImpl, Arc<AtomicU64>);
+        impl ComposerService for ClosingService {
+            fn get_composer(
+                &self,
+                request: Request<GetComposerRequest>,
+            ) -> RpcFuture<Response<GetComposerResponse>> {
+                self.0.get_composer(request)
+            }
+            fn replace_composer(
+                &self,
+                request: Request<ReplaceComposerRequest>,
+            ) -> RpcFuture<Response<ReplaceComposerResponse>> {
+                self.0.replace_composer(request)
+            }
+            fn watch_composer(
+                &self,
+                _: Request<WatchComposerRequest>,
+            ) -> RpcFuture<Response<RpcStream<WatchComposerResponse>>> {
+                if self.1.fetch_add(1, Ordering::Relaxed) == 0 {
+                    Box::pin(async {
+                        Ok(Response::new(
+                            Box::pin(futures_util::stream::empty()) as RpcStream<_>
+                        ))
+                    })
+                } else {
+                    Box::pin(std::future::pending())
+                }
+            }
+        }
+        let requests = Arc::new(AtomicU64::new(0));
+        let service = ComposerServiceClient::direct(Arc::new(ClosingService(
+            ComposerServiceImpl::new(Arc::new(ComposerAuthority::default())),
+            requests.clone(),
+        )));
+        let cancellation = Arc::new(Cancellation::root());
+        let composer = ComposerClient::new(
+            service,
+            ComposerScope::pending("account"),
+            Arc::new(crate::ports::NativeIds),
+            cancellation.clone(),
+        );
+        let mut follow = Box::pin(composer.follow());
+        let mut context = Context::from_waker(futures_util::task::noop_waker_ref());
+        assert!(follow.as_mut().poll(&mut context).is_pending());
+        assert!(follow.as_mut().poll(&mut context).is_pending());
+        assert_eq!(requests.load(Ordering::Relaxed), 1);
+        composer
+            .promote(
+                "chat",
+                WireSnapshot {
+                    scope: Some(scope_to_wire(&ComposerScope::chat("chat"))),
+                    authority_epoch: 1,
+                    text: String::new(),
+                    revision: 0,
+                },
+            )
+            .unwrap();
+        assert!(follow.as_mut().poll(&mut context).is_pending());
+        assert_eq!(requests.load(Ordering::Relaxed), 2);
+        cancellation.cancel();
+        assert_eq!(follow.as_mut().poll(&mut context), Poll::Ready(()));
     }
 
     #[test]
