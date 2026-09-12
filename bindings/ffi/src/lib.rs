@@ -1,15 +1,10 @@
-//! # FFI
+//! Generated foreign bindings over shared scope projections and host-supplied sessions.
 //!
-//! Foreign exports over shared scope projections. Hosts are supplied by roots.
-//!
-//! One handle per scope, each an `#[export] impl` written out longhand. That
-//! repetition is deliberate and must stay: BoltFFI's scanner reads this file
-//! with `syn` and never expands macros, so a handle produced by a `macro_rules!`
-//! compiles, links, and is simply absent from every generated binding --
-//! `boltffi pack wasm --deny-skipped` reports success and skips nothing, because
-//! it never saw the item to skip it. That was measured, not assumed. What can be
-//! shared without hiding an export is shared: `ffi_subscription` bridges every
-//! watch to the same event subscription.
+//! Each handle has an explicit `#[export] impl`. BoltFFI's source scanner does not
+//! expand macros: a macro-generated handle silently disappears from bindings,
+//! even with `--deny-skipped`. Keep exports visible; share watch bridging through
+//! `ffi_subscription`. Chat metadata and keyed message ranges cross FFI separately.
+
 pub use arut_feature_chat::composer::product::{ComposerState, ComposerStatus};
 pub use arut_feature_chat::errors::{ChatError, ComposerError, NodeFailure};
 use arut_feature_chat::ports::IdSource;

@@ -1,24 +1,9 @@
-//! A `FactLog` and a `KeyValue` in one redb file, with typed tables.
+//! Fact logs and key-value data in one redb file with typed tables.
 //!
-//! The directory implementation gets its atomicity from an advisory lock plus a
-//! create-new rename per record, which costs one file per fact and a directory
-//! scan per read. redb gives the same guarantees in one crash-safe file with
-//! real transactions, in pure Rust: no C toolchain to cross-compile for five
-//! targets, which is what rules SQLite out of this particular job. The log is
-//! six operations over opaque Protobuf rows with no relational schema, so SQL
-//! would type-check nothing, while a `TableDefinition` fixes the key and value
-//! types at compile time. SQLite is still the right answer for a full-text
-//! search read model later, behind its own port, not for the log.
-//!
-//! Facts stay Protobuf rows (ADR 0015): the tables carry the sequence, the
-//! command index, and the compaction watermark; the bytes are `StoredRecord`.
-//!
-//! Cross-process safety is exclusive rather than shared: redb takes a lock on
-//! the file for as long as the `Database` is open, so a second process opening
-//! the same path is refused rather than allowed to interleave. The daemon owns
-//! its file, and every other process reaches these facts through the daemon's
-//! `RpcChannel`. Inside the daemon, redb serializes write transactions, so two
-//! appenders behave exactly as the directory log's two lock holders do.
+//! Protobuf records have sequence and command indexes; compaction retains outcomes
+//! for deduplication. Each command decision runs inside one write transaction.
+//! The database owns its file exclusively, so other processes use the daemon's
+//! RPC channel. The schema version controls migrations when opening a file.
 
 use crate::{
     Fact, FactLog, KeyValue, Record, Result, Snapshot, StorageError, StoredRecord, StoredSnapshot,

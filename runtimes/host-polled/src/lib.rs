@@ -1,18 +1,9 @@
-//! # Host-polled runtime
+//! A thread-local [`arut_rpc::LocalSpawner`] over `async_executor::LocalExecutor`.
 //!
-//! The execution port for hosts that own their event loop and lend the core
-//! slices of it instead of giving it a thread: a browser page or worker driven
-//! through BoltFFI's poll exports, and the Android foreground-service thread.
-//! Both get one `async_executor::LocalExecutor`, which needs no threads, no
-//! reactor, and no `Send` bound, so it compiles for `wasm32-unknown-unknown`
-//! with no wasm-bindgen anywhere in its graph. Tokio stays in `runtimes/local`,
-//! where a desktop or backend node can afford a real runtime.
-//!
-//! A wasm host calls [`HostPolledSpawner::tick`] from its own scheduler and
-//! from every callback that resolves a pending host operation. The tick is
-//! bounded, so one busy task cannot hold the frame; the count it returns says
-//! whether the budget ran out and the host should tick again before yielding.
-//! A thread-owning host calls [`HostPolledSpawner::block_on`] instead.
+//! Hosts drive ready tasks through bounded [`HostPolledSpawner::tick`] calls or
+//! run a future through [`HostPolledSpawner::block_on`]. No threads, reactor, or
+//! wasm-bindgen are required. This port implementation is tested independently;
+//! composition roots do not yet connect it to browser or Android host callbacks.
 
 use arut_rpc::LocalSpawner;
 use async_executor::LocalExecutor;

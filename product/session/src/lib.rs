@@ -1,13 +1,8 @@
-//! # Session
+//! Sessions compose typed node and workspace scopes with chat service clients.
 //!
-//! Typed Node and Workspace scopes hold their parents, and ChatRuntime is the
-//! compile-time capability bundle a workspace needs before it can reach chat.
-//! A session constructs its default node and workspace and reads its service
-//! clients through them; configuration falls back from workspace to node.
-//!
-//! One conversation registry holds the established chats and one watch holds the
-//! ordered summaries a surface renders. Registration arrives through a weak
-//! callback, so an established chat may hold the client that registered it.
+//! The session owns pending and established chats, conversation summaries, and
+//! availability. A weak registration callback avoids a cycle between the registry
+//! and its chats. Surfaces own selection and disposable observers.
 
 pub mod hosting;
 pub mod scopes;
