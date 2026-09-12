@@ -33,11 +33,32 @@ jobs:
       - name: cargo clippy
         run: cargo clippy --workspace --all-targets -- -D warnings
 
-      - name: cargo test
-        run: cargo test --workspace
+      - name: cargo nextest
+        run: cargo nextest run --workspace
+
+      - name: cargo test (doctests)
+        run: cargo test --doc --workspace
+
+      - name: cargo machete
+        run: cargo machete
+
+      - name: cargo deny
+        run: cargo deny check
 
       - name: cargo check (wasm)
         run: cargo check -p arut_ffi --target wasm32-unknown-unknown
+
+      # docs/ECOSYSTEM.md's wasm rule: the BoltFFI wasm core does not use
+      # wasm-bindgen, so nothing pulling it in may reach arut_ffi's wasm
+      # dependency graph.
+      - name: Assert no wasm-bindgen in arut_ffi's wasm graph
+        run: |
+          leaked="$(cargo tree -i wasm-bindgen --target wasm32-unknown-unknown -p arut_ffi 2>/dev/null)"
+          if [ -n "$leaked" ]; then
+            echo "wasm-bindgen leaked into the arut_ffi wasm dependency graph:"
+            echo "$leaked"
+            exit 1
+          fi
 
       - name: buf lint
         run: buf lint
