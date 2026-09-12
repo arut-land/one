@@ -1,6 +1,6 @@
 use crate::composer::ComposerScope;
 use crate::composer::product::{ComposerClient, ComposerStatus};
-use crate::ports::{IdSource, NativeIds};
+use crate::ports::IdSource;
 use arut_protocol::chat::composer::v1::ComposerServiceClient;
 use arut_protocol::chat::v1::{
     ChatMessage as WireMessage, ChatRole as WireRole, ChatServiceClient, SendMessageRequest,
@@ -69,14 +69,14 @@ impl ChatClient {
         messages: Vec<WireMessage>,
         ids: Arc<dyn IdSource>,
     ) -> Self {
-        let mut client = Self::pending_with_ids(
+        let mut client = Self::pending(
             service,
             composer_service.clone(),
             "unused".into(),
             None,
             ids.clone(),
         );
-        client.composer = ComposerClient::with_ids(composer_service, ComposerScope::chat(&id), ids);
+        client.composer = ComposerClient::new(composer_service, ComposerScope::chat(&id), ids);
         client.state.set(ChatState {
             id: Some(id),
             messages: messages.into_iter().filter_map(from_wire).collect(),
@@ -85,23 +85,7 @@ impl ChatClient {
         client
     }
 
-    #[doc(hidden)]
     pub fn pending(
-        service: ChatServiceClient,
-        composer_service: ComposerServiceClient,
-        pending_scope_id: String,
-        on_started: Option<Arc<dyn ChatStarted>>,
-    ) -> Self {
-        Self::pending_with_ids(
-            service,
-            composer_service,
-            pending_scope_id,
-            on_started,
-            Arc::new(NativeIds),
-        )
-    }
-
-    pub fn pending_with_ids(
         service: ChatServiceClient,
         composer_service: ComposerServiceClient,
         pending_scope_id: String,
@@ -110,7 +94,7 @@ impl ChatClient {
     ) -> Self {
         Self {
             service,
-            composer: ComposerClient::with_ids(
+            composer: ComposerClient::new(
                 composer_service,
                 ComposerScope::pending(pending_scope_id.clone()),
                 ids.clone(),

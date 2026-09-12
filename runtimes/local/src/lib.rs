@@ -15,6 +15,7 @@ pub mod child;
 pub mod hosting;
 use arut_feature_chat::composer::authority::ComposerAuthority;
 use arut_feature_chat::composer::service::ComposerServiceImpl;
+use arut_feature_chat::ports::NativeIds;
 use arut_feature_chat::service::ChatServiceImpl;
 use arut_protocol::capability::v1::CapabilityServiceRouter;
 use arut_protocol::capability_manifest::CapabilityServiceImpl;
@@ -30,8 +31,10 @@ pub fn app(data_path: PathBuf) -> Result<Router, String> {
     let authority = Arc::new(ComposerAuthority::with_store(directory.clone()));
     let composer = Arc::new(ComposerServiceImpl::new(Arc::clone(&authority)));
     let log = directory.log("chat").map_err(|e| e.to_string())?;
-    let chat =
-        Arc::new(ChatServiceImpl::with_log(authority, Arc::new(log)).map_err(|e| e.to_string())?);
+    let chat = Arc::new(
+        ChatServiceImpl::new(authority, Arc::new(log), Arc::new(NativeIds))
+            .map_err(|e| e.to_string())?,
+    );
     let composer_router: Arc<dyn RpcService> = Arc::new(ComposerServiceRouter::new(composer));
     let chat_router: Arc<dyn RpcService> = Arc::new(ChatServiceRouter::new(chat));
     let registry = RpcRegistry::default()
