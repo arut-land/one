@@ -18,10 +18,18 @@ impl ScheduledChannel {
     pub fn new(channel: Arc<dyn RpcChannel>, spawner: Arc<dyn Spawner>) -> Self {
         Self { channel, spawner }
     }
-    fn run<T: Send + 'static>(&self, future: RpcFuture<T>) -> RpcFuture<T> {
-        let (sender, receiver) = tokio::sync::oneshot::channel();
+    fn run<T: Send + 'static>(
+        &self,
+        call: impl FnOnce(Arc<dyn RpcChannel>) -> RpcFuture<T> + Send + 'static,
+    ) -> RpcFuture<T> {
+        let channel = self.channel.clone();
+        let (mut sender, receiver) = tokio::sync::oneshot::channel();
         self.spawner.spawn(Box::pin(async move {
-            let _ = sender.send(future.await);
+            tokio::select! {
+                biased;
+                () = sender.closed() => {},
+                result = async move { call(channel).await } => { let _ = sender.send(result); }
+            }
         }));
         Box::pin(async move {
             receiver
@@ -32,28 +40,32 @@ impl ScheduledChannel {
 }
 impl RpcChannel for ScheduledChannel {
     fn unary(&self, procedure: &str, request: Request<Vec<u8>>) -> RpcFuture<Response<Vec<u8>>> {
-        self.run(self.channel.unary(procedure, request))
+        let procedure = procedure.to_owned();
+        self.run(move |channel| channel.unary(&procedure, request))
     }
     fn server_stream(
         &self,
         procedure: &str,
         request: Request<Vec<u8>>,
     ) -> RpcFuture<Response<RpcStream<Vec<u8>>>> {
-        self.run(self.channel.server_stream(procedure, request))
+        let procedure = procedure.to_owned();
+        self.run(move |channel| channel.server_stream(&procedure, request))
     }
     fn client_stream(
         &self,
         procedure: &str,
         request: Request<RpcStream<Vec<u8>>>,
     ) -> RpcFuture<Response<Vec<u8>>> {
-        self.run(self.channel.client_stream(procedure, request))
+        let procedure = procedure.to_owned();
+        self.run(move |channel| channel.client_stream(&procedure, request))
     }
     fn bidirectional(
         &self,
         procedure: &str,
         request: Request<RpcStream<Vec<u8>>>,
     ) -> RpcFuture<Response<RpcStream<Vec<u8>>>> {
-        self.run(self.channel.bidirectional(procedure, request))
+        let procedure = procedure.to_owned();
+        self.run(move |channel| channel.bidirectional(&procedure, request))
     }
 }
 
@@ -89,6 +101,36 @@ pub fn desktop_executor() -> std::io::Result<tokio::runtime::Runtime> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn foreign_dispatch_uses_the_host_and_dropping_the_call_cancels_its_task() {
+        struct Dropped(Option<tokio::sync::oneshot::Sender<()>>);
+        impl Drop for Dropped {
+            fn drop(&mut self) {
+                let _ = self.0.take().unwrap().send(());
+            }
+        }
+        let runtime = desktop_executor().unwrap();
+        let channel = ScheduledChannel::new(
+            Arc::new(arut_rpc::RpcRegistry::default()),
+            Arc::new(TokioSpawner(runtime.handle().clone())),
+        );
+        let (started, ready) = tokio::sync::oneshot::channel();
+        let (dropped, cancelled) = tokio::sync::oneshot::channel();
+        let response: RpcFuture<()> = channel.run(move |_| {
+            assert!(tokio::runtime::Handle::try_current().is_ok());
+            let guard = Dropped(Some(dropped));
+            Box::pin(async move {
+                let _guard = guard;
+                started.send(()).unwrap();
+                std::future::pending().await
+            })
+        });
+        runtime.block_on(ready).unwrap();
+        drop(response);
+        runtime.block_on(cancelled).unwrap();
+    }
+
     #[tokio::test]
     async fn root_supplies_executor_and_host_channel() {
         let spawner: Arc<dyn Spawner> = Arc::new(TokioSpawner(tokio::runtime::Handle::current()));

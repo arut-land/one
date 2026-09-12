@@ -15,6 +15,7 @@
 //! READY handshake. The final channel drop terminates the child and removes its
 //! socket. No HTTP transport creates an executor.
 
+mod blocking;
 #[cfg(unix)]
 pub mod child;
 pub mod hosting;
@@ -61,6 +62,18 @@ pub fn app(data_path: PathBuf) -> Result<Router, StorageError> {
 
 pub fn app_with(data_path: PathBuf, storage: NodeStorage) -> Result<Router, StorageError> {
     let directory = Arc::new(arut_storage::Directory::open(&data_path)?);
+    let lease = Arc::new(
+        std::fs::OpenOptions::new()
+            .create(true)
+            .truncate(false)
+            .read(true)
+            .write(true)
+            .open(data_path.join("node.lock"))?,
+    );
+    lease.try_lock().map_err(|error| {
+        let error: std::io::Error = error.into();
+        StorageError::from(error)
+    })?;
     let (log, drafts): (Arc<dyn FactLog<ChatFact>>, Arc<dyn KeyValue>) = match storage {
         NodeStorage::Directory => (Arc::new(directory.log("chat")?), directory),
         NodeStorage::Redb => {
@@ -69,8 +82,14 @@ pub fn app_with(data_path: PathBuf, storage: NodeStorage) -> Result<Router, Stor
         }
     };
     let authority = Arc::new(ComposerAuthority::with_store(drafts));
-    let composer = Arc::new(ComposerServiceImpl::new(Arc::clone(&authority)));
-    let chat = Arc::new(ChatServiceImpl::new(authority, log, Arc::new(NativeIds))?);
+    let composer = Arc::new(blocking::Blocking::new(
+        ComposerServiceImpl::new(Arc::clone(&authority)),
+        lease.clone(),
+    ));
+    let chat = Arc::new(blocking::Blocking::new(
+        ChatServiceImpl::new(authority, log, Arc::new(NativeIds))?,
+        lease,
+    ));
     let composer_router: Arc<dyn RpcService> = Arc::new(ComposerServiceRouter::new(composer));
     let chat_router: Arc<dyn RpcService> = Arc::new(ChatServiceRouter::new(chat));
     let registry = RpcRegistry::default()
@@ -105,6 +124,20 @@ mod tests {
 
     fn wire_scope(scope: &ComposerScope) -> arut_protocol::chat::composer::v1::ComposerScope {
         arut_feature_chat::composer::service::scope_to_wire(scope)
+    }
+
+    #[test]
+    fn a_node_directory_has_one_owner_for_either_storage_choice() {
+        for storage in [NodeStorage::Directory, NodeStorage::Redb] {
+            let path = std::env::temp_dir()
+                .join(format!("arut-exclusive-{storage:?}-{}", std::process::id()));
+            let _ = std::fs::remove_dir_all(&path);
+            let first = app_with(path.clone(), storage).unwrap();
+            assert!(app_with(path.clone(), storage).is_err());
+            drop(first);
+            drop(app_with(path.clone(), storage).unwrap());
+            std::fs::remove_dir_all(path).unwrap();
+        }
     }
 
     #[tokio::test]
