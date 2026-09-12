@@ -130,18 +130,24 @@ impl SessionChats {
 }
 
 #[boltffi::data]
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SessionAvailability {
     pub composer: FeatureAvailability,
-    pub error: String,
 }
 
+/// Typed availability with a typed reason; surfaces own every word of it.
 #[boltffi::data]
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FeatureAvailability {
+    /// No manifest has been read yet.
     Unknown,
     Available,
-    Unavailable { reason: String },
+    /// The node advertises the service but reports it as unavailable now.
+    ReportedUnavailable,
+    /// The node's manifest does not carry the service.
+    NotAdvertised,
+    /// The manifest could not be read from the node.
+    ManifestUnreachable,
 }
 
 impl ProductSession {
@@ -243,7 +249,6 @@ impl ProductSession {
             capability_service: None,
             availability: Arc::new(Watch::new(SessionAvailability {
                 composer: FeatureAvailability::Available,
-                error: String::new(),
             })),
         }
     }
@@ -256,7 +261,6 @@ impl ProductSession {
         self.capability_service = Some(service);
         self.availability.set(SessionAvailability {
             composer: FeatureAvailability::Unknown,
-            error: String::new(),
         });
         self
     }
@@ -305,27 +309,18 @@ impl ProductSession {
         let Some(service) = &self.capability_service else {
             return self.availability.get();
         };
-        let (composer, error) = match service
+        let composer = match service
             .get_capabilities(Request::new(GetCapabilitiesRequest {}))
             .await
         {
-            Ok(response) => (
-                response
-                    .message
-                    .manifest
-                    .and_then(|manifest| manifest.services.into_iter().find(is_composer_service))
-                    .map_or(
-                        FeatureAvailability::Unavailable {
-                            reason: "composer service is not advertised by this runtime".into(),
-                        },
-                        feature_availability,
-                    ),
-                String::new(),
-            ),
-            Err(error) => (FeatureAvailability::Unknown, error.to_string()),
+            Ok(response) => response
+                .message
+                .manifest
+                .and_then(|manifest| manifest.services.into_iter().find(is_composer_service))
+                .map_or(FeatureAvailability::NotAdvertised, feature_availability),
+            Err(_) => FeatureAvailability::ManifestUnreachable,
         };
-        self.availability
-            .set(SessionAvailability { composer, error })
+        self.availability.set(SessionAvailability { composer })
     }
 }
 
@@ -338,9 +333,7 @@ fn feature_availability(service: ServiceCapability) -> FeatureAvailability {
     if service.available {
         FeatureAvailability::Available
     } else {
-        FeatureAvailability::Unavailable {
-            reason: service.unavailable_reason,
-        }
+        FeatureAvailability::ReportedUnavailable
     }
 }
 

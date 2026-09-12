@@ -22,19 +22,21 @@ use arut_protocol::capability_manifest::CapabilityServiceImpl;
 use arut_protocol::chat::composer::v1::ComposerServiceRouter;
 use arut_protocol::chat::v1::ChatServiceRouter;
 use arut_rpc::{RpcRegistry, RpcService};
+use arut_storage::StorageError;
 use axum::Router;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-pub fn app(data_path: PathBuf) -> Result<Router, String> {
-    let directory = Arc::new(arut_storage::Directory::open(data_path).map_err(|e| e.to_string())?);
+pub fn app(data_path: PathBuf) -> Result<Router, StorageError> {
+    let directory = Arc::new(arut_storage::Directory::open(data_path)?);
     let authority = Arc::new(ComposerAuthority::with_store(directory.clone()));
     let composer = Arc::new(ComposerServiceImpl::new(Arc::clone(&authority)));
-    let log = directory.log("chat").map_err(|e| e.to_string())?;
-    let chat = Arc::new(
-        ChatServiceImpl::new(authority, Arc::new(log), Arc::new(NativeIds))
-            .map_err(|e| e.to_string())?,
-    );
+    let log = directory.log("chat")?;
+    let chat = Arc::new(ChatServiceImpl::new(
+        authority,
+        Arc::new(log),
+        Arc::new(NativeIds),
+    )?);
     let composer_router: Arc<dyn RpcService> = Arc::new(ComposerServiceRouter::new(composer));
     let chat_router: Arc<dyn RpcService> = Arc::new(ChatServiceRouter::new(chat));
     let registry = RpcRegistry::default()
