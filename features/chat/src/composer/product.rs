@@ -1,5 +1,5 @@
+use super::ComposerScope;
 use super::service::{scope_from_wire, scope_to_wire};
-use super::{ComposerScope, ComposerSnapshot};
 use crate::ports::IdSource;
 #[cfg(test)]
 use crate::ports::NativeIds;
@@ -228,20 +228,6 @@ impl ComposerClient {
             state.status = ComposerStatus::Failed;
             state.error = error;
         })
-    }
-}
-
-impl From<WireSnapshot> for ComposerSnapshot {
-    fn from(snapshot: WireSnapshot) -> Self {
-        Self {
-            scope: snapshot
-                .scope
-                .and_then(scope_from_wire)
-                .expect("wire composer snapshot must have a scope"),
-            authority_epoch: snapshot.authority_epoch,
-            text: snapshot.text,
-            revision: snapshot.revision,
-        }
     }
 }
 

@@ -11,7 +11,7 @@
 
 //! Generic acceptance with pure command application and projection reduction.
 use arut_storage::{Fact, FactLog, Record, Snapshot, StorageError};
-use serde::{Serialize, de::DeserializeOwned};
+use prost::Message;
 use std::{
     hash::Hash,
     sync::{Arc, Mutex},
@@ -24,12 +24,7 @@ pub enum Precondition {
     Epoch(u64),
     OperationOpen(String),
 }
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Optimism {
-    Immediate,
-    Authoritative,
-}
-pub trait Projection: Default + Clone + Serialize + DeserializeOwned + Send + 'static {
+pub trait Projection: Message + Default + Clone + 'static {
     type Fact: Fact;
     type Scope: Eq + Hash + Clone;
     fn reduce(&mut self, fact: &Self::Fact);
@@ -43,8 +38,6 @@ pub trait Command: Send + 'static {
     type Fact: Fact;
     type Projection: Projection<Fact = Self::Fact, Scope = Self::Scope>;
     type Rejection;
-    const QUEUEABLE: bool;
-    const OPTIMISM: Optimism;
     fn command_id(&self) -> &str;
     fn scope(&self) -> &Self::Scope;
     fn epoch(&self) -> u64;
@@ -79,7 +72,7 @@ impl<C: Command> Authority<C> {
         let snapshot = log.snapshot()?;
         let mut projection = snapshot
             .as_ref()
-            .map(|s| serde_json::from_slice(&s.data))
+            .map(|s| C::Projection::decode(&s.data[..]))
             .transpose()?
             .unwrap_or_default();
         let mut cursor = snapshot.as_ref().map_or(0, |s| s.sequence);
@@ -178,7 +171,7 @@ impl<C: Command> Authority<C> {
         self.log.save_snapshot(Snapshot {
             sequence: state.cursor,
             epoch: self.epoch,
-            data: serde_json::to_vec(&state.projection)?,
+            data: state.projection.encode_to_vec(),
         })?;
         if compact {
             self.log.compact(state.cursor)?;
@@ -187,27 +180,27 @@ impl<C: Command> Authority<C> {
     }
 }
 
-/// Pure control-flow machines can emit effects for a host driver.
-pub trait Machine {
-    type Input;
-    type Effect;
-    fn handle(&mut self, input: Self::Input) -> Vec<Self::Effect>;
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use serde::Deserialize;
-    #[derive(Clone, Default, Serialize, Deserialize)]
-    struct Counter(u64);
+    #[derive(Clone, PartialEq, Message)]
+    struct Tick {
+        #[prost(uint64, tag = "1")]
+        amount: u64,
+    }
+    #[derive(Clone, PartialEq, Message)]
+    struct Counter {
+        #[prost(uint64, tag = "1")]
+        total: u64,
+    }
     impl Projection for Counter {
-        type Fact = u64;
+        type Fact = Tick;
         type Scope = String;
-        fn reduce(&mut self, fact: &u64) {
-            self.0 += fact;
+        fn reduce(&mut self, fact: &Tick) {
+            self.total += fact.amount;
         }
         fn revision(&self, _: &String) -> u64 {
-            self.0
+            self.total
         }
     }
     struct Add {
@@ -219,11 +212,9 @@ mod tests {
     }
     impl Command for Add {
         type Scope = String;
-        type Fact = u64;
+        type Fact = Tick;
         type Projection = Counter;
         type Rejection = ();
-        const QUEUEABLE: bool = true;
-        const OPTIMISM: Optimism = Optimism::Authoritative;
         fn command_id(&self) -> &str {
             &self.id
         }
@@ -239,8 +230,8 @@ mod tests {
         fn expires_at(&self) -> Option<u64> {
             self.expiry
         }
-        fn apply(self, _: &Counter) -> Result<u64, ()> {
-            Ok(1)
+        fn apply(self, _: &Counter) -> Result<Tick, ()> {
+            Ok(Tick { amount: 1 })
         }
     }
     fn add(id: &str, revision: u64) -> Add {
@@ -288,12 +279,12 @@ mod tests {
         ));
         authority.checkpoint(true).unwrap();
         let restarted = Authority::<Add>::open(log, 1).unwrap();
-        assert_eq!(restarted.projection().0, 1);
+        assert_eq!(restarted.projection().total, 1);
         assert!(matches!(
             restarted.execute(add("one", 0)).unwrap(),
             Outcome::Duplicate(_)
         ));
         restarted.execute(add("two", 1)).unwrap();
-        assert_eq!(restarted.projection().0, 2);
+        assert_eq!(restarted.projection().total, 2);
     }
 }

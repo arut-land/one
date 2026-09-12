@@ -1,4 +1,5 @@
 use crate::*;
+use prost::Message;
 use std::{
     fs::{self, File, OpenOptions},
     io::Write,
@@ -6,7 +7,6 @@ use std::{
     path::{Path, PathBuf},
     sync::atomic::{AtomicU64, Ordering},
 };
-#[derive(Clone)]
 pub struct Directory {
     root: PathBuf,
 }
@@ -54,12 +54,9 @@ impl BlobStore for Directory {
         Ok(id)
     }
     fn get_blob(&self, id: &str) -> Result<Option<Vec<u8>>> {
-        if id.len() != 64 || !id.bytes().all(|b| b.is_ascii_hexdigit()) {
-            return Err(StorageError::Corrupt("invalid digest".into()));
-        }
-        let bytes = read_optional(&self.root.join("blobs").join(id))?;
+        let bytes = read_optional(&self.root.join("blobs").join(checked_digest(id)?))?;
         if bytes.as_ref().is_some_and(|bytes| digest(bytes) != id) {
-            return Err(StorageError::Corrupt("blob digest mismatch".into()));
+            return Err(StorageError::Corrupt);
         }
         Ok(bytes)
     }
@@ -84,30 +81,33 @@ impl<F: Fact> DirectoryLog<F> {
         let mut records: Vec<Record<F>> = Vec::new();
         for entry in fs::read_dir(self.root.join("records"))? {
             let path = entry?.path();
-            if path.extension().is_some_and(|e| e == "json") {
-                records.push(serde_json::from_slice(&fs::read(path)?)?);
+            if path.extension().is_some_and(|e| e == "pb") {
+                records.push(StoredRecord::decode(&fs::read(path)?[..])?.into_record()?);
             }
         }
         records.sort_by_key(|r| r.sequence);
         Ok(records)
     }
     fn saved(&self) -> Result<Option<Snapshot>> {
-        read_optional(&self.root.join("snapshot.json"))?
-            .map(|b| serde_json::from_slice(&b).map_err(Into::into))
-            .transpose()
+        Ok(read_optional(&self.root.join("snapshot.pb"))?
+            .map(|bytes| StoredSnapshot::decode(&bytes[..]))
+            .transpose()?
+            .map(Snapshot::from))
     }
     fn compacted(&self) -> Result<u64> {
-        Ok(read_optional(&self.root.join("compacted.json"))?
-            .map(|b| serde_json::from_slice(&b))
-            .transpose()?
-            .unwrap_or(0))
+        Ok(read_optional(&self.root.join("compacted"))?
+            .and_then(|bytes| bytes.try_into().ok())
+            .map_or(0, u64::from_be_bytes))
+    }
+    fn record_path(&self, sequence: u64) -> PathBuf {
+        self.root.join("records").join(format!("{sequence:020}.pb"))
     }
     fn outcome(&self, id: &str, records: &[Record<F>]) -> Result<Option<Record<F>>> {
         if let Some(record) = records.iter().find(|r| r.command_id == id) {
             return Ok(Some(record.clone()));
         }
         read_optional(&self.root.join("outcomes").join(digest(id.as_bytes())))?
-            .map(|b| serde_json::from_slice(&b).map_err(Into::into))
+            .map(|bytes| StoredRecord::decode(&bytes[..])?.into_record())
             .transpose()
     }
 }
@@ -139,11 +139,8 @@ impl<F: Fact> FactLog<F> for DirectoryLog<F> {
             fact,
         };
         atomic(
-            &self
-                .root
-                .join("records")
-                .join(format!("{:020}.json", record.sequence)),
-            &serde_json::to_vec(&record)?,
+            &self.record_path(record.sequence),
+            &StoredRecord::from(&record).encode_to_vec(),
         )?;
         Ok(record)
     }
@@ -177,8 +174,8 @@ impl<F: Fact> FactLog<F> for DirectoryLog<F> {
             return Err(StorageError::SnapshotRequired);
         }
         atomic(
-            &self.root.join("snapshot.json"),
-            &serde_json::to_vec(&snapshot)?,
+            &self.root.join("snapshot.pb"),
+            &StoredSnapshot::from(&snapshot).encode_to_vec(),
         )
     }
     fn compact(&self, through: u64) -> Result<()> {
@@ -187,25 +184,25 @@ impl<F: Fact> FactLog<F> for DirectoryLog<F> {
             return Err(StorageError::SnapshotRequired);
         }
         let records = self.records()?;
-        for record in records.iter().filter(|r| r.sequence <= through) {
+        let compacted: Vec<&Record<F>> = records
+            .iter()
+            .filter(|r| r.sequence <= through)
+            .collect::<Vec<_>>();
+        for record in &compacted {
             atomic(
                 &self
                     .root
                     .join("outcomes")
                     .join(digest(record.command_id.as_bytes())),
-                &serde_json::to_vec(record)?,
+                &StoredRecord::from(*record).encode_to_vec(),
             )?;
         }
         atomic(
-            &self.root.join("compacted.json"),
-            &serde_json::to_vec(&through.max(self.compacted()?))?,
+            &self.root.join("compacted"),
+            &through.max(self.compacted()?).to_be_bytes(),
         )?;
-        for record in records.iter().filter(|r| r.sequence <= through) {
-            fs::remove_file(
-                self.root
-                    .join("records")
-                    .join(format!("{:020}.json", record.sequence)),
-            )?;
+        for record in &compacted {
+            fs::remove_file(self.record_path(record.sequence))?;
         }
         sync(&self.root.join("records"))
     }

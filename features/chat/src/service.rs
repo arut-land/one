@@ -1,13 +1,13 @@
-use crate::command::ChatCommand;
+use crate::command::{ChatCommand, Rejection};
 use crate::composer::authority::{ComposerAuthority, PromoteError};
 use crate::{
     composer::{ComposerScope, ComposerSnapshot},
-    facts::{ChatFact, ChatProjection},
+    facts::ChatProjection,
 };
 use arut_authority::{Authority, Outcome};
 use arut_protocol::chat::v1::{
-    ChatMessage, ChatRole, ChatService, SendMessageRequest, SendMessageResponse, StartChatRequest,
-    StartChatResponse,
+    ChatFact, ChatService, ListConversationsRequest, ListConversationsResponse, SendMessageRequest,
+    SendMessageResponse, StartChatRequest, StartChatResponse,
 };
 use arut_rpc::{Code, Request, Response, RpcFuture, Status};
 use arut_storage::{FactLog, MemoryLog, StorageError};
@@ -53,39 +53,56 @@ impl ChatServiceImpl {
     pub fn projection(&self) -> ChatProjection {
         self.authority.projection()
     }
-    fn commit(&self, command: ChatCommand) -> Result<ChatFact, StorageError> {
+    fn commit(&self, command: ChatCommand) -> Result<ChatFact, CommitError> {
         match self.authority.execute(command)? {
             Outcome::Applied(record) | Outcome::Duplicate(record) => Ok(record.fact),
-            Outcome::RevisionConflict { current } => {
-                Err(StorageError::Conflict { actual: current })
-            }
-            Outcome::AuthorityMismatch { current_epoch } => Err(StorageError::Epoch {
-                current: current_epoch,
-            }),
-            outcome => Err(StorageError::Corrupt(format!(
-                "command rejected: {outcome:?}"
-            ))),
+            Outcome::RevisionConflict { .. } => Err(CommitError::RevisionConflict),
+            Outcome::AuthorityMismatch { .. } => Err(CommitError::AuthorityMismatch),
+            Outcome::Superseded => Err(CommitError::Superseded),
+            Outcome::Rejected(rejection) => Err(CommitError::Rejected(rejection)),
         }
     }
 }
-fn wire(messages: Vec<crate::product::ChatMessage>) -> Vec<ChatMessage> {
-    messages
-        .into_iter()
-        .map(|m| ChatMessage {
-            id: m.id,
-            text: m.text,
-            role: match m.role {
-                crate::product::ChatRole::User => ChatRole::User,
-                crate::product::ChatRole::Assistant => ChatRole::Assistant,
-            } as i32,
-        })
-        .collect()
+
+/// Why an accepted command could not become a fact, before any surface wording.
+#[derive(Debug)]
+enum CommitError {
+    Storage(StorageError),
+    Rejected(Rejection),
+    RevisionConflict,
+    AuthorityMismatch,
+    Superseded,
+}
+impl From<StorageError> for CommitError {
+    fn from(error: StorageError) -> Self {
+        Self::Storage(error)
+    }
+}
+impl From<CommitError> for Status {
+    fn from(error: CommitError) -> Self {
+        match error {
+            CommitError::Storage(error) => storage(error),
+            CommitError::Rejected(Rejection::ConversationMissing) => {
+                Self::new(Code::NotFound, "conversation not found")
+            }
+            CommitError::Rejected(Rejection::ConversationExists) => {
+                Self::new(Code::AlreadyExists, "conversation already started")
+            }
+            CommitError::RevisionConflict => {
+                Self::new(Code::Aborted, "conversation revision changed")
+            }
+            CommitError::AuthorityMismatch => {
+                Self::new(Code::FailedPrecondition, "conversation authority changed")
+            }
+            CommitError::Superseded => Self::new(Code::Aborted, "command superseded"),
+        }
+    }
 }
 fn start_response(fact: ChatFact) -> StartChatResponse {
     StartChatResponse {
         composer: Some(ComposerSnapshot::empty(ComposerScope::chat(&fact.chat_id)).into()),
         chat_id: fact.chat_id,
-        messages: wire(fact.messages),
+        messages: fact.messages,
     }
 }
 fn storage(error: StorageError) -> Status {
@@ -94,22 +111,10 @@ fn storage(error: StorageError) -> Status {
 impl ChatService for ChatServiceImpl {
     fn list_conversations(
         &self,
-        _: Request<arut_protocol::chat::v1::ListConversationsRequest>,
-    ) -> RpcFuture<Response<arut_protocol::chat::v1::ListConversationsResponse>> {
-        let conversations = self
-            .projection()
-            .conversations
-            .into_iter()
-            .map(|(id, messages)| arut_protocol::chat::v1::Conversation {
-                id,
-                messages: wire(messages),
-            })
-            .collect();
-        Box::pin(async move {
-            Ok(Response::new(
-                arut_protocol::chat::v1::ListConversationsResponse { conversations },
-            ))
-        })
+        _: Request<ListConversationsRequest>,
+    ) -> RpcFuture<Response<ListConversationsResponse>> {
+        let conversations = self.projection().conversations;
+        Box::pin(async move { Ok(Response::new(ListConversationsResponse { conversations })) })
     }
 
     fn send_message(
@@ -133,27 +138,17 @@ impl ChatService for ChatServiceImpl {
                 .map_err(storage)?
             {
                 return Ok(Response::new(SendMessageResponse {
-                    messages: wire(record.fact.messages),
+                    messages: record.fact.messages,
                 }));
             }
-            if !self
-                .authority
-                .projection()
-                .conversations
-                .contains_key(&message.chat_id)
-            {
-                return Err(Status::new(Code::NotFound, "conversation not found"));
-            }
-            let fact = self
-                .commit(ChatCommand {
-                    command_id: message.command_id,
-                    chat_id: message.chat_id,
-                    pending_scope: None,
-                    text: message.text,
-                })
-                .map_err(storage)?;
+            let fact = self.commit(ChatCommand {
+                command_id: message.command_id,
+                chat_id: message.chat_id,
+                pending_scope: None,
+                text: message.text,
+            })?;
             Ok(Response::new(SendMessageResponse {
-                messages: wire(fact.messages),
+                messages: fact.messages,
             }))
         })();
         Box::pin(async move { result })
@@ -179,16 +174,13 @@ impl ChatService for ChatServiceImpl {
                 pending_scope: Some(message.pending_scope_id.clone()),
                 text: message.text.clone(),
             };
-            let result = self
-                .composer
-                .promote_pending(
-                    &message.pending_scope_id,
-                    message.expected_revision,
-                    &message.text,
-                    &chat_id,
-                    || self.commit(command),
-                )
-                .map_err(storage)?;
+            let result = self.composer.promote_pending(
+                &message.pending_scope_id,
+                message.expected_revision,
+                &message.text,
+                &chat_id,
+                || self.commit(command),
+            )?;
             match result {
                 Ok((fact, _)) => Ok(Response::new(start_response(fact))),
                 Err(PromoteError::RevisionConflict(_)) => Err(Status::new(

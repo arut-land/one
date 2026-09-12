@@ -1,6 +1,9 @@
+use super::service::scope_from_wire;
 use super::{ComposerScope, ComposerSnapshot, ReplaceComposer, ReplaceOutcome};
+use arut_protocol::chat::composer::v1::ComposerSnapshot as WireSnapshot;
 use arut_storage::{KeyValue, MemoryStore, StorageError};
 use arut_watch::{Subscription, Watch};
+use prost::Message;
 use std::{
     collections::HashMap,
     sync::{Arc, Mutex},
@@ -24,6 +27,17 @@ pub enum PromoteError {
     RevisionConflict(ComposerSnapshot),
     TextMismatch(ComposerSnapshot),
 }
+fn stored(snapshot: &ComposerSnapshot) -> Vec<u8> {
+    WireSnapshot::from(snapshot.clone()).encode_to_vec()
+}
+fn recovered(snapshot: WireSnapshot) -> Option<ComposerSnapshot> {
+    Some(ComposerSnapshot {
+        scope: scope_from_wire(snapshot.scope?)?,
+        authority_epoch: snapshot.authority_epoch,
+        text: snapshot.text,
+        revision: snapshot.revision,
+    })
+}
 fn key(scope: &ComposerScope) -> String {
     match scope {
         ComposerScope::Pending(id) => format!("draft:pending:{id}"),
@@ -41,8 +55,10 @@ impl ComposerAuthority {
         let snapshot = self
             .store
             .get(&key(scope))?
-            .map(|b| serde_json::from_slice(&b))
+            .map(|bytes| WireSnapshot::decode(&bytes[..]))
             .transpose()?
+            .and_then(recovered)
+            .filter(|snapshot: &ComposerSnapshot| &snapshot.scope == scope)
             .unwrap_or_else(|| ComposerSnapshot::empty(scope.clone()));
         Ok(ScopeState {
             watch: Watch::new(snapshot),
@@ -91,8 +107,7 @@ impl ComposerAuthority {
         }
         snapshot.revision += 1;
         snapshot.text = command.text;
-        self.store
-            .put(&key(&command.scope), &serde_json::to_vec(&snapshot)?)?;
+        self.store.put(&key(&command.scope), &stored(&snapshot))?;
         state.last_command = Some((command.command_id, snapshot.clone()));
         state.watch.set(snapshot.clone());
         Ok(ReplaceOutcome::Applied {
@@ -100,14 +115,15 @@ impl ComposerAuthority {
             duplicate: false,
         })
     }
-    pub fn promote_pending<T>(
+    /// Commits the caller's fact and rebinds the pending draft in one step.
+    pub fn promote_pending<T, E: From<StorageError>>(
         &self,
         pending_id: &str,
         revision: u64,
         text: &str,
         chat_id: &str,
-        commit: impl FnOnce() -> Result<T, StorageError>,
-    ) -> Result<Result<(T, ComposerSnapshot), PromoteError>, StorageError> {
+        commit: impl FnOnce() -> Result<T, E>,
+    ) -> Result<Result<(T, ComposerSnapshot), PromoteError>, E> {
         let scope = ComposerScope::pending(pending_id);
         let mut scopes = self.inner.lock().unwrap();
         if !scopes.contains_key(&scope) {
@@ -123,8 +139,7 @@ impl ComposerAuthority {
         let result = commit()?;
         let chat_scope = ComposerScope::chat(chat_id);
         let snapshot = ComposerSnapshot::empty(chat_scope.clone());
-        self.store
-            .put(&key(&chat_scope), &serde_json::to_vec(&snapshot)?)?;
+        self.store.put(&key(&chat_scope), &stored(&snapshot))?;
         self.store.remove(&key(&scope))?;
         scopes.remove(&scope);
         scopes.insert(

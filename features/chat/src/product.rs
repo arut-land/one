@@ -12,14 +12,14 @@ use futures_util::lock::Mutex as AsyncMutex;
 use std::sync::Arc;
 
 #[boltffi::data]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ChatRole {
     User,
     Assistant,
 }
 
 #[boltffi::data]
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ChatMessage {
     pub id: u64,
     pub role: ChatRole,

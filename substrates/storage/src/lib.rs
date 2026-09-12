@@ -2,9 +2,9 @@
 //!
 //! FactLog appends immutable, sequenced command outcomes and supports cursor reads,
 //! snapshots, compaction, deduplication, and epoch fencing. DirectoryLog locks across
-//! processes, writes one JSON record per append, fsyncs the file, atomically renames
-//! it, and fsyncs the directory. Compaction requires a snapshot and retains outcomes
-//! for retry deduplication. It never rewrites all state on append.
+//! processes, writes one Protobuf record per append, fsyncs the file, atomically
+//! renames it, and fsyncs the directory. Compaction requires a snapshot and retains
+//! outcomes for retry deduplication. It never rewrites all state on append.
 //!
 //! BlobStore stores SHA-256 addressed raw bytes and verifies them on read. KeyValue
 //! stores each small value independently. Directory keys are hashed to prevent path
@@ -15,28 +15,29 @@ mod directory;
 mod memory;
 pub use directory::{Directory, DirectoryLog};
 pub use memory::{MemoryLog, MemoryStore};
-use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use sha2::{Digest, Sha256};
 
-pub trait Fact: Clone + Serialize + DeserializeOwned + Send + Sync + 'static {}
-impl<T: Clone + Serialize + DeserializeOwned + Send + Sync + 'static> Fact for T {}
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+/// Facts and snapshots are Protobuf rows, as every persisted contract is.
+pub trait Fact: prost::Message + Default + Clone + 'static {}
+impl<T: prost::Message + Default + Clone + 'static> Fact for T {}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Record<F> {
     pub sequence: u64,
     pub epoch: u64,
     pub command_id: String,
     pub fact: F,
 }
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Snapshot {
     pub sequence: u64,
     pub epoch: u64,
     pub data: Vec<u8>,
 }
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum StorageError {
-    Io(String),
-    Corrupt(String),
+    Io(std::io::ErrorKind),
+    Corrupt,
     Conflict { actual: u64 },
     Epoch { current: u64 },
     CursorUnavailable { through: u64 },
@@ -50,12 +51,12 @@ impl std::fmt::Display for StorageError {
 impl std::error::Error for StorageError {}
 impl From<std::io::Error> for StorageError {
     fn from(e: std::io::Error) -> Self {
-        Self::Io(e.to_string())
+        Self::Io(e.kind())
     }
 }
-impl From<serde_json::Error> for StorageError {
-    fn from(e: serde_json::Error) -> Self {
-        Self::Corrupt(e.to_string())
+impl From<prost::DecodeError> for StorageError {
+    fn from(_: prost::DecodeError) -> Self {
+        Self::Corrupt
     }
 }
 pub type Result<T> = std::result::Result<T, StorageError>;
@@ -72,6 +73,7 @@ pub trait FactLog<F: Fact>: Send + Sync {
 }
 pub trait BlobStore: Send + Sync {
     fn put_blob(&self, bytes: &[u8]) -> Result<String>;
+    /// Rejects anything that is not a SHA-256 digest; verifies what it returns.
     fn get_blob(&self, digest: &str) -> Result<Option<Vec<u8>>>;
 }
 pub trait KeyValue: Send + Sync {
@@ -81,4 +83,71 @@ pub trait KeyValue: Send + Sync {
 }
 pub fn digest(bytes: &[u8]) -> String {
     format!("{:x}", Sha256::digest(bytes))
+}
+pub(crate) fn checked_digest(id: &str) -> Result<&str> {
+    if id.len() == 64 && id.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+        Ok(id)
+    } else {
+        Err(StorageError::Corrupt)
+    }
+}
+
+/// The on-disk shape of a record; the fact keeps its own Protobuf encoding.
+#[derive(Clone, PartialEq, prost::Message)]
+pub(crate) struct StoredRecord {
+    #[prost(uint64, tag = "1")]
+    pub sequence: u64,
+    #[prost(uint64, tag = "2")]
+    pub epoch: u64,
+    #[prost(string, tag = "3")]
+    pub command_id: String,
+    #[prost(bytes = "vec", tag = "4")]
+    pub fact: Vec<u8>,
+}
+#[derive(Clone, PartialEq, prost::Message)]
+pub(crate) struct StoredSnapshot {
+    #[prost(uint64, tag = "1")]
+    pub sequence: u64,
+    #[prost(uint64, tag = "2")]
+    pub epoch: u64,
+    #[prost(bytes = "vec", tag = "3")]
+    pub data: Vec<u8>,
+}
+impl<F: Fact> From<&Record<F>> for StoredRecord {
+    fn from(record: &Record<F>) -> Self {
+        Self {
+            sequence: record.sequence,
+            epoch: record.epoch,
+            command_id: record.command_id.clone(),
+            fact: record.fact.encode_to_vec(),
+        }
+    }
+}
+impl StoredRecord {
+    pub(crate) fn into_record<F: Fact>(self) -> Result<Record<F>> {
+        Ok(Record {
+            sequence: self.sequence,
+            epoch: self.epoch,
+            command_id: self.command_id,
+            fact: F::decode(&self.fact[..])?,
+        })
+    }
+}
+impl From<&Snapshot> for StoredSnapshot {
+    fn from(snapshot: &Snapshot) -> Self {
+        Self {
+            sequence: snapshot.sequence,
+            epoch: snapshot.epoch,
+            data: snapshot.data.clone(),
+        }
+    }
+}
+impl From<StoredSnapshot> for Snapshot {
+    fn from(stored: StoredSnapshot) -> Self {
+        Self {
+            sequence: stored.sequence,
+            epoch: stored.epoch,
+            data: stored.data,
+        }
+    }
 }

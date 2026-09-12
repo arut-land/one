@@ -1,5 +1,6 @@
-use crate::facts::{ChatFact, ChatProjection};
-use arut_authority::{Command, Optimism, Projection};
+use crate::facts::ChatProjection;
+use arut_authority::{Command, Projection};
+use arut_protocol::chat::v1::ChatFact;
 
 pub struct ChatCommand {
     pub command_id: String,
@@ -17,8 +18,6 @@ impl Command for ChatCommand {
     type Fact = ChatFact;
     type Projection = ChatProjection;
     type Rejection = Rejection;
-    const QUEUEABLE: bool = true;
-    const OPTIMISM: Optimism = Optimism::Authoritative;
     fn command_id(&self) -> &str {
         &self.command_id
     }
@@ -29,7 +28,7 @@ impl Command for ChatCommand {
         1
     }
     fn apply(self, current: &ChatProjection) -> Result<ChatFact, Rejection> {
-        let exists = current.conversations.contains_key(&self.chat_id);
+        let exists = current.conversation(&self.chat_id).is_some();
         if self.pending_scope.is_none() && !exists {
             return Err(Rejection::ConversationMissing);
         }
@@ -46,8 +45,7 @@ impl Projection for ChatProjection {
         self.apply(fact);
     }
     fn revision(&self, scope: &String) -> u64 {
-        self.conversations
-            .get(scope)
-            .map_or(0, |messages| messages.len() as u64 / 2)
+        self.conversation(scope)
+            .map_or(0, |conversation| conversation.messages.len() as u64 / 2)
     }
 }

@@ -48,3 +48,22 @@ enum ChatRole {
 message ListConversationsRequest {}
 message Conversation { string id = 1; repeated ChatMessage messages = 2; }
 message ListConversationsResponse { repeated Conversation conversations = 1; }
+
+// One command commits an atomic batch of transcript and operation facts.
+message ChatFact {
+  string chat_id = 1;
+  string pending_scope_id = 2;
+  repeated ChatMessage messages = 3;
+  repeated OperationFact operations = 4;
+}
+
+message OperationFact {
+  string operation_id = 1;
+  OperationPhase phase = 2;
+}
+
+enum OperationPhase {
+  OPERATION_PHASE_UNSPECIFIED = 0;
+  OPERATION_PHASE_STARTED = 1;
+  OPERATION_PHASE_COMPLETED = 2;
+}
