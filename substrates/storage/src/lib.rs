@@ -71,9 +71,38 @@ impl From<prost::DecodeError> for StorageError {
 }
 pub type Result<T> = std::result::Result<T, StorageError>;
 
+/// A synchronous decision over the current sequence, unread facts, and retry outcome.
+pub type CommitDecision<'a, F> =
+    dyn FnMut(u64, &[Record<F>], Option<Record<F>>) -> Result<Option<F>> + 'a;
+
 pub trait FactLog<F: Fact>: Send + Sync {
     /// Atomically compare the cursor, fence stale epochs, deduplicate, and append.
-    fn append(&self, expected: u64, epoch: u64, command_id: &str, fact: F) -> Result<Record<F>>;
+    fn append(&self, expected: u64, epoch: u64, command_id: &str, fact: F) -> Result<Record<F>> {
+        let mut fact = Some(fact);
+        let mut duplicate = None;
+        let appended = self.commit(None, epoch, command_id, &mut |actual, _, prior| {
+            if prior.is_some() {
+                duplicate = prior;
+                Ok(None)
+            } else if expected != actual {
+                Err(StorageError::Conflict { actual })
+            } else {
+                Ok(fact.take())
+            }
+        })?;
+        Ok(appended.or(duplicate).expect("append decides once"))
+    }
+    /// Refresh, inspect a retry, and optionally append under one storage lock.
+    /// `decide` runs once after fencing and cursor validation; it must not
+    /// re-enter this log. Return `None` to leave the log unchanged. A `None`
+    /// cursor skips refresh, as used by `append`.
+    fn commit(
+        &self,
+        cursor: Option<u64>,
+        epoch: u64,
+        command_id: &str,
+        decide: &mut CommitDecision<'_, F>,
+    ) -> Result<Option<Record<F>>>;
     fn outcome_of(&self, command_id: &str) -> Result<Option<Record<F>>>;
     /// Reads records strictly after the acknowledged cursor.
     fn read_from(&self, cursor: u64) -> Result<Vec<Record<F>>>;

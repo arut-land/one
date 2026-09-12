@@ -115,9 +115,19 @@ impl<F: Fact> DirectoryLog<F> {
     }
 }
 impl<F: Fact> FactLog<F> for DirectoryLog<F> {
-    fn append(&self, expected: u64, epoch: u64, id: &str, fact: F) -> Result<Record<F>> {
+    fn commit(
+        &self,
+        cursor: Option<u64>,
+        epoch: u64,
+        id: &str,
+        decide: &mut crate::CommitDecision<'_, F>,
+    ) -> Result<Option<Record<F>>> {
         let _lock = self.lock()?;
-        let records = self.records()?;
+        let through = self.compacted()?;
+        if cursor.is_some_and(|cursor| cursor < through) {
+            return Err(StorageError::CursorUnavailable { through });
+        }
+        let mut records = self.records()?;
         let snapshot = self.saved()?;
         let actual = records.last().map_or_else(
             || snapshot.as_ref().map_or(0, |s| s.sequence),
@@ -129,10 +139,12 @@ impl<F: Fact> FactLog<F> for DirectoryLog<F> {
         if epoch < current {
             return Err(StorageError::Epoch { current });
         }
-        if let Some(record) = self.outcome(id, &records)? {
-            return Ok(record);
-        }
-        if expected != actual {
+        let duplicate = self.outcome(id, &records)?;
+        records.retain(|record| cursor.is_some_and(|cursor| record.sequence > cursor));
+        let Some(fact) = decide(actual, &records, duplicate)? else {
+            return Ok(None);
+        };
+        if cursor.is_some_and(|cursor| cursor > actual) {
             return Err(StorageError::Conflict { actual });
         }
         let record = Record {
@@ -145,8 +157,7 @@ impl<F: Fact> FactLog<F> for DirectoryLog<F> {
             &self.record_path(record.sequence),
             &StoredRecord::from(&record).encode_to_vec(),
         )?;
-        tracing::debug!(sequence = record.sequence, epoch, "fact appended");
-        Ok(record)
+        Ok(Some(record))
     }
     fn outcome_of(&self, id: &str) -> Result<Option<Record<F>>> {
         let _lock = self.lock()?;
