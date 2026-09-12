@@ -1,5 +1,7 @@
+import ArutFfi
 import ArutSurface
 import SwiftUI
 struct ContentView: View {
-    var body: some View { ChatView() }
+    let session: ProductSessionHandle
+    var body: some View { ChatView(session: session) }
 }
