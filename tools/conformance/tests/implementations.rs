@@ -59,8 +59,11 @@ fn independent_writers_compare_and_append_atomically() {
     std::fs::remove_dir_all(path).unwrap();
 }
 #[tokio::test]
-async fn memory_rpc() {
-    rpc(&arut_transport_memory::MemoryChannel::new(Arc::new(Echo))).await;
+async fn in_process_registry_rpc() {
+    let registry = arut_rpc::RpcRegistry::default()
+        .register(Arc::new(Echo))
+        .unwrap();
+    rpc(&registry).await;
 }
 #[tokio::test]
 async fn connect_http_rpc() {
@@ -95,7 +98,7 @@ async fn unix_socket_rpc() {
         .await
         .unwrap();
     });
-    rpc(&arut_transport_ipc::IpcChannel::new(socket).unwrap()).await;
+    rpc(&arut_transport_ipc::unix_socket(&socket).unwrap()).await;
     server.abort();
     std::fs::remove_dir_all(path).unwrap();
 }

@@ -55,7 +55,7 @@ impl Host for ChildHost {
                     "daemon exited before readiness",
                 ));
             }
-            let channel = arut_transport_ipc::IpcChannel::new(&socket).map_err(unavailable)?;
+            let channel = arut_transport_ipc::unix_socket(&socket).map_err(unavailable)?;
             Ok(Arc::new(ChildChannel {
                 channel: ScheduledChannel::new(Arc::new(channel), spawner),
                 child: std::sync::Mutex::new(child),
