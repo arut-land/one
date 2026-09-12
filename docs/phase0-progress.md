@@ -10,6 +10,8 @@ Status as of 2026-09-12. Phase 0 of `docs/ROADMAP.md` is implemented on the Rust
 | `cargo test --workspace` | pass, 30 tests |
 | `cargo clippy --workspace --all-targets -- -D warnings` | pass |
 | `cargo check -p arut_ffi --target wasm32-unknown-unknown` | pass |
+| `mise run install` (BoltFFI wasm pack, pnpm install) | pass |
+| `pnpm check` and `pnpm build` (web, Chromium, VS Code) | pass |
 
 A Node smoke run of the packed wasm module succeeded: it imports only `__boltffi_wake`, `__boltffi_stream_wake`, and the host ID callback, and `createBrowserSession(...).chat().state()` returns a valid empty conversation. No thread imports remain.
 
@@ -34,8 +36,7 @@ A Node smoke run of the packed wasm module succeeded: it imports only `__boltffi
 
 ## Not yet verified
 
-- The TypeScript workspace (`pnpm check`, `pnpm build`) has not been run; `node_modules` and `bindings/generated` are absent in this checkout.
-- The GTK surface compiles but has not been launched against a running `arutd`.
+- The GTK surface has been launched once: it spawned `arutd`, connected over the Unix socket, and the daemon created the storage tree under `$XDG_DATA_HOME/arut`. Sending a message through the GTK window has not been exercised yet.
 - Android and Apple builds have not been run; their adapters are template output and their views were reduced to bind to the new handles.
 - Browser invalidation delivery has been exercised only by a Node smoke run, not in a page with a UI.
 - No conformance suite exists for `BlobStore` yet; only `RpcChannel` and `FactLog`.
