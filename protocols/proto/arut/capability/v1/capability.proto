@@ -1,0 +1,45 @@
+syntax = "proto3";
+
+package arut.capability.v1;
+
+service CapabilityService {
+  rpc GetCapabilities(GetCapabilitiesRequest) returns (GetCapabilitiesResponse);
+}
+
+message GetCapabilitiesRequest {}
+
+message GetCapabilitiesResponse {
+  CapabilityManifest manifest = 1;
+}
+
+message CapabilityManifest {
+  repeated ServiceCapability services = 1;
+}
+
+message ServiceCapability {
+  string package = 1;
+  string service = 2;
+  repeated MethodCapability methods = 3;
+  bool available = 4;
+  string unavailable_reason = 5;
+  repeated string permissions = 6;
+  map<string, uint64> limits = 7;
+  string version = 8;
+  map<string, string> extensions = 9;
+}
+
+message MethodCapability {
+  string name = 1;
+  string procedure = 2;
+  string input = 3;
+  string output = 4;
+  RpcStreamingKind streaming = 5;
+}
+
+enum RpcStreamingKind {
+  RPC_STREAMING_KIND_UNSPECIFIED = 0;
+  RPC_STREAMING_KIND_UNARY = 1;
+  RPC_STREAMING_KIND_SERVER = 2;
+  RPC_STREAMING_KIND_CLIENT = 3;
+  RPC_STREAMING_KIND_BIDIRECTIONAL = 4;
+}

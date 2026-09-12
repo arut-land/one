@@ -1,0 +1,32 @@
+name: Arut
+options:
+  bundleIdPrefix: dev.arut
+packages:
+  ArutBindings:
+    path: ../../bindings/swift
+  ArutSurface:
+    path: shared
+targets:
+  ArutMac:
+    type: application
+    platform: macOS
+    deploymentTarget: "13.0"
+    sources:
+      - shared/app
+    dependencies:
+      - package: ArutBindings
+      - package: ArutSurface
+    settings:
+      PRODUCT_BUNDLE_IDENTIFIER: dev.arut.macos
+  ArutiOS:
+    type: application
+    platform: iOS
+    deploymentTarget: "16.0"
+    sources:
+      - shared/app
+    dependencies:
+      - package: ArutBindings
+      - package: ArutSurface
+    settings:
+      PRODUCT_BUNDLE_IDENTIFIER: dev.arut.ios
+      TARGETED_DEVICE_FAMILY: "1,2"

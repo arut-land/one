@@ -1,0 +1,42 @@
+[package]
+name = "arut_ffi"
+crate = "arut_ffi"
+
+[targets.apple]
+enabled = true
+output = "../generated/apple"
+include_macos = true
+deployment_target = "16.0"
+
+[targets.apple.swift]
+module_name = "ArutFfi"
+
+[targets.apple.spm]
+layout = "ffi-only"
+
+[targets.android]
+enabled = true
+output = "../generated/android"
+min_sdk = 24
+
+[targets.android.kotlin]
+package = "dev.arut.ffi"
+api_style = "top_level"
+
+[targets.csharp]
+enabled = true
+output = "../generated/csharp"
+namespace = "Arut.Ffi"
+package_id = "Arut.Ffi"
+target_framework = "net8.0"
+runtime_identifiers = ["current"]
+
+[targets.wasm]
+output = "../generated/wasm"
+
+[targets.wasm.npm]
+package_name = "@arut/ffi"
+targets = ["bundler", "web", "nodejs"]
+
+[targets.wasm.optimize]
+enabled = false

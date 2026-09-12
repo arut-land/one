@@ -1,0 +1,44 @@
+syntax = "proto3";
+
+package arut.chat.v1;
+
+import "arut/chat/composer/v1/composer.proto";
+
+service ChatService {
+  rpc SendMessage(SendMessageRequest) returns (SendMessageResponse);
+  rpc StartChat(StartChatRequest) returns (StartChatResponse);
+}
+
+message SendMessageRequest {
+  string chat_id = 1;
+  string text = 2;
+}
+
+message SendMessageResponse {
+  repeated ChatMessage messages = 1;
+}
+
+message StartChatRequest {
+  string pending_scope_id = 1;
+  string command_id = 2;
+  uint64 expected_revision = 3;
+  string text = 4;
+}
+
+message StartChatResponse {
+  string chat_id = 1;
+  repeated ChatMessage messages = 2;
+  arut.chat.composer.v1.ComposerSnapshot composer = 3;
+}
+
+message ChatMessage {
+  uint64 id = 1;
+  ChatRole role = 2;
+  string text = 3;
+}
+
+enum ChatRole {
+  CHAT_ROLE_UNSPECIFIED = 0;
+  CHAT_ROLE_USER = 1;
+  CHAT_ROLE_ASSISTANT = 2;
+}

@@ -1,0 +1,29 @@
+[workspace]
+resolver = "3"
+members = [
+    "bindings/ffi",
+    "bindings/qt",
+    "backend/composer",
+    "features/chat",
+    "protocols",
+    "protocols/build",
+    "protocols/rpc",
+    "product/session",
+    "substrates/watch",
+    "surfaces/linux",
+    "transports/http",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+
+[workspace.dependencies]
+arut-bindings-qt = { path = "bindings/qt" }
+arut-feature-chat = { path = "features/chat" }
+arut-protocol = { path = "protocols" }
+arut-product-session = { path = "product/session" }
+arut-rpc = { path = "protocols/rpc" }
+arut-watch = { path = "substrates/watch" }
+arut-transport-http = { path = "transports/http" }

@@ -1,0 +1,15 @@
+[package]
+name = "arut-protocol"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+arut-rpc.workspace = true
+prost = "0.14.1"
+
+[build-dependencies]
+arut-protocol-build = { path = "build" }
+
+[dev-dependencies]
+futures-executor = "0.3.31"
