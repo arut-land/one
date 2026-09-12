@@ -65,6 +65,25 @@ impl HttpRpcChannel {
 fn io(error: reqwest::Error) -> Status {
     Status::new(Code::Unavailable, error.to_string())
 }
+async fn bounded_body(response: reqwest::Response) -> Result<Vec<u8>, Status> {
+    if response
+        .content_length()
+        .is_some_and(|length| length > framing::MAX_MESSAGE as u64)
+    {
+        return Err(framing::message_limit());
+    }
+    let mut stream = response.bytes_stream();
+    let mut body = Vec::new();
+    while let Some(chunk) = stream.next().await {
+        let chunk = chunk.map_err(io)?;
+        if chunk.len() > framing::MAX_MESSAGE - body.len() {
+            return Err(framing::message_limit());
+        }
+        body.extend_from_slice(&chunk);
+    }
+    Ok(body)
+}
+
 pub(crate) fn metadata(headers: &axum::http::HeaderMap) -> Metadata {
     let mut result = Metadata::default();
     for (key, value) in headers {
@@ -79,6 +98,9 @@ pub(crate) fn metadata(headers: &axum::http::HeaderMap) -> Metadata {
 }
 impl RpcChannel for HttpRpcChannel {
     fn unary(&self, procedure: &str, request: Request<Vec<u8>>) -> RpcFuture<Response<Vec<u8>>> {
+        if request.message.len() > framing::MAX_MESSAGE {
+            return Box::pin(async { Err(framing::message_limit()) });
+        }
         let request = self
             .request(procedure, &request.metadata, false)
             .body(request.message);
@@ -86,7 +108,7 @@ impl RpcChannel for HttpRpcChannel {
             let response = request.send().await.map_err(io)?;
             let success = response.status().is_success();
             let metadata = metadata(response.headers());
-            let body = response.bytes().await.map_err(io)?.to_vec();
+            let body = bounded_body(response).await?;
             if !success {
                 return Err(framing::parse_error(
                     &serde_json::from_slice(&body).unwrap_or_default(),
@@ -103,15 +125,14 @@ impl RpcChannel for HttpRpcChannel {
         procedure: &str,
         request: Request<Vec<u8>>,
     ) -> RpcFuture<Response<RpcStream<Vec<u8>>>> {
-        let request = self
-            .request(procedure, &request.metadata, true)
-            .body(framing::envelope(0, &request.message));
+        let body = framing::envelope(0, &request.message);
+        let request = self.request(procedure, &request.metadata, true);
         Box::pin(async move {
-            let response = request.send().await.map_err(io)?;
+            let response = request.body(body?).send().await.map_err(io)?;
             let metadata = metadata(response.headers());
             if !response.status().is_success() {
                 return Err(framing::parse_error(
-                    &response.json::<serde_json::Value>().await.map_err(io)?,
+                    &serde_json::from_slice(&bounded_body(response).await?).unwrap_or_default(),
                 ));
             }
             let stream = response.bytes_stream();
