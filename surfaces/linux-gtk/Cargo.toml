@@ -4,11 +4,26 @@ version.workspace = true
 edition.workspace = true
 license-file = "../../LICENSE-FSL"
 
-[dependencies]
+[target.'cfg(target_os = "linux")'.dependencies]
 arut-runtime-local.workspace = true
 arut-product-session.workspace = true
 arut-feature-chat.workspace = true
-gtk = { package = "gtk4", version = "0.10.3" }
+arut-watch.workspace = true
+arut-rpc.workspace = true
+gtk = { package = "gtk4", version = "0.11", features = ["v4_20"] }
 
 [lints]
 workspace = true
+
+[target.'cfg(target_os = "linux")'.dependencies.relm4]
+version = "0.11"
+default-features = false
+features = ["macros"]
+
+[target.'cfg(target_os = "linux")'.dependencies.ashpd]
+version = "0.13"
+default-features = false
+features = ["settings", "gtk4", "glib", "tokio"]
+
+[target.'cfg(target_os = "linux")'.dependencies.futures-util]
+version = "0.3"
