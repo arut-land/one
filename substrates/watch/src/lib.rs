@@ -91,14 +91,26 @@ impl<T: Clone + PartialEq + Send + Sync + 'static> Watch<T> {
     }
 
     pub fn subscribe(&self) -> Arc<Subscription<u64>> {
+        self.subscribe_with(|state| state.revision)
+    }
+
+    /// Coalesced values read from the same receiver that observes the change.
+    pub fn subscribe_values(&self) -> Arc<Subscription<T>> {
+        self.subscribe_with(|state| state.value.clone())
+    }
+
+    fn subscribe_with<U: Send + 'static>(
+        &self,
+        project: fn(&Versioned<T>) -> U,
+    ) -> Arc<Subscription<U>> {
         let mut receiver = self.0.subscribe();
         // New receivers have already seen the current value. Mark an initial
         // invalidation; subsequent writes may coalesce before it is consumed.
         receiver.mark_changed();
-        let stream = futures_lite::stream::unfold(receiver, |mut receiver| async move {
+        let stream = futures_lite::stream::unfold(receiver, move |mut receiver| async move {
             receiver.changed().await.ok()?;
-            let revision = receiver.borrow_and_update().revision;
-            Some((revision, receiver))
+            let value = project(&receiver.borrow_and_update());
+            Some((value, receiver))
         });
         Arc::new(Subscription(Mutex::new(Box::pin(stream))))
     }

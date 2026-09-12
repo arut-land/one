@@ -31,6 +31,13 @@ pub struct ComposerState {
     pub error: Option<ComposerError>,
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum SnapshotKind {
+    Current,
+    Conflict,
+    Promotion,
+}
+
 #[derive(Clone)]
 pub struct ComposerClient {
     service: ComposerServiceClient,
@@ -90,7 +97,7 @@ impl ComposerClient {
         match response {
             Ok(response) => response.message.snapshot.map_or_else(
                 || self.apply_error(ComposerError::SnapshotMissing),
-                |snapshot| self.apply_snapshot(snapshot, false),
+                |snapshot| self.apply_snapshot(snapshot, SnapshotKind::Current),
             ),
             Err(error) => self.apply_error(error.into()),
         }
@@ -119,13 +126,13 @@ impl ComposerClient {
                 Some(replace_composer_response::Outcome::Applied(applied)) => {
                     applied.snapshot.map_or_else(
                         || self.apply_error(ComposerError::SnapshotMissing),
-                        |snapshot| self.apply_snapshot(snapshot, false),
+                        |snapshot| self.apply_snapshot(snapshot, SnapshotKind::Current),
                     )
                 }
                 Some(replace_composer_response::Outcome::RevisionConflict(conflict)) => {
                     conflict.snapshot.map_or_else(
                         || self.apply_error(ComposerError::SnapshotMissing),
-                        |snapshot| self.apply_snapshot(snapshot, true),
+                        |snapshot| self.apply_snapshot(snapshot, SnapshotKind::Conflict),
                     )
                 }
                 Some(replace_composer_response::Outcome::AuthorityMismatch(mismatch)) => {
@@ -196,7 +203,7 @@ impl ComposerClient {
                     if let Some(snapshot) = response.snapshot {
                         let _operation = self.operations.lock().await;
                         if snapshot.scope.clone().and_then(scope_from_wire) == Some(self.scope()) {
-                            self.apply_snapshot(snapshot, false);
+                            self.apply_snapshot(snapshot, SnapshotKind::Current);
                         }
                     }
                 }
@@ -218,7 +225,7 @@ impl ComposerClient {
             return Err(ComposerError::ScopeMismatch);
         }
         self.scope.set(ComposerScope::chat(chat_id));
-        self.apply_snapshot(snapshot, false);
+        self.apply_snapshot(snapshot, SnapshotKind::Promotion);
         Ok(())
     }
 
@@ -226,27 +233,33 @@ impl ComposerClient {
         Arc::clone(&self.operations)
     }
 
-    fn apply_snapshot(&self, snapshot: WireSnapshot, conflict: bool) -> ComposerState {
+    fn apply_snapshot(&self, snapshot: WireSnapshot, kind: SnapshotKind) -> ComposerState {
         let Some(scope) = snapshot.scope.clone().and_then(scope_from_wire) else {
             return self.apply_error(ComposerError::ScopeMissing);
         };
         if scope != self.scope() {
             return self.apply_error(ComposerError::ScopeMismatch);
         }
+        let epoch = self.authority_epoch.load(Ordering::Acquire);
+        if kind != SnapshotKind::Promotion
+            && (snapshot.authority_epoch < epoch
+                || (snapshot.authority_epoch == epoch && snapshot.revision < self.state().revision))
+        {
+            return self.state();
+        }
         self.authority_epoch
             .store(snapshot.authority_epoch, Ordering::Release);
         let current = snapshot.revision;
         self.state.update(|state| {
-            if snapshot.revision >= state.revision || snapshot.revision == 0 {
-                state.text = snapshot.text;
-                state.revision = snapshot.revision;
-            }
-            state.status = if conflict {
+            state.text = snapshot.text;
+            state.revision = snapshot.revision;
+            state.status = if kind == SnapshotKind::Conflict {
                 ComposerStatus::Failed
             } else {
                 ComposerStatus::Synced
             };
-            state.error = conflict.then_some(ComposerError::RevisionConflict { current });
+            state.error = (kind == SnapshotKind::Conflict)
+                .then_some(ComposerError::RevisionConflict { current });
         });
         self.state.get()
     }
@@ -265,6 +278,31 @@ mod tests {
     use super::*;
     use crate::composer::authority::ComposerAuthority;
     use crate::composer::service::ComposerServiceImpl;
+
+    #[test]
+    fn stale_zero_revision_and_old_epoch_do_not_replace_the_current_draft() {
+        let composer = ComposerClient::new(
+            ComposerServiceClient::direct(Arc::new(ComposerServiceImpl::new(Arc::new(
+                ComposerAuthority::default(),
+            )))),
+            ComposerScope::chat("chat"),
+            Arc::new(crate::ports::NativeIds),
+            Arc::new(Cancellation::root()),
+        );
+        let snapshot = |epoch, revision, text: &str| WireSnapshot {
+            scope: Some(scope_to_wire(&ComposerScope::chat("chat"))),
+            authority_epoch: epoch,
+            revision,
+            text: text.into(),
+        };
+        composer.apply_snapshot(snapshot(2, 5, "kept"), SnapshotKind::Current);
+        composer.apply_snapshot(snapshot(2, 0, "stale"), SnapshotKind::Current);
+        composer.apply_snapshot(snapshot(1, 99, "old authority"), SnapshotKind::Current);
+        assert_eq!(composer.state().text, "kept");
+        assert_eq!(composer.authority_epoch.load(Ordering::Acquire), 2);
+        composer.apply_snapshot(snapshot(3, 0, "new authority"), SnapshotKind::Current);
+        assert_eq!(composer.state().text, "new authority");
+    }
 
     #[test]
     fn promotion_rejects_a_snapshot_for_another_scope_before_rebinding() {

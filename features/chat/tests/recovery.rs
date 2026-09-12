@@ -23,13 +23,15 @@ fn restart_recovers_transcript_operations_drafts_and_send_deduplication() {
     let _ = std::fs::remove_dir_all(&path);
     let directory = Arc::new(Directory::open(&path).unwrap());
     let composer = Arc::new(ComposerAuthority::with_store(directory.clone()));
-    composer.replace(ReplaceComposer {
-        scope: ComposerScope::pending("owner"),
-        command_id: "draft".into(),
-        authority_epoch: 1,
-        base_revision: 0,
-        text: "first".into(),
-    });
+    composer
+        .replace(ReplaceComposer {
+            scope: ComposerScope::pending("owner"),
+            command_id: "draft".into(),
+            authority_epoch: 1,
+            base_revision: 0,
+            text: "first".into(),
+        })
+        .unwrap();
     let service = ChatServiceImpl::new(
         composer.clone(),
         Arc::new(directory.log("chat").unwrap()),
@@ -52,13 +54,15 @@ fn restart_recovers_transcript_operations_drafts_and_send_deduplication() {
     let sent = block_on(service.send_message(Request::new(send.clone())))
         .unwrap()
         .message;
-    composer.replace(ReplaceComposer {
-        scope: ComposerScope::chat(&first.chat_id),
-        command_id: "next-draft".into(),
-        authority_epoch: 1,
-        base_revision: 0,
-        text: "unfinished".into(),
-    });
+    composer
+        .replace(ReplaceComposer {
+            scope: ComposerScope::chat(&first.chat_id),
+            command_id: "next-draft".into(),
+            authority_epoch: 1,
+            base_revision: 0,
+            text: "unfinished".into(),
+        })
+        .unwrap();
     drop(service);
     drop(composer);
     let recovered_composer = Arc::new(ComposerAuthority::with_store(directory.clone()));
@@ -73,6 +77,7 @@ fn restart_recovers_transcript_operations_drafts_and_send_deduplication() {
     assert_eq!(
         recovered_composer
             .snapshot(&ComposerScope::chat(&first.chat_id))
+            .unwrap()
             .text,
         "unfinished"
     );

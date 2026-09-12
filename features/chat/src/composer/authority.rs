@@ -52,37 +52,35 @@ impl ComposerAuthority {
         }
     }
     fn load(&self, scope: &ComposerScope) -> Result<ScopeState, StorageError> {
-        let snapshot = self
-            .store
-            .get(&key(scope))?
-            .map(|bytes| WireSnapshot::decode(&bytes[..]))
-            .transpose()?
-            .and_then(recovered)
-            .filter(|snapshot: &ComposerSnapshot| &snapshot.scope == scope)
-            .unwrap_or_else(|| ComposerSnapshot::empty(scope.clone()));
+        let snapshot = match self.store.get(&key(scope))? {
+            None => ComposerSnapshot::empty(scope.clone()),
+            Some(bytes) => recovered(WireSnapshot::decode(&bytes[..])?)
+                .filter(|snapshot| &snapshot.scope == scope)
+                .ok_or(StorageError::Corrupt)?,
+        };
         Ok(ScopeState {
             watch: Watch::new(snapshot),
             last_command: None,
         })
     }
-    pub fn snapshot(&self, scope: &ComposerScope) -> ComposerSnapshot {
-        self.try_snapshot(scope).expect("read composer recovery")
-    }
-    fn try_snapshot(&self, scope: &ComposerScope) -> Result<ComposerSnapshot, StorageError> {
+    pub fn snapshot(&self, scope: &ComposerScope) -> Result<ComposerSnapshot, StorageError> {
         let mut scopes = self.inner.lock().unwrap();
         if !scopes.contains_key(scope) {
             scopes.insert(scope.clone(), self.load(scope)?);
         }
         Ok(scopes[scope].watch.get())
     }
-    pub fn changes(&self, scope: &ComposerScope) -> Arc<Subscription<u64>> {
-        self.snapshot(scope);
-        self.inner.lock().unwrap()[scope].watch.subscribe()
+    pub fn changes(
+        &self,
+        scope: &ComposerScope,
+    ) -> Result<Arc<Subscription<ComposerSnapshot>>, StorageError> {
+        let mut scopes = self.inner.lock().unwrap();
+        if !scopes.contains_key(scope) {
+            scopes.insert(scope.clone(), self.load(scope)?);
+        }
+        Ok(scopes[scope].watch.subscribe_values())
     }
-    pub fn replace(&self, command: ReplaceComposer) -> ReplaceOutcome {
-        self.try_replace(command).expect("recover composer")
-    }
-    pub fn try_replace(&self, command: ReplaceComposer) -> Result<ReplaceOutcome, StorageError> {
+    pub fn replace(&self, command: ReplaceComposer) -> Result<ReplaceOutcome, StorageError> {
         let mut scopes = self.inner.lock().unwrap();
         if !scopes.contains_key(&command.scope) {
             scopes.insert(command.scope.clone(), self.load(&command.scope)?);
@@ -105,7 +103,10 @@ impl ComposerAuthority {
         if command.base_revision != snapshot.revision {
             return Ok(ReplaceOutcome::RevisionConflict { snapshot });
         }
-        snapshot.revision += 1;
+        snapshot.revision = snapshot
+            .revision
+            .checked_add(1)
+            .ok_or(StorageError::Corrupt)?;
         snapshot.text = command.text;
         self.store.put(&key(&command.scope), &stored(&snapshot))?;
         state.last_command = Some((command.command_id, snapshot.clone()));
@@ -150,5 +151,83 @@ impl ComposerAuthority {
             },
         );
         Ok(Ok((result, snapshot)))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use arut_protocol::chat::composer::v1::{
+        ComposerService, GetComposerRequest, WatchComposerRequest,
+    };
+    use arut_rpc::{Code, Request};
+    use futures_executor::block_on;
+
+    struct FailedStore;
+    impl KeyValue for FailedStore {
+        fn get(&self, _: &str) -> Result<Option<Vec<u8>>, StorageError> {
+            Err(StorageError::Io(std::io::ErrorKind::PermissionDenied))
+        }
+        fn put(&self, _: &str, _: &[u8]) -> Result<(), StorageError> {
+            Err(StorageError::Corrupt)
+        }
+        fn remove(&self, _: &str) -> Result<(), StorageError> {
+            Err(StorageError::Corrupt)
+        }
+    }
+
+    #[test]
+    fn recovery_failures_cross_rpc_as_status_instead_of_panics() {
+        let service = super::super::service::ComposerServiceImpl::new(Arc::new(
+            ComposerAuthority::with_store(Arc::new(FailedStore)),
+        ));
+        let scope = Some(super::super::service::scope_to_wire(
+            &ComposerScope::pending("pending"),
+        ));
+        assert_eq!(
+            block_on(service.get_composer(Request::new(GetComposerRequest {
+                scope: scope.clone()
+            })))
+            .unwrap_err()
+            .code,
+            Code::Internal
+        );
+        let result = block_on(service.watch_composer(Request::new(WatchComposerRequest {
+            scope,
+            after_revision: 0,
+        })));
+        assert!(matches!(result, Err(error) if error.code == Code::Internal));
+    }
+
+    #[test]
+    fn a_valid_protobuf_with_the_wrong_scope_is_corruption() {
+        let store = Arc::new(MemoryStore::default());
+        let scope = ComposerScope::pending("pending");
+        store
+            .put(
+                &key(&scope),
+                &stored(&ComposerSnapshot::empty(ComposerScope::chat("other"))),
+            )
+            .unwrap();
+        let authority = ComposerAuthority::with_store(store);
+        assert_eq!(authority.snapshot(&scope), Err(StorageError::Corrupt));
+        assert!(matches!(
+            authority.changes(&scope),
+            Err(StorageError::Corrupt)
+        ));
+    }
+
+    #[test]
+    fn subscription_remains_bound_to_its_original_scope_instance() {
+        let authority = ComposerAuthority::default();
+        let scope = ComposerScope::pending("pending");
+        let changes = authority.changes(&scope).unwrap();
+        assert_eq!(block_on(changes.changed()).unwrap().revision, 0);
+        authority
+            .promote_pending("pending", 0, "", "chat", || Ok::<_, StorageError>(()))
+            .unwrap()
+            .unwrap();
+        authority.snapshot(&scope).unwrap();
+        assert_eq!(block_on(changes.changed()), None);
     }
 }
