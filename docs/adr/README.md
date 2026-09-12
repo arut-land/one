@@ -25,6 +25,7 @@ ADRs record decisions that are hard to reverse, surprising without context, and 
 | [0019](0019-iroh-for-connectivity.md) | Connectivity, identity, relay, and blob transfer use iroh | Accepted, amends 0003, 0009, 0012 |
 | [0020](0020-relm4-for-the-linux-surface.md) | The Linux surface is written with relm4 | Accepted, amends 0013 |
 | [0021](0021-no-rust-reactive-framework-in-the-core.md) | No Rust reactive framework in the core | Accepted |
+| [0022](0022-fluent-as-the-single-string-source.md) | One Fluent string source generated into native resources | Accepted, amends 0016 |
 
 The records that shaped the first vertical slice live in git history before the reset commit and are not authoritative.
 
