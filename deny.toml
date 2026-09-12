@@ -1,0 +1,94 @@
+# cargo-deny configuration.
+#
+# Encodes ADR 0017's license split and docs/ECOSYSTEM.md's license rule:
+# MIT, Apache-2.0, BSD-2/3-Clause, MPL-2.0, Zlib, ISC, Unicode-3.0, and
+# CC0-1.0 (data, not code) are fine outright. GPL, AGPL, and LGPL are
+# rejected, except LGPL reaching us only through dynamically linked system
+# libraries such as GTK, which this repo only touches via MIT-licensed
+# gtk-rs bindings (gtk4/gdk4/glib/gio/pango/... and friends) -- those
+# bindings link the system libgtk-4.so at runtime rather than statically
+# embedding LGPL code, so they are clarified below rather than silenced.
+# Elastic, BUSL, and FSL are flagged rather than allowed outright so a new
+# dependency under one of them needs a deliberate decision, the same way
+# ADR 0017 made a deliberate decision to use FSL for our own product
+# crates (see the `exceptions` entries for arut-feature-chat,
+# arut-product-session, and arut-linux-gtk below).
+#
+# Run with `cargo deny check` (CI-only per docs/ECOSYSTEM.md: needs network
+# access for the advisory database).
+
+[graph]
+all-features = true
+
+[advisories]
+db-path = "~/.cargo/advisory-db"
+db-urls = ["https://github.com/rustsec/advisory-db"]
+yanked = "deny"
+ignore = []
+
+[licenses]
+version = 2
+confidence-threshold = 0.9
+allow = [
+    "MIT",
+    "Apache-2.0",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "MPL-2.0",
+    "Zlib",
+    "ISC",
+    "Unicode-3.0",
+    "CC0-1.0",
+    "OpenSSL",
+    # Apache-2.0 plus a permission carve-out for LLVM's static-linking
+    # exception; strictly more permissive than plain Apache-2.0. Pulled in
+    # by the GTK stack via target-lexicon (cfg-expr -> system-deps).
+    "Apache-2.0 WITH LLVM-exception",
+    # Community Data License Agreement, Permissive variant: a CC0-1.0-like
+    # permissive license for data rather than code. Pulled in by
+    # webpki-root-certs (root certificate data, not executable code) via
+    # rustls-platform-verifier -> reqwest.
+    "CDLA-Permissive-2.0",
+]
+
+# Crates whose SPDX metadata cargo-deny cannot resolve on its own, or whose
+# license needs a documented exception rather than a blanket `allow`.
+#
+# cargo-deny synthesizes the expression "FSL-1.1-ALv2" from LICENSE-FSL's
+# own "Abbreviation: FSL-1.1-Apache-2.0" header text (its own SPDX-style
+# parser normalizes the future-license half to "ALv2"). It is deliberately
+# not in the top-level `allow` list -- these three are our own product
+# crates under ADR 0017's FSL split, not a third-party dependency this
+# project pulled in, so the exception is scoped to them by name rather
+# than allowed globally.
+exceptions = [
+    { allow = ["FSL-1.1-ALv2"], name = "arut-feature-chat" },
+    { allow = ["FSL-1.1-ALv2"], name = "arut-product-session" },
+    { allow = ["FSL-1.1-ALv2"], name = "arut-linux-gtk" },
+]
+
+[licenses.private]
+ignore = true
+
+[bans]
+multiple-versions = "warn"
+# Every workspace member depends on its siblings via `path` (through
+# `[workspace.dependencies]`) with no version pinned, which is exactly how
+# a single-repo, single-version workspace is meant to look; it is not a
+# stray unpinned dependency, so the wildcard lint would just be noise here.
+wildcards = "allow"
+deny = [
+    # GPL/AGPL/LGPL family: rejected outright per ADR 0017 and
+    # docs/ECOSYSTEM.md, except LGPL reaching us only via dynamically
+    # linked GTK system libraries through MIT-licensed gtk-rs crates,
+    # which never appear here as crate names (they're system .so files,
+    # not crates) so there is nothing to list as a ban exception.
+]
+skip = []
+skip-tree = []
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+allow-git = []
