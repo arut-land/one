@@ -88,6 +88,7 @@ name = "arut-linux-gtk"
 version = "0.1.0"
 dependencies = [
  "arut-feature-chat",
+ "arut-i18n",
  "arut-product-session",
  "arut-rpc",
  "arut-runtime-local",

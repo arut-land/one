@@ -1,27 +1,58 @@
+//! Every sentence this surface shows, looked up in the shared Fluent source.
+//!
+//! The strings themselves live once in `product/i18n` (ADR 0022); this module
+//! is the mapping from a typed core value to the message id that describes it,
+//! which for the error enums is `message_key` on the enum itself. GTK gives us
+//! the person's language list, so the negotiation happens here rather than in
+//! the core, which never learns the locale.
+
 use arut_feature_chat::{
     composer::product::ComposerStatus,
     errors::{ChatError, ComposerError, NodeFailure},
     product::{ChatRole, ChatStatus},
 };
+use arut_i18n::Localizer;
 use arut_product_session::FeatureAvailability;
 use arut_rpc::{Code, Status};
+use gtk::glib;
+use std::sync::OnceLock;
 
-pub fn availability(value: FeatureAvailability) -> &'static str {
-    match value {
-        FeatureAvailability::Unknown => "Checking node availability…",
-        FeatureAvailability::Available => "Ready",
-        FeatureAvailability::ReportedUnavailable => "Composer is unavailable on this node.",
-        FeatureAvailability::NotAdvertised => "This node does not offer a composer.",
-        FeatureAvailability::ManifestUnreachable => "Could not read this node's capabilities.",
-    }
+/// The process-wide localizer, negotiated once from GTK's own language list.
+///
+/// `glib::language_names()` is the list GLib already resolved from `LANGUAGE`,
+/// `LC_MESSAGES` and the rest, best first and with the `C` locale last;
+/// `Localizer` drops the entries that are not languages.
+fn localizer() -> &'static Localizer {
+    static LOCALIZER: OnceLock<Localizer> = OnceLock::new();
+    LOCALIZER.get_or_init(|| {
+        let preferred: Vec<String> = glib::language_names()
+            .iter()
+            .map(ToString::to_string)
+            .collect();
+        Localizer::negotiate(&preferred)
+    })
+}
+
+fn message(key: &str) -> String {
+    localizer().message(key)
+}
+
+pub fn availability(value: FeatureAvailability) -> String {
+    message(match value {
+        FeatureAvailability::Unknown => "availability-unknown",
+        FeatureAvailability::Available => "availability-available",
+        FeatureAvailability::ReportedUnavailable => "availability-reported-unavailable",
+        FeatureAvailability::NotAdvertised => "availability-not-advertised",
+        FeatureAvailability::ManifestUnreachable => "availability-manifest-unreachable",
+    })
 }
 
 /// The chat status caption; `error` supplies the sentence when `status` is `Failed`.
 pub fn chat(status: ChatStatus, error: Option<ChatError>) -> String {
     match (status, error) {
         (ChatStatus::Failed, Some(error)) => chat_error(error),
-        (ChatStatus::Failed, None) => "Could not send the message. Try again.".to_owned(),
-        (ChatStatus::Sending, _) => "Sending…".to_owned(),
+        (ChatStatus::Failed, None) => message("chat-status-failed"),
+        (ChatStatus::Sending, _) => message("chat-status-sending"),
         (ChatStatus::Idle, _) => String::new(),
     }
 }
@@ -30,87 +61,66 @@ pub fn chat(status: ChatStatus, error: Option<ChatError>) -> String {
 pub fn composer(status: ComposerStatus, error: Option<ComposerError>) -> String {
     match (status, error) {
         (ComposerStatus::Failed, Some(error)) => composer_error(error),
-        (ComposerStatus::Failed, None) => {
-            "Could not synchronize the draft. Check the node connection.".to_owned()
-        }
-        (ComposerStatus::Connecting, _) => "Connecting draft…".to_owned(),
+        (ComposerStatus::Failed, None) => message("composer-status-failed"),
+        (ComposerStatus::Connecting, _) => message("composer-status-connecting"),
         (ComposerStatus::Synced, _) => String::new(),
     }
 }
 
-pub fn role(role: ChatRole) -> &'static str {
-    match role {
-        ChatRole::User => "You",
-        ChatRole::Assistant => "Arut",
-    }
+pub fn role(role: ChatRole) -> String {
+    message(match role {
+        ChatRole::User => "chat-role-you",
+        ChatRole::Assistant => "chat-role-assistant",
+    })
 }
 
-/// One sentence for every `NodeFailure` variant (ADR 0016).
-pub fn node_failure(failure: NodeFailure) -> &'static str {
-    match failure {
-        NodeFailure::Unreachable => "The node could not be reached.",
-        NodeFailure::TimedOut => "The node did not answer in time.",
-        NodeFailure::Cancelled => "The request was cancelled before the node answered.",
-        NodeFailure::Refused => "The node refused the request.",
-        NodeFailure::Overloaded => "The node is over its limits. Try again shortly.",
-        NodeFailure::Rejected => "The node could not accept this as it stands.",
-        NodeFailure::Missing => "What this names is no longer on the node.",
-        NodeFailure::Conflict => "Something else changed first. Try again.",
-        NodeFailure::Unsupported => "The node does not support this yet.",
-        NodeFailure::Internal => "The node failed to carry this out.",
-    }
+/// One sentence for every `NodeFailure` variant (ADR 0016, ADR 0022).
+pub fn node_failure(failure: NodeFailure) -> String {
+    message(failure.message_key())
 }
 
-/// One sentence for every `ComposerError` variant (ADR 0016).
+/// One sentence for every `ComposerError` variant, with its payload where the
+/// message asks for one.
 pub fn composer_error(error: ComposerError) -> String {
+    let key = error.message_key();
     match error {
-        ComposerError::Node(failure) => node_failure(failure).to_owned(),
-        ComposerError::RevisionConflict { current } => {
-            format!("Someone else edited this draft first; it is now at revision {current}.")
+        ComposerError::Node(failure) => node_failure(failure),
+        ComposerError::RevisionConflict { current } => localizer().number(key, "current", current),
+        ComposerError::AuthorityChanged { current_epoch } => {
+            localizer().number(key, "currentEpoch", current_epoch)
         }
-        ComposerError::AuthorityChanged { current_epoch } => format!(
-            "This conversation moved to a new authority (epoch {current_epoch}). Try again."
-        ),
-        ComposerError::SnapshotMissing => {
-            "The node answered without the draft. It may be out of sync.".to_owned()
-        }
-        ComposerError::OutcomeMissing => {
-            "The node did not say what happened to the edit.".to_owned()
-        }
-        ComposerError::ScopeMissing => "The node did not say which draft it meant.".to_owned(),
-        ComposerError::ScopeMismatch => "The node answered about a different draft.".to_owned(),
+        ComposerError::SnapshotMissing
+        | ComposerError::OutcomeMissing
+        | ComposerError::ScopeMissing
+        | ComposerError::ScopeMismatch => message(key),
     }
 }
 
-/// One sentence for every `ChatError` variant (ADR 0016).
+/// One sentence for every `ChatError` variant.
 pub fn chat_error(error: ChatError) -> String {
     match error {
-        ChatError::Node(failure) => node_failure(failure).to_owned(),
-        ChatError::NoConversation => "There is no conversation to send this to yet.".to_owned(),
-        ChatError::Cancelled => {
-            "This conversation was closed before the message could send.".to_owned()
-        }
+        ChatError::Node(failure) => node_failure(failure),
         ChatError::Draft(error) => composer_error(error),
-        ChatError::ChatIdMissing => {
-            "The node started a conversation but did not name it.".to_owned()
+        ChatError::NoConversation | ChatError::Cancelled | ChatError::ChatIdMissing => {
+            message(error.message_key())
         }
     }
 }
 
-pub fn rpc(error: &Status) -> &'static str {
-    match error.code {
-        Code::Unavailable => "The local node is unavailable.",
-        Code::Cancelled => "The request was cancelled.",
-        Code::InvalidArgument | Code::OutOfRange => "The node could not accept this request.",
-        Code::DeadlineExceeded => "The node took too long to respond.",
-        Code::NotFound => "The requested conversation was not found.",
-        Code::AlreadyExists => "This item already exists on the node.",
-        Code::PermissionDenied | Code::Unauthenticated => "Access to this node was denied.",
-        Code::ResourceExhausted => "The node has no capacity for this request.",
-        Code::FailedPrecondition | Code::Aborted => {
-            "The node changed before the request completed. Try again."
-        }
-        Code::Unimplemented => "This node does not support the request.",
-        Code::Internal => "The node encountered an internal error.",
-    }
+/// The connect-time transport statuses, which happen before any scope exists to
+/// carry a typed failure.
+pub fn rpc(error: &Status) -> String {
+    message(match error.code {
+        Code::Unavailable => "rpc-error-unavailable",
+        Code::Cancelled => "rpc-error-cancelled",
+        Code::InvalidArgument | Code::OutOfRange => "rpc-error-rejected",
+        Code::DeadlineExceeded => "rpc-error-timed-out",
+        Code::NotFound => "rpc-error-not-found",
+        Code::AlreadyExists => "rpc-error-already-exists",
+        Code::PermissionDenied | Code::Unauthenticated => "rpc-error-denied",
+        Code::ResourceExhausted => "rpc-error-exhausted",
+        Code::FailedPrecondition | Code::Aborted => "rpc-error-changed",
+        Code::Unimplemented => "rpc-error-unsupported",
+        Code::Internal => "rpc-error-internal",
+    })
 }

@@ -19,7 +19,7 @@ impl SimpleComponent for Availability {
         gtk::Label {
             add_css_class: "arut-availability",
             #[watch]
-            set_label: strings::availability(model.value),
+            set_label: &strings::availability(model.value),
             set_wrap: true,
             set_xalign: 0.0,
             update_property: &[gtk::accessible::Property::Label("Node availability")],

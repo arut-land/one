@@ -35,7 +35,7 @@ run = [
   # ADR 0022: the .ftl files are the source, so a generated resource that
   # disagrees with them is a change nobody made on purpose.
   "cargo run --quiet -p arut-i18n-gen",
-  "test -z \"$(git status --porcelain -- surfaces/apple/shared/Sources/ArutSurface/Resources surfaces/android/src/main/res surfaces/windows/Strings surfaces/web/public/locales surfaces/vscode/locales)\" || (echo 'generated string resources are out of date; run `mise run i18n` and commit the result' && git status --porcelain -- surfaces/apple/shared/Sources/ArutSurface/Resources surfaces/android/src/main/res surfaces/windows/Strings surfaces/web/public/locales surfaces/vscode/locales && exit 1)",
+  "test -z \"$(git status --porcelain -- surfaces/apple/shared/Sources/ArutSurface/Resources surfaces/android/src/main/res surfaces/windows/Strings surfaces/web/public/locales surfaces/chromium/public/locales surfaces/vscode/locales)\" || (echo 'generated string resources are out of date; run `mise run i18n` and commit the result' && git status --porcelain -- surfaces/apple/shared/Sources/ArutSurface/Resources surfaces/android/src/main/res surfaces/windows/Strings surfaces/web/public/locales surfaces/chromium/public/locales surfaces/vscode/locales && exit 1)",
 ]
 
 [tasks.build]

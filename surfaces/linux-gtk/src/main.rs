@@ -5,7 +5,9 @@
 //! navigation is persisted here, under XDG_STATE_HOME/arut/linux-ui.
 //! Chat and composer errors are typed enums from the core (ADR 0016); strings.rs
 //! maps every `ChatError`/`ComposerError`/`NodeFailure` variant, plus the typed
-//! availability and connect-time RPC statuses, to English.
+//! availability and connect-time RPC statuses, to a message id in the shared
+//! Fluent source and asks `arut_i18n` for the sentence (ADR 0022). The language
+//! list comes from GLib, so this surface follows the desktop's own setting.
 //! GTK reads scheme and contrast from its portal settings. Theme colors come
 //! from named GTK colors; ashpd supplies live accent and reduced-motion settings.
 //! Only Arut classes receive additional CSS, and icons come from the desktop.

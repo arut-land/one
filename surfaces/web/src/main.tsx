@@ -1,8 +1,12 @@
-import { createSession } from "@arut/bindings-typescript";
+import { createSession, loadStrings } from "@arut/bindings-typescript";
 import { createRoot } from "react-dom/client";
 import { ChatView } from "./index";
 import { useChat } from "./useChat";
 import "./style.css";
+// Strings come from the generated Fluent copy under public/locales (ADR 0022),
+// negotiated against navigator.languages before the first render so no sentence
+// is ever rendered as its message id.
+await loadStrings();
 const session = await createSession("local-demo");
 function App() { return <ChatView {...useChat(session)} />; }
 createRoot(document.querySelector<HTMLElement>("#app")!).render(<App />);

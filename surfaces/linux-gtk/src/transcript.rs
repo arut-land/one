@@ -30,7 +30,7 @@ impl FactoryComponent for MessageRow {
             gtk::Label {
                 set_xalign: 0.0,
                 #[watch]
-                set_label: strings::role(self.message.role),
+                set_label: &strings::role(self.message.role),
                 add_css_class: "heading",
             },
             gtk::Label {

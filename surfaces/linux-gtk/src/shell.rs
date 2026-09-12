@@ -23,7 +23,7 @@ pub struct Shell {
     generation: u64,
     available: bool,
     restore_pending: bool,
-    error: &'static str,
+    error: String,
     _tasks: Tasks,
     _theme: crate::theme::Theme,
 }
@@ -92,7 +92,7 @@ impl Component for Shell {
                 },
                 gtk::Label {
                     #[watch]
-                    set_label: model.error,
+                    set_label: &model.error,
                     set_wrap: true,
                 },
             },
@@ -129,7 +129,7 @@ impl Component for Shell {
             generation: 0,
             available: false,
             restore_pending: true,
-            error: "",
+            error: String::new(),
             _tasks: tasks,
             _theme: crate::theme::Theme::install(&root),
         };

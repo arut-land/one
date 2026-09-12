@@ -12,7 +12,9 @@
   },
   "dependencies": {
     "@arut/ffi": "workspace:*",
-    "@boltffi/runtime": "catalog:"
+    "@boltffi/runtime": "catalog:",
+    "@fluent/bundle": "catalog:",
+    "@fluent/langneg": "catalog:"
   },
   "peerDependencies": {
     "react": "catalog:"
