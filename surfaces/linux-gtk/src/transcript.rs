@@ -1,5 +1,8 @@
 use crate::{observe::Tasks, strings};
-use arut_feature_chat::product::{ChatClient, ChatMessage, ChatStatus};
+use arut_feature_chat::{
+    errors::ChatError,
+    product::{ChatClient, ChatMessage, ChatStatus},
+};
 use gtk::prelude::*;
 use relm4::{
     ComponentParts, ComponentSender, SimpleComponent,
@@ -48,6 +51,7 @@ pub struct Transcript {
     chat: ChatClient,
     rows: FactoryHashMap<u64, MessageRow>,
     status: ChatStatus,
+    error: Option<ChatError>,
     _tasks: Tasks,
 }
 
@@ -70,7 +74,7 @@ impl SimpleComponent for Transcript {
             },
             gtk::Label {
                 #[watch]
-                set_label: strings::chat(model.status),
+                set_label: &strings::chat(model.status, model.error),
                 update_property: &[gtk::accessible::Property::Label("Message status")],
             },
         }
@@ -83,8 +87,10 @@ impl SimpleComponent for Transcript {
         let rows = FactoryHashMap::builder().launch_default().detach();
         let mut tasks = Tasks::default();
         tasks.watch(chat.changes(), sender.input_sender().clone(), ());
+        let initial = chat.state();
         let model = Self {
-            status: chat.state().status,
+            status: initial.status,
+            error: initial.error,
             chat,
             rows,
             _tasks: tasks,
@@ -96,6 +102,7 @@ impl SimpleComponent for Transcript {
     fn update(&mut self, (): (), sender: ComponentSender<Self>) {
         let state = self.chat.state();
         self.status = state.status;
+        self.error = state.error;
         let _ = sender.output(state.id);
         let removed: Vec<_> = self
             .rows

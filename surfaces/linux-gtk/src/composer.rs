@@ -1,6 +1,7 @@
 use crate::{observe::Tasks, strings};
 use arut_feature_chat::{
     composer::product::{ComposerClient, ComposerStatus},
+    errors::ComposerError,
     product::ChatClient,
 };
 use gtk::{glib, prelude::*};
@@ -14,6 +15,7 @@ pub struct Composer {
     applying: Rc<Cell<bool>>,
     enabled: bool,
     status: ComposerStatus,
+    error: Option<ComposerError>,
     _tasks: Tasks,
 }
 
@@ -61,7 +63,7 @@ impl Component for Composer {
             },
             gtk::Label {
                 #[watch]
-                set_label: strings::composer(model.status),
+                set_label: &strings::composer(model.status, model.error),
                 set_wrap: true,
                 update_property: &[gtk::accessible::Property::Label("Draft synchronization")],
             },
@@ -87,9 +89,11 @@ impl Component for Composer {
             initialize.initialize().await;
             initialize.follow().await;
         });
+        let initial = composer.state();
         let model = Self {
             chat,
-            status: composer.state().status,
+            status: initial.status,
+            error: initial.error,
             composer,
             buffer,
             applying,
@@ -133,6 +137,7 @@ impl Component for Composer {
             Msg::Changed => {
                 let state = self.composer.state();
                 self.status = state.status;
+                self.error = state.error;
                 let current =
                     self.buffer
                         .text(&self.buffer.start_iter(), &self.buffer.end_iter(), true);
