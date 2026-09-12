@@ -65,7 +65,31 @@ pub async fn rpc(channel: &dyn RpcChannel) {
 
 pub fn fact_log(log: &dyn FactLog<String>) {
     assert!(log.read_from(0).unwrap().is_empty());
-    let first = log.append(0, 1, "one", "first".into()).unwrap();
+    let mut decisions = 0;
+    assert!(
+        log.commit(Some(0), 1, "unused", &mut |_, records, duplicate| {
+            decisions += 1;
+            assert!(records.is_empty());
+            assert!(duplicate.is_none());
+            Ok(None)
+        })
+        .unwrap()
+        .is_none()
+    );
+    assert_eq!(decisions, 1);
+    let first = log
+        .commit(Some(0), 1, "one", &mut |_, _, _| Ok(Some("first".into())))
+        .unwrap()
+        .unwrap();
+    assert!(
+        log.commit(Some(0), 1, "one", &mut |_, records, duplicate| {
+            assert_eq!(records, std::slice::from_ref(&first));
+            assert_eq!(duplicate, Some(first.clone()));
+            Ok(None)
+        })
+        .unwrap()
+        .is_none()
+    );
     assert_eq!(first.sequence, 1);
     assert_eq!(
         log.append(0, 1, "one", "different retry".into()).unwrap(),
@@ -81,6 +105,12 @@ pub fn fact_log(log: &dyn FactLog<String>) {
         StorageError::Epoch { current: 2 }
     );
     assert_eq!(log.read_from(1).unwrap().len(), 1);
+    assert_eq!(
+        log.commit(Some(2), 1, "one", &mut |_, _, _| panic!(
+            "stale epoch must not decide"
+        )),
+        Err(StorageError::Epoch { current: 2 })
+    );
     assert!(matches!(
         log.compact(2),
         Err(StorageError::SnapshotRequired)
@@ -96,6 +126,21 @@ pub fn fact_log(log: &dyn FactLog<String>) {
     assert_eq!(
         log.read_from(0).unwrap_err(),
         StorageError::CursorUnavailable { through: 2 }
+    );
+    assert!(
+        log.commit(Some(2), 2, "one", &mut |_, records, duplicate| {
+            assert!(records.is_empty());
+            assert_eq!(duplicate, Some(first.clone()));
+            Ok(None)
+        })
+        .unwrap()
+        .is_none()
+    );
+    assert_eq!(
+        log.commit(Some(0), 2, "one", &mut |_, _, _| panic!(
+            "compacted cursor must not decide"
+        )),
+        Err(StorageError::CursorUnavailable { through: 2 })
     );
     assert_eq!(log.outcome_of("one").unwrap(), Some(first));
     assert_eq!(

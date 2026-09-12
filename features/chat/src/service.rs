@@ -116,15 +116,6 @@ impl ChatService for ChatServiceImpl {
                 ));
             }
 
-            if let Some(record) = self
-                .authority
-                .outcome_of(&message.command_id)
-                .map_err(storage)?
-            {
-                return Ok(Response::new(SendMessageResponse {
-                    messages: record.fact.messages,
-                }));
-            }
             let fact = self.commit(ChatCommand {
                 command_id: message.command_id,
                 chat_id: message.chat_id,

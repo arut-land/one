@@ -124,46 +124,39 @@ impl<C: Command> Authority<C> {
                 current_epoch: self.epoch,
             });
         }
-        for record in self.log.read_from(state.cursor)? {
-            if record.epoch > self.epoch {
-                return Ok(Outcome::AuthorityMismatch {
-                    current_epoch: record.epoch,
-                });
-            }
-            state.projection.reduce(&record.fact);
-            state.cursor = record.sequence;
-        }
-        if let Some(record) = self.log.outcome_of(command.command_id())? {
-            tracing::debug!(outcome = "duplicate", sequence = record.sequence);
-            return Ok(Outcome::Duplicate(record));
-        }
-        if command.expires_at().is_some_and(|expiry| now >= expiry) {
-            return Ok(Outcome::Superseded);
-        }
-        match command.precondition() {
-            Precondition::Revision(expected) => {
-                let current = state.projection.revision(command.scope());
-                if expected != current {
-                    return Ok(Outcome::RevisionConflict { current });
-                }
-            }
-            Precondition::Epoch(epoch) if epoch != self.epoch => {
-                return Ok(Outcome::AuthorityMismatch {
-                    current_epoch: self.epoch,
-                });
-            }
-            Precondition::OperationOpen(id) if !state.projection.operation_open(&id) => {
-                return Ok(Outcome::Superseded);
-            }
-            _ => {}
-        }
         let id = command.command_id().to_owned();
-        let fact = match command.apply(&state.projection) {
-            Ok(fact) => fact,
-            Err(error) => return Ok(Outcome::Rejected(error)),
-        };
-        let record = match self.log.append(state.cursor, self.epoch, &id, fact) {
-            Ok(record) => record,
+        let mut command = Some(command);
+        let mut outcome = None;
+        let cursor = state.cursor;
+        let result = self.log.commit(
+            Some(cursor),
+            self.epoch,
+            &id,
+            &mut |_, records, duplicate| {
+                for record in records {
+                    state.projection.reduce(&record.fact);
+                    state.cursor = record.sequence;
+                }
+                if let Some(record) = duplicate {
+                    outcome = Some(Outcome::Duplicate(record));
+                    return Ok(None);
+                }
+                match self.apply(
+                    command.take().expect("log decides once"),
+                    now,
+                    &state.projection,
+                ) {
+                    Ok(fact) => Ok(Some(fact)),
+                    Err(rejected) => {
+                        outcome = Some(rejected);
+                        Ok(None)
+                    }
+                }
+            },
+        );
+        let record = match result {
+            Ok(Some(record)) => record,
+            Ok(None) => return Ok(outcome.expect("log decided without a fact")),
             Err(StorageError::Conflict { actual }) => {
                 return Ok(Outcome::RevisionConflict { current: actual });
             }
@@ -178,6 +171,34 @@ impl<C: Command> Authority<C> {
         state.cursor = record.sequence;
         tracing::debug!(outcome = "applied", sequence = record.sequence);
         Ok(Outcome::Applied(record))
+    }
+    fn apply(
+        &self,
+        command: C,
+        now: u64,
+        projection: &C::Projection,
+    ) -> Result<C::Fact, Outcome<C::Fact, C::Rejection>> {
+        if command.expires_at().is_some_and(|expiry| now >= expiry) {
+            return Err(Outcome::Superseded);
+        }
+        match command.precondition() {
+            Precondition::Revision(expected) => {
+                let current = projection.revision(command.scope());
+                if expected != current {
+                    return Err(Outcome::RevisionConflict { current });
+                }
+            }
+            Precondition::Epoch(epoch) if epoch != self.epoch => {
+                return Err(Outcome::AuthorityMismatch {
+                    current_epoch: self.epoch,
+                });
+            }
+            Precondition::OperationOpen(id) if !projection.operation_open(&id) => {
+                return Err(Outcome::Superseded);
+            }
+            _ => {}
+        }
+        command.apply(projection).map_err(Outcome::Rejected)
     }
     pub fn checkpoint(&self, compact: bool) -> Result<(), StorageError> {
         let state = self.state.lock().unwrap();

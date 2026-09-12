@@ -182,18 +182,41 @@ fn outcome<F: Fact>(write: &WriteTransaction, id: &str) -> Result<Option<Record<
 }
 
 impl<F: Fact> FactLog<F> for RedbLog<F> {
-    fn append(&self, expected: u64, epoch: u64, id: &str, fact: F) -> Result<Record<F>> {
+    fn commit(
+        &self,
+        cursor: Option<u64>,
+        epoch: u64,
+        id: &str,
+        decide: &mut crate::CommitDecision<'_, F>,
+    ) -> Result<Option<Record<F>>> {
         let write = self.database.begin_write()?;
+        let through = watermark(&write)?;
+        if cursor.is_some_and(|cursor| cursor < through) {
+            return Err(StorageError::CursorUnavailable { through });
+        }
         let head = head(&write)?;
         if epoch < head.epoch {
             return Err(StorageError::Epoch {
                 current: head.epoch,
             });
         }
-        if let Some(record) = outcome(&write, id)? {
-            return Ok(record);
+        let duplicate = outcome(&write, id)?;
+        let records = write.open_table(RECORDS)?;
+        let mut unseen = Vec::new();
+        if let Some(cursor) = cursor {
+            for entry in records.range((
+                std::ops::Bound::Excluded(cursor),
+                std::ops::Bound::Unbounded,
+            ))? {
+                let (_, value) = entry?;
+                unseen.push(StoredRecord::decode(value.value())?.into_record()?);
+            }
         }
-        if expected != head.sequence {
+        drop(records);
+        let Some(fact) = decide(head.sequence, &unseen, duplicate)? else {
+            return Ok(None);
+        };
+        if cursor.is_some_and(|cursor| cursor > head.sequence) {
             return Err(StorageError::Conflict {
                 actual: head.sequence,
             });
@@ -201,21 +224,16 @@ impl<F: Fact> FactLog<F> for RedbLog<F> {
         let record = Record {
             sequence: head.sequence + 1,
             epoch,
-            command_id: id.to_owned(),
+            command_id: id.into(),
             fact,
         };
-        {
-            let mut records = write.open_table(RECORDS)?;
-            let mut commands = write.open_table(COMMANDS)?;
-            records.insert(
-                record.sequence,
-                StoredRecord::from(&record).encode_to_vec().as_slice(),
-            )?;
-            commands.insert(id, record.sequence)?;
-        }
+        write.open_table(RECORDS)?.insert(
+            record.sequence,
+            StoredRecord::from(&record).encode_to_vec().as_slice(),
+        )?;
+        write.open_table(COMMANDS)?.insert(id, record.sequence)?;
         write.commit()?;
-        tracing::debug!(sequence = record.sequence, epoch, "fact appended");
-        Ok(record)
+        Ok(Some(record))
     }
 
     fn outcome_of(&self, id: &str) -> Result<Option<Record<F>>> {
@@ -235,7 +253,10 @@ impl<F: Fact> FactLog<F> for RedbLog<F> {
         }
         let records = read.open_table(RECORDS)?;
         let mut result = Vec::new();
-        for entry in records.range(cursor.saturating_add(1)..)? {
+        for entry in records.range((
+            std::ops::Bound::Excluded(cursor),
+            std::ops::Bound::Unbounded,
+        ))? {
             let (_, value) = entry?;
             result.push(StoredRecord::decode(value.value())?.into_record()?);
         }

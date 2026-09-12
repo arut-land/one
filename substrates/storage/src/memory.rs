@@ -19,20 +19,32 @@ impl<F> Default for MemoryLog<F> {
     }
 }
 impl<F: Fact> FactLog<F> for MemoryLog<F> {
-    fn append(&self, expected: u64, epoch: u64, id: &str, fact: F) -> Result<Record<F>> {
+    fn commit(
+        &self,
+        cursor: Option<u64>,
+        epoch: u64,
+        id: &str,
+        decide: &mut crate::CommitDecision<'_, F>,
+    ) -> Result<Option<Record<F>>> {
         let mut state = self.0.lock().unwrap();
-        let head = state.records.last();
-        let current_epoch = head.map_or(1, |r| r.epoch);
-        if epoch < current_epoch {
-            return Err(StorageError::Epoch {
-                current: current_epoch,
+        if cursor.is_some_and(|cursor| cursor < state.compacted) {
+            return Err(StorageError::CursorUnavailable {
+                through: state.compacted,
             });
         }
-        if let Some(record) = state.records.iter().find(|r| r.command_id == id) {
-            return Ok(record.clone());
+        let current = state.records.last().map_or(1, |record| record.epoch);
+        if epoch < current {
+            return Err(StorageError::Epoch { current });
         }
-        let actual = head.map_or(0, |r| r.sequence);
-        if actual != expected {
+        let actual = state.records.last().map_or(0, |record| record.sequence);
+        let duplicate = state.records.iter().find(|r| r.command_id == id).cloned();
+        let start = cursor.map_or(state.records.len(), |cursor| {
+            state.records.partition_point(|r| r.sequence <= cursor)
+        });
+        let Some(fact) = decide(actual, &state.records[start..], duplicate)? else {
+            return Ok(None);
+        };
+        if cursor.is_some_and(|cursor| cursor > actual) {
             return Err(StorageError::Conflict { actual });
         }
         let record = Record {
@@ -42,8 +54,7 @@ impl<F: Fact> FactLog<F> for MemoryLog<F> {
             fact,
         };
         state.records.push(record.clone());
-        tracing::debug!(sequence = record.sequence, epoch, "fact appended");
-        Ok(record)
+        Ok(Some(record))
     }
     fn outcome_of(&self, id: &str) -> Result<Option<Record<F>>> {
         Ok(self
