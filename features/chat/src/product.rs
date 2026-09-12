@@ -139,6 +139,11 @@ impl ChatClient {
         self.state.get()
     }
 
+    /// Reads part of the state without cloning the transcript to get at it.
+    pub fn read_state<R>(&self, read: impl FnOnce(&ChatState) -> R) -> R {
+        self.state.read(read)
+    }
+
     pub fn changes(&self) -> Arc<Subscription<u64>> {
         self.state.subscribe()
     }
