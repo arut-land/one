@@ -7,6 +7,7 @@ members = [
     "protocols",
     "protocols/build",
     "protocols/rpc",
+    "runtimes/host-polled",
     "runtimes/local",
     "substrates/authority",
     "substrates/storage",
@@ -28,6 +29,7 @@ arut-feature-chat = { path = "features/chat" }
 arut-product-session = { path = "product/session" }
 arut-protocol = { path = "protocols" }
 arut-rpc = { path = "protocols/rpc" }
+arut-runtime-host-polled = { path = "runtimes/host-polled" }
 arut-runtime-local = { path = "runtimes/local" }
 arut-storage = { path = "substrates/storage" }
 arut-transport-connect-http = { path = "transports/connect-http" }
