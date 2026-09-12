@@ -83,11 +83,10 @@ impl ComposerClient {
             }))
             .await;
         match response {
-            Ok(response) => response
-                .message
-                .snapshot
-                .map(|snapshot| self.apply_snapshot(snapshot, false))
-                .unwrap_or_else(|| self.apply_error("composer read omitted its snapshot".into())),
+            Ok(response) => response.message.snapshot.map_or_else(
+                || self.apply_error("composer read omitted its snapshot".into()),
+                |snapshot| self.apply_snapshot(snapshot, false),
+            ),
             Err(error) => self.apply_error(error.to_string()),
         }
     }
@@ -112,18 +111,18 @@ impl ComposerClient {
             .await;
         match response {
             Ok(response) => match response.message.outcome {
-                Some(replace_composer_response::Outcome::Applied(applied)) => applied
-                    .snapshot
-                    .map(|snapshot| self.apply_snapshot(snapshot, false))
-                    .unwrap_or_else(|| {
-                        self.apply_error("composer commit omitted its snapshot".into())
-                    }),
-                Some(replace_composer_response::Outcome::RevisionConflict(conflict)) => conflict
-                    .snapshot
-                    .map(|snapshot| self.apply_snapshot(snapshot, true))
-                    .unwrap_or_else(|| {
-                        self.apply_error("composer conflict omitted its snapshot".into())
-                    }),
+                Some(replace_composer_response::Outcome::Applied(applied)) => {
+                    applied.snapshot.map_or_else(
+                        || self.apply_error("composer commit omitted its snapshot".into()),
+                        |snapshot| self.apply_snapshot(snapshot, false),
+                    )
+                }
+                Some(replace_composer_response::Outcome::RevisionConflict(conflict)) => {
+                    conflict.snapshot.map_or_else(
+                        || self.apply_error("composer conflict omitted its snapshot".into()),
+                        |snapshot| self.apply_snapshot(snapshot, true),
+                    )
+                }
                 Some(replace_composer_response::Outcome::AuthorityMismatch(mismatch)) => {
                     self.authority_epoch
                         .store(mismatch.current_epoch, Ordering::Release);
@@ -178,7 +177,7 @@ impl ComposerClient {
 
     pub(crate) fn promote(&self, chat_id: &str, snapshot: WireSnapshot) -> Result<(), String> {
         let expected = ComposerScope::chat(chat_id);
-        if snapshot.scope.clone().and_then(scope_from_wire) != Some(expected.clone()) {
+        if snapshot.scope.clone().and_then(scope_from_wire) != Some(expected) {
             return Err("start chat composer scope did not match the new chat".into());
         }
         self.scope.set(ComposerScope::chat(chat_id));

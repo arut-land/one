@@ -14,3 +14,6 @@ arut-watch.workspace = true
 
 [dev-dependencies]
 futures-executor = "0.3.31"
+
+[lints]
+workspace = true

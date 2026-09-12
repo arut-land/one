@@ -13,3 +13,6 @@ arut-protocol-build = { path = "build" }
 
 [dev-dependencies]
 futures-executor = "0.3.31"
+
+[lints]
+workspace = true

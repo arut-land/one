@@ -103,9 +103,10 @@ async fn invoke(
                     )),
                     None => None,
                 };
-                let end = error
-                    .map(|e| serde_json::json!({"error": framing::error_json(&e)}))
-                    .unwrap_or_else(|| serde_json::json!({}));
+                let end = error.map_or_else(
+                    || serde_json::json!({}),
+                    |e| serde_json::json!({"error": framing::error_json(&e)}),
+                );
                 (framing::envelope(2, end.to_string().as_bytes()), true)
             }
         };

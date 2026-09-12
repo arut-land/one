@@ -33,3 +33,26 @@ arut-storage = { path = "substrates/storage" }
 arut-transport-connect-http = { path = "transports/connect-http" }
 arut-transport-ipc = { path = "transports/ipc" }
 arut-watch = { path = "substrates/watch" }
+
+[workspace.lints.rust]
+unsafe_code = "deny"
+unused_qualifications = "warn"
+
+[workspace.lints.clippy]
+cloned_instead_of_copied = "warn"
+explicit_iter_loop = "warn"
+ignored_unit_patterns = "warn"
+implicit_clone = "warn"
+inefficient_to_string = "warn"
+items_after_statements = "warn"
+manual_let_else = "warn"
+map_unwrap_or = "warn"
+match_same_arms = "warn"
+redundant_closure_for_method_calls = "warn"
+redundant_else = "warn"
+semicolon_if_nothing_returned = "warn"
+str_to_string = "warn"
+uninlined_format_args = "warn"
+unnested_or_patterns = "warn"
+unused_self = "warn"
+wildcard_imports = "warn"

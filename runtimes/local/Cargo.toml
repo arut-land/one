@@ -21,3 +21,6 @@ futures-util = "0.3.31"
 [[bin]]
 name = "arutd"
 path = "src/main.rs"
+
+[lints]
+workspace = true
