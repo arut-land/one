@@ -88,9 +88,8 @@ mod tests {
     impl crate::chat::v1::ChatService for UnusedChat {
         fn list_conversations(
             &self,
-            _: arut_rpc::Request<crate::chat::v1::ListConversationsRequest>,
-        ) -> arut_rpc::RpcFuture<arut_rpc::Response<crate::chat::v1::ListConversationsResponse>>
-        {
+            _: Request<crate::chat::v1::ListConversationsRequest>,
+        ) -> RpcFuture<Response<crate::chat::v1::ListConversationsResponse>> {
             unreachable!()
         }
 

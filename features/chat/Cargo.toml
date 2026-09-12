@@ -20,3 +20,6 @@ uuid = { version = "1.18.1", features = ["v7"] }
 
 [dev-dependencies]
 futures-executor = "0.3.31"
+
+[lints]
+workspace = true

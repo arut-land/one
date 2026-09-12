@@ -30,11 +30,13 @@ fn main() -> glib::ExitCode {
         window.set_child(Some(&gtk::Label::new(Some("Starting local node…"))));
         window.present();
         let data = std::env::var_os("XDG_DATA_HOME")
-            .map(std::path::PathBuf::from)
-            .unwrap_or_else(|| {
-                std::path::PathBuf::from(std::env::var_os("HOME").expect("home directory"))
-                    .join(".local/share")
-            })
+            .map_or_else(
+                || {
+                    std::path::PathBuf::from(std::env::var_os("HOME").expect("home directory"))
+                        .join(".local/share")
+                },
+                std::path::PathBuf::from,
+            )
             .join("arut");
         let host = arut_runtime_local::child::ChildHost {
             executable: std::env::current_exe()

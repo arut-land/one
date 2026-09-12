@@ -7,3 +7,6 @@ license = "MIT OR Apache-2.0"
 [dependencies]
 arut-storage.workspace = true
 prost = "0.14.1"
+
+[lints]
+workspace = true

@@ -7,3 +7,6 @@ license = "MIT OR Apache-2.0"
 [dependencies]
 prost = "0.14.1"
 sha2 = "0.10"
+
+[lints]
+workspace = true

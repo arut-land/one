@@ -28,7 +28,7 @@ pub struct Node<R> {
 }
 impl<R> Node<R> {
     pub fn new(id: String, runtime: Arc<R>) -> Arc<Self> {
-        Arc::new(Self { id, runtime })
+        Arc::new(Self { runtime, id })
     }
     pub fn workspace(self: &Arc<Self>, id: String) -> Arc<Workspace<R>> {
         Arc::new(Workspace {
