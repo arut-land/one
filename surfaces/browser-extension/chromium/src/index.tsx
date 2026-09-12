@@ -1,4 +1,5 @@
-import { ChatRole, type useChat } from "@arut/bindings-react";
+import { ChatRole } from "@arut/bindings-react";
+import type { useChat } from "../../../web/src/useChat";
 import { useEffect, useRef, useState, type FormEvent, type TouchEvent } from "react";
 
 type ChatPopupProps = ReturnType<typeof useChat>;
