@@ -22,8 +22,7 @@ name = "arut-authority"
 version = "0.1.0"
 dependencies = [
  "arut-storage",
- "serde",
- "serde_json",
+ "prost",
 ]
 
 [[package]]
@@ -52,8 +51,7 @@ dependencies = [
  "boltffi",
  "futures-executor",
  "futures-util",
- "serde",
- "serde_json",
+ "prost",
  "uuid",
 ]
 
@@ -129,8 +127,7 @@ dependencies = [
 name = "arut-storage"
 version = "0.1.0"
 dependencies = [
- "serde",
- "serde_json",
+ "prost",
  "sha2",
 ]
 

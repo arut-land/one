@@ -88,20 +88,26 @@ impl<F: Fact> FactLog<F> for MemoryLog<F> {
     }
 }
 #[derive(Default)]
-pub struct MemoryStore(Mutex<BTreeMap<String, Vec<u8>>>);
+struct MemoryState {
+    values: BTreeMap<String, Vec<u8>>,
+    blobs: BTreeMap<String, Vec<u8>>,
+}
+#[derive(Default)]
+pub struct MemoryStore(Mutex<MemoryState>);
 impl KeyValue for MemoryStore {
     fn get(&self, key: &str) -> Result<Option<Vec<u8>>> {
-        Ok(self.0.lock().unwrap().get(&format!("kv:{key}")).cloned())
+        Ok(self.0.lock().unwrap().values.get(key).cloned())
     }
     fn put(&self, key: &str, value: &[u8]) -> Result<()> {
         self.0
             .lock()
             .unwrap()
-            .insert(format!("kv:{key}"), value.to_vec());
+            .values
+            .insert(key.to_owned(), value.to_vec());
         Ok(())
     }
     fn remove(&self, key: &str) -> Result<()> {
-        self.0.lock().unwrap().remove(&format!("kv:{key}"));
+        self.0.lock().unwrap().values.remove(key);
         Ok(())
     }
 }
@@ -111,10 +117,17 @@ impl BlobStore for MemoryStore {
         self.0
             .lock()
             .unwrap()
-            .insert(format!("blob:{id}"), bytes.to_vec());
+            .blobs
+            .insert(id.clone(), bytes.to_vec());
         Ok(id)
     }
     fn get_blob(&self, id: &str) -> Result<Option<Vec<u8>>> {
-        Ok(self.0.lock().unwrap().get(&format!("blob:{id}")).cloned())
+        Ok(self
+            .0
+            .lock()
+            .unwrap()
+            .blobs
+            .get(checked_digest(id)?)
+            .cloned())
     }
 }

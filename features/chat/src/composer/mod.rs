@@ -2,7 +2,7 @@ pub mod authority;
 pub mod product;
 pub mod service;
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum ComposerScope {
     Pending(String),
     Chat(String),
@@ -18,7 +18,7 @@ impl ComposerScope {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ComposerSnapshot {
     pub scope: ComposerScope,
     pub authority_epoch: u64,

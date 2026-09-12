@@ -7,6 +7,15 @@ use arut_rpc::Request;
 use arut_storage::{Directory, KeyValue};
 use futures_executor::block_on;
 use std::sync::Arc;
+fn transcript(service: &ChatServiceImpl, chat_id: &str) -> usize {
+    service
+        .projection()
+        .conversation(chat_id)
+        .expect("conversation was started")
+        .messages
+        .len()
+}
+
 #[test]
 fn restart_recovers_transcript_operations_drafts_and_send_deduplication() {
     let path = std::env::temp_dir().join(format!("arut-recovery-{}", std::process::id()));
@@ -54,10 +63,7 @@ fn restart_recovers_transcript_operations_drafts_and_send_deduplication() {
         Arc::new(directory.log("chat").unwrap()),
     )
     .unwrap();
-    assert_eq!(
-        recovered.projection().conversations[&first.chat_id].len(),
-        4
-    );
+    assert_eq!(transcript(&recovered, &first.chat_id), 4);
     assert_eq!(recovered.projection().completed_operations.len(), 2);
     assert_eq!(
         recovered_composer
@@ -71,10 +77,7 @@ fn restart_recovers_transcript_operations_drafts_and_send_deduplication() {
             .message,
         sent
     );
-    assert_eq!(
-        recovered.projection().conversations[&first.chat_id].len(),
-        4
-    );
+    assert_eq!(transcript(&recovered, &first.chat_id), 4);
     assert!(directory.get("draft:pending:owner").unwrap().is_none());
     std::fs::remove_dir_all(path).unwrap();
 }
