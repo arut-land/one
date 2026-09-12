@@ -22,6 +22,9 @@ ADRs record decisions that are hard to reverse, surprising without context, and 
 | [0016](0016-typed-errors-no-strings-from-core.md) | Typed errors; surfaces own user-facing strings | Accepted |
 | [0017](0017-license-split.md) | FSL for product crates, MIT/Apache-2.0 for substrates | Accepted |
 | [0018](0018-drafts-are-ephemeral-last-writer-wins.md) | Drafts are ephemeral, last-writer-wins, not facts | Accepted |
+| [0019](0019-iroh-for-connectivity.md) | Connectivity, identity, relay, and blob transfer use iroh | Accepted, amends 0003, 0009, 0012 |
+| [0020](0020-relm4-for-the-linux-surface.md) | The Linux surface is written with relm4 | Accepted, amends 0013 |
+| [0021](0021-no-rust-reactive-framework-in-the-core.md) | No Rust reactive framework in the core | Accepted |
 
 The records that shaped the first vertical slice live in git history before the reset commit and are not authoritative.
 

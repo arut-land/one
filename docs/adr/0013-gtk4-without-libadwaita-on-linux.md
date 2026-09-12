@@ -1,5 +1,6 @@
 ---
 status: accepted
+amended-by: 0020 (the surface is written with relm4 over the same gtk4-rs widgets)
 ---
 
 # Linux uses GTK4 in Rust without libadwaita, adapting to the running desktop

@@ -17,22 +17,23 @@ Replace the substrates the current chat slice sits on so that everything after i
 
 Exit: the existing chat behavior runs on Linux, macOS, and Android through the new substrates with no per-language view-model, and the web surface receives updates.
 
-Status on 2026-09-12: all eight steps are implemented and gated. Verified on real runs: Linux GTK against a spawned `arutd` over the Unix socket, the web surface in a browser, wasm invalidation delivery under Node, and every Rust and TypeScript gate. Not yet run: Android and macOS, which need their toolchains; a `BlobStore` conformance suite; sending through the GTK window. IDs come through an `IdSource` port because the wasm core has no clock or entropy; the browser supplies UUIDv7.
+Status on 2026-09-12: all eight steps are implemented and gated. Verified on real runs: Linux GTK against a spawned `arutd` over the Unix socket, the web surface in a browser, wasm invalidation delivery under Node, and every Rust and TypeScript gate. Not yet run: Android and macOS, which need their toolchains; sending through the GTK window. Two cleanup passes on 2026-09-13 encoded facts as protobuf rows, typed availability, added the `BlobStore` suite, added workspace lints, CI, and licensing files. IDs come through an `IdSource` port because the wasm core has no clock or entropy; the browser supplies UUIDv7.
 
 ## Phase 1: Daily driver (v1)
 
 The scope in `docs/PRD.md`.
 
-1. Device keys, pairing by QR and code, root key transfer, envelope encryption.
-2. LAN route with mDNS discovery; relay route through the backend; health-scored failover.
-3. Peer-assisted store-and-forward: envelopes carried by any paired device.
-4. Streaming model responses through a `ModelProvider` implemented with `rig` against an OpenAI-compatible endpoint; replicated as a resumable stream with cursors.
-5. Parallel operations per node with a small scheduler.
-6. Attachments as content-addressed blobs with previews generated on the executing node.
-7. Node picker on the empty composer.
-8. Encrypted backup and restore through the backend.
-9. GTK4 Linux surface replacing Qt; SwiftUI macOS surface; Compose Android surface with the core in a foreground service.
-10. Capability manifest negotiated at session connect; two-minor-version window enforced.
+1. iroh endpoint per node (ADR 0019): the endpoint key is the device key; pairing by QR and code exchanges endpoint ids and transfers the root key; `keyring` holds secrets on desktop.
+2. `RpcChannel` over an iroh bi-directional stream; the relay is a deployed `iroh-relay` plus a small pairing service. Direct, LAN, and relayed routes come from iroh.
+3. Peer-assisted store-and-forward: envelopes sealed for the target node, carried by any paired device, delivered over iroh when the target is reachable.
+4. Drafts and presence over `iroh-gossip`, last-writer-wins on revision; the composer service becomes a local projection fed by gossip.
+5. Streaming model responses through a `ModelProvider` implemented with `rig` against an OpenAI-compatible endpoint; replicated as a resumable stream with cursors.
+6. Parallel operations per node with a small scheduler.
+7. Attachments as content-addressed blobs with previews generated on the executing node; transfer through `iroh-blobs` behind the `BlobStore` port.
+8. Node picker on the empty composer.
+9. Encrypted backup and restore through the relay's store, sealed under the root key.
+10. Linux surface rewritten with relm4 (ADR 0020); SwiftUI macOS surface; Compose Android surface with the core in a foreground service.
+11. Capability manifest negotiated at session connect; two-minor-version window enforced. Config chain through `figment`.
 
 Exit: every v1 scenario passes on real devices; the author uses it daily.
 
@@ -71,10 +72,11 @@ Exit criterion per surface: passes the v1 scenarios it can express, with lifecyc
 
 ## Phase 5: Routes
 
-1. WebRTC data channels with signaling through the backend.
-2. Bluetooth for nearby devices.
-3. Parallel probing; best route active, others warm.
-4. Per-feature route selection: drafts over nearby routes, facts over the best available, backups over relay.
+Most of what this phase once held is iroh's job (ADR 0019). What remains ours:
+
+1. Bluetooth for nearby devices without a network, if a watch or offline scenario demands it.
+2. Per-feature route preferences on top of iroh's connection choice: gossip for drafts, streams for facts, relay store for backups.
+3. Browser reach: the web surface talks to a node through the relay's WebSocket path.
 
 Exit: routes change under load with no visible effect on any surface.
 

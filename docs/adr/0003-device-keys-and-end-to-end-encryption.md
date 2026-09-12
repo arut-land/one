@@ -1,5 +1,6 @@
 ---
 status: accepted
+amended-by: 0019 (transport encryption is iroh's QUIC; device key is the iroh endpoint key; at-rest sealed boxes and pairing remain as written)
 ---
 
 # Device keys, linked-device root key, and end-to-end encryption from the first release

@@ -1,5 +1,6 @@
 ---
 status: accepted
+amended-by: 0019 (an iroh bi-directional stream is one more RpcChannel; QUIC and WebRTC channels of our own are not built)
 ---
 
 # Connect protocol framing over `RpcChannel`; transports are adapters beneath it

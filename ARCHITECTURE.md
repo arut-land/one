@@ -171,11 +171,11 @@ Evolution is additive within a package version. A session and a node talk when w
 
 ## Transport and routes
 
-`RpcChannel` is the only boundary a remote call crosses. Connect protocol framing sits on top of it for every HTTP-carried route (ADR 0009). Channels: memory (tests, in-process hosting), IPC pipe (child-process daemon), WebSocket (relay and LAN), later QUIC and WebRTC data channels. Layers around a channel attach and read metadata: bearer or device auth, authority epoch, W3C trace context, protocol version. Features never see a channel.
+`RpcChannel` is the only boundary a remote call crosses. Connect protocol framing sits on top of it for every HTTP-carried route (ADR 0009). Channels: memory (tests, in-process hosting), IPC pipe (child-process daemon), an iroh bi-directional stream between nodes, and the relay's WebSocket path for browsers. Layers around a channel attach and read metadata: device auth, authority epoch, W3C trace context, protocol version. Features never see a channel.
 
-Route policy in v1 keeps one active route per node with a basic health score and ordered failover (ADR 0012). Because facts carry sequence numbers and commands carry IDs, later parallel probing and per-feature route selection change policy only.
+Between devices, connectivity is iroh (ADR 0019): each node is an iroh endpoint whose Ed25519 key is the device key; discovery, hole punching, relay fallback, and transport encryption are iroh's. Route selection is therefore not ours (ADR 0012 as amended). Per-feature preferences sit above it: drafts and presence travel over `iroh-gossip`, facts over streams, attachments over `iroh-blobs`, backups through the relay store.
 
-Envelopes between devices are signed by the device key and encrypted under keys derived from the person's root key (ADR 0003). Any paired device or the backend may carry an envelope for an unreachable node. The backend routes what it cannot read (ADR 0002).
+Envelopes held at rest by a carrier or the relay are sealed under keys derived from the person's root key (ADR 0003). Any paired device or the relay may carry an envelope for an unreachable node and cannot read it (ADR 0002).
 
 ## Hosting
 
@@ -211,7 +211,7 @@ Static capabilities are the port bundles above. Dynamic capabilities are the man
 
 ## Security
 
-Device keys are Ed25519, generated on first launch, never exported. Pairing by QR or short code establishes a secure channel and transfers the root key. Sessions use a Noise handshake; stored envelopes and backups use sealed boxes. Provider keys live in the executing node's platform keychain (ADR 0014). Accounts, when they arrive, vouch for device keys and escrow the root key; they do not replace device identity.
+Device keys are Ed25519 iroh endpoint keys, generated on first launch, never exported, held in the platform keychain (`keyring` on desktop). Pairing by QR or short code exchanges endpoint ids over an iroh connection and transfers the root key. Transport encryption is iroh's QUIC; stored envelopes and backups use sealed boxes under keys derived from the root key. Provider keys live in the executing node's platform keychain (ADR 0014). Accounts, when they arrive, vouch for device keys and escrow the root key; they do not replace device identity.
 
 Sharing a conversation copies explicitly shareable history and grants nothing else. Continuing from a shared transcript creates a new conversation with a new authority.
 
@@ -235,14 +235,13 @@ Sharing a conversation copies explicitly shareable history and grants nothing el
 |   |-- watch/                      reactive cell over tokio::sync::watch
 |   |-- authority/                  Command, Authority<C>, Projection, Machine
 |   |-- storage/                    FactLog, BlobStore, KeyValue ports + directory impl
-|   |-- identity/                   device keys, pairing, root key, envelopes
-|   `-- routing/                    route policy, health, discovery ports
+|   `-- identity/                   pairing, root key, sealed envelopes (keys are iroh endpoint keys)
 |-- features/
 |   `-- chat/                       transcript, operations, composer; commands, facts, projections, service
 |-- product/
 |   `-- session/                    scopes, scope handles, availability, connectivity
 |-- transports/
-|   |-- memory/  ipc/  connect-http/  (quic/ webrtc/ later)
+|   |-- ipc/  connect-http/  iroh/     (in-process calls use the RpcRegistry directly; no memory transport)
 |-- runtimes/
 |   |-- local/                      Tokio host, arutd daemon, LAN discovery
 |   |-- android/  apple/  browser/   port implementations and drivers
@@ -265,6 +264,8 @@ Surfaces outside the current release stay in the tree and stay compiling where t
 ## Ecosystems and tools
 
 Languages in the repository: Rust, Protobuf, Swift, Kotlin, C#, TypeScript. Each exists because a surface needs it; none exists for tooling. Tools: mise (toolchains and tasks), cargo, pnpm, buf (proto lint and breaking checks), BoltFFI (all foreign bindings), gradle and xcodegen for their platforms. Protobuf compiles through `protox` in the build script, so no `protoc` binary is installed. Anything else is a dependency, not a project.
+
+The dependencies that carry real weight, and what each replaces: iroh, `iroh-blobs`, `iroh-gossip` (identity, discovery, NAT traversal, relay, transport encryption, blob transfer, ephemeral replication); BoltFFI (every foreign binding); `rig` (model providers); `relm4` (the Linux surface); `keyring` (desktop secrets); `figment` (the config chain); `tracing` with OpenTelemetry and the OpenFeature SDK (telemetry and flags). Rejected with reasons in the ADRs: UniFFI, Diplomat, typeshare, `nami` and the other Rust reactive frameworks, `irpc`, libp2p, CRDT libraries.
 
 ## Verification
 
