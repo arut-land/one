@@ -16,3 +16,6 @@ futures-executor = "0.3.31"
 
 [lints]
 workspace = true
+
+[package.metadata.cargo-machete]
+ignored = ["prost"]
