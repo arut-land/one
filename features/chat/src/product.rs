@@ -44,9 +44,17 @@ pub struct ChatState {
     pub error: String,
 }
 
-#[doc(hidden)]
+/// The session learns here that a pending chat became a conversation.
 pub trait ChatStarted: Send + Sync {
     fn chat_started(&self, chat_id: String, chat: ChatClient);
+}
+
+/// What a chat that has not started yet needs, and an established one does not.
+#[derive(Clone)]
+struct PendingStart {
+    scope_id: String,
+    command_id: String,
+    on_started: Option<Arc<dyn ChatStarted>>,
 }
 
 #[derive(Clone)]
@@ -55,9 +63,7 @@ pub struct ChatClient {
     composer: ComposerClient,
     state: Arc<Watch<ChatState>>,
     send_lock: Arc<AsyncMutex<()>>,
-    pending_scope_id: Option<String>,
-    on_started: Option<Arc<dyn ChatStarted>>,
-    start_command_id: String,
+    start: Option<PendingStart>,
     ids: Arc<dyn IdSource>,
 }
 
@@ -69,20 +75,18 @@ impl ChatClient {
         messages: Vec<WireMessage>,
         ids: Arc<dyn IdSource>,
     ) -> Self {
-        let mut client = Self::pending(
+        Self {
             service,
-            composer_service.clone(),
-            "unused".into(),
-            None,
-            ids.clone(),
-        );
-        client.composer = ComposerClient::new(composer_service, ComposerScope::chat(&id), ids);
-        client.state.set(ChatState {
-            id: Some(id),
-            messages: messages.into_iter().filter_map(from_wire).collect(),
-            ..Default::default()
-        });
-        client
+            composer: ComposerClient::new(composer_service, ComposerScope::chat(&id), ids.clone()),
+            state: Arc::new(Watch::new(ChatState {
+                id: Some(id),
+                messages: messages.into_iter().filter_map(from_wire).collect(),
+                ..Default::default()
+            })),
+            send_lock: Arc::new(AsyncMutex::new(())),
+            start: None,
+            ids,
+        }
     }
 
     pub fn pending(
@@ -96,14 +100,16 @@ impl ChatClient {
             service,
             composer: ComposerClient::new(
                 composer_service,
-                ComposerScope::pending(pending_scope_id.clone()),
+                ComposerScope::pending(&pending_scope_id),
                 ids.clone(),
             ),
             state: Arc::new(Watch::new(ChatState::default())),
             send_lock: Arc::new(AsyncMutex::new(())),
-            pending_scope_id: Some(pending_scope_id),
-            on_started,
-            start_command_id: ids.new_id(),
+            start: Some(PendingStart {
+                scope_id: pending_scope_id,
+                command_id: ids.new_id(),
+                on_started,
+            }),
             ids,
         }
     }
@@ -137,13 +143,14 @@ impl ChatClient {
             state.error.clear();
         });
 
-        if let Some(chat_id) = self.id() {
-            return self.send_established(chat_id, text).await;
+        match (self.id(), &self.start) {
+            (Some(chat_id), _) => self.send_established(chat_id, text).await,
+            (None, Some(start)) => self.start(start, text).await,
+            (None, None) => self.fail("chat has no conversation to send to".into()),
         }
-        self.start(text).await
     }
 
-    async fn start(&self, text: String) -> ChatState {
+    async fn start(&self, start: &PendingStart, text: String) -> ChatState {
         if self.composer.state().text != text {
             let composer = self.composer.replace_unlocked(text.clone()).await;
             if composer.status == ComposerStatus::Failed {
@@ -154,11 +161,8 @@ impl ChatClient {
         let response = self
             .service
             .start_chat(Request::new(StartChatRequest {
-                pending_scope_id: self
-                    .pending_scope_id
-                    .clone()
-                    .expect("pending chat must have a pending scope"),
-                command_id: self.start_command_id.clone(),
+                pending_scope_id: start.scope_id.clone(),
+                command_id: start.command_id.clone(),
                 expected_revision: composer.revision,
                 text,
             }))
@@ -186,7 +190,7 @@ impl ChatClient {
                     state.status = ChatStatus::Idle;
                     state.error.clear();
                 });
-                if let Some(callback) = &self.on_started {
+                if let Some(callback) = &start.on_started {
                     callback.chat_started(chat_id, self.clone());
                 }
                 state
