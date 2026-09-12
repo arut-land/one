@@ -1,0 +1,108 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+    tags: ["v*"]
+  pull_request:
+
+jobs:
+  linux:
+    name: Linux
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # The Linux surface links against GTK4 (ADR 0013), so its dev headers
+      # must be present before any cargo command touches the workspace.
+      - name: Install GTK4 development packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgtk-4-dev build-essential pkg-config
+
+      - uses: Swatinem/rust-cache@v2
+
+      - uses: jdx/mise-action@v2
+
+      - name: Install toolchains
+        run: mise install
+
+      - name: cargo fmt
+        run: cargo fmt --all --check
+
+      - name: cargo clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+      - name: cargo test
+        run: cargo test --workspace
+
+      - name: cargo check (wasm)
+        run: cargo check -p arut_ffi --target wasm32-unknown-unknown
+
+      - name: buf lint
+        run: buf lint
+
+      - name: buf breaking
+        run: mise run protocol:breaking
+
+      - name: Generate wasm bindings and install JS workspace
+        run: mise run install
+
+      - name: pnpm check
+        run: pnpm check
+
+      - name: pnpm build
+        run: pnpm build
+
+  android:
+    name: Android
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: Swatinem/rust-cache@v2
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: "platform-tools platforms;android-34 build-tools;34.0.0 ndk;26.1.10909125"
+
+      - uses: jdx/mise-action@v2
+
+      - name: Install toolchains
+        run: mise install
+
+      # This machine has no Android emulator or device, so only the build
+      # itself is verified here, not the app running.
+      - name: Build Android surface
+        run: mise run surface:android
+
+  macos:
+    name: macOS
+    runs-on: macos-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: Swatinem/rust-cache@v2
+
+      - uses: jdx/mise-action@v2
+
+      - name: Install toolchains
+        run: mise install
+
+      - name: Generate Apple bindings
+        run: mise run ffi:apple
+
+      - name: Generate Xcode project
+        run: mise run surface:apple-project
+
+      # Speculative: this step has not been run on this machine (no Xcode
+      # available here), so the scheme name and build settings are inferred
+      # from surfaces/apple/project.yml rather than verified end to end.
+      - name: Build ArutMac
+        run: xcodebuild -project surfaces/apple/Arut.xcodeproj -scheme ArutMac build CODE_SIGNING_ALLOWED=NO
