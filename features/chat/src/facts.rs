@@ -9,6 +9,8 @@ pub struct ChatProjection {
     pub conversations: Vec<Conversation>,
     #[prost(string, repeated, tag = "2")]
     pub completed_operations: Vec<String>,
+    #[prost(btree_map = "string, uint64", tag = "3")]
+    pub consumed_drafts: std::collections::BTreeMap<String, u64>,
 }
 
 impl ChatProjection {
@@ -18,6 +20,12 @@ impl ChatProjection {
             .find(|conversation| conversation.id == chat_id)
     }
     pub fn apply(&mut self, fact: &ChatFact) {
+        if let Some(revision) = fact.pending_revision {
+            self.consumed_drafts
+                .entry(fact.pending_scope_id.clone())
+                .and_modify(|current| *current = (*current).max(revision))
+                .or_insert(revision);
+        }
         match self
             .conversations
             .iter_mut()
@@ -40,7 +48,7 @@ impl ChatProjection {
     pub fn exchange(
         &self,
         chat_id: String,
-        pending_scope_id: Option<String>,
+        pending: Option<crate::command::PendingDraft>,
         text: String,
         operation_id: String,
     ) -> ChatFact {
@@ -49,7 +57,8 @@ impl ChatProjection {
             .map_or(0, |conversation| conversation.messages.len()) as u64;
         ChatFact {
             chat_id,
-            pending_scope_id: pending_scope_id.unwrap_or_default(),
+            pending_revision: pending.as_ref().map(|pending| pending.revision),
+            pending_scope_id: pending.map_or_else(String::new, |pending| pending.scope_id),
             messages: vec![
                 message(next + 1, ChatRole::User, text.clone()),
                 message(next + 2, ChatRole::Assistant, crate::domain::respond(&text)),

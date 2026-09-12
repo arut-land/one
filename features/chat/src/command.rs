@@ -2,10 +2,15 @@ use crate::facts::ChatProjection;
 use arut_authority::{Command, Projection};
 use arut_protocol::chat::v1::ChatFact;
 
+pub struct PendingDraft {
+    pub scope_id: String,
+    pub revision: u64,
+}
+
 pub struct ChatCommand {
     pub command_id: String,
     pub chat_id: String,
-    pub pending_scope: Option<String>,
+    pub pending_scope: Option<PendingDraft>,
     pub text: String,
 }
 #[derive(Debug)]

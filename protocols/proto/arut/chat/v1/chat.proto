@@ -55,6 +55,8 @@ message ChatFact {
   string pending_scope_id = 2;
   repeated ChatMessage messages = 3;
   repeated OperationFact operations = 4;
+  // Pending draft revision consumed by this accepted start, when recorded.
+  optional uint64 pending_revision = 5;
 }
 
 message OperationFact {

@@ -88,6 +88,10 @@ impl ComposerClient {
 
     pub async fn initialize(&self) -> ComposerState {
         let _operation = self.operations.lock().await;
+        self.initialize_unlocked().await
+    }
+
+    async fn initialize_unlocked(&self) -> ComposerState {
         let response = self
             .service
             .get_composer(Request::new(GetComposerRequest {
@@ -109,6 +113,12 @@ impl ComposerClient {
     }
 
     pub(crate) async fn replace_unlocked(&self, text: String) -> ComposerState {
+        if self.state().status == ComposerStatus::Connecting {
+            let initialized = self.initialize_unlocked().await;
+            if initialized.error.is_some() {
+                return initialized;
+            }
+        }
         self.state.update(|state| state.text.clone_from(&text));
         let sequence = self.next_command.fetch_add(1, Ordering::Relaxed);
         let response = self
