@@ -37,6 +37,9 @@ impl<F: Fact> FactLog<F> for MemoryLog<F> {
             return Err(StorageError::Epoch { current });
         }
         let actual = state.records.last().map_or(0, |record| record.sequence);
+        if cursor.is_some_and(|cursor| cursor > actual) {
+            return Err(StorageError::Conflict { actual });
+        }
         let duplicate = state.records.iter().find(|r| r.command_id == id).cloned();
         let start = cursor.map_or(state.records.len(), |cursor| {
             state.records.partition_point(|r| r.sequence <= cursor)
@@ -44,11 +47,8 @@ impl<F: Fact> FactLog<F> for MemoryLog<F> {
         let Some(fact) = decide(actual, &state.records[start..], duplicate)? else {
             return Ok(None);
         };
-        if cursor.is_some_and(|cursor| cursor > actual) {
-            return Err(StorageError::Conflict { actual });
-        }
         let record = Record {
-            sequence: actual + 1,
+            sequence: actual.checked_add(1).ok_or(StorageError::Corrupt)?,
             epoch,
             command_id: id.into(),
             fact,
