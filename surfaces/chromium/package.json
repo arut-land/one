@@ -8,7 +8,7 @@
     "check": "tsc --noEmit"
   },
   "dependencies": {
-    "@arut/bindings-react": "workspace:*",
+    "@arut/bindings-typescript": "workspace:*",
     "react": "catalog:",
     "react-dom": "catalog:"
   },

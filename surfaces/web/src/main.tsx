@@ -1,4 +1,4 @@
-import { createSession } from "@arut/runtime-browser";
+import { createSession } from "@arut/bindings-typescript";
 import { createRoot } from "react-dom/client";
 import { ChatView } from "./index";
 import { useChat } from "./useChat";

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import { ChatStatus, observeScope, useObservable, type ProductSessionHandle } from "@arut/bindings-react";
+import { ChatStatus, observeScope, type ProductSessionHandle } from "@arut/bindings-typescript";
+import { useObservable } from "@arut/bindings-typescript/react";
 
 // Navigation is surface state. Every rendered projection has its own observer.
 export function useChat(session: ProductSessionHandle) {

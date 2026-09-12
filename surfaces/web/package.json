@@ -9,10 +9,9 @@
     "dev": "vite"
   },
   "dependencies": {
-    "@arut/bindings-react": "workspace:*",
+    "@arut/bindings-typescript": "workspace:*",
     "react": "catalog:",
-    "react-dom": "catalog:",
-    "@arut/runtime-browser": "workspace:*"
+    "react-dom": "catalog:"
   },
   "devDependencies": {
     "@types/react": "catalog:",

@@ -1,3 +1,9 @@
+//! # Linux GTK
+//!
+//! A Rust-owned GTK4 surface with conversation navigation, a transcript, a pending
+//! composer, per-conversation drafts, and send. It reads Rust projections directly
+//! and awaits watch changes on GLib's main context. It uses no FFI or libadwaita.
+
 use arut_product_session::ProductSession;
 use gtk::{glib, prelude::*};
 use std::rc::Rc;

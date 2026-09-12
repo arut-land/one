@@ -1,4 +1,4 @@
-import type { ObservableStore } from "@arut/bindings-typescript";
+import type { ObservableStore } from "./observable";
 import { useSyncExternalStore } from "react";
 
 export function useObservable<T>(store: ObservableStore<T>): T {

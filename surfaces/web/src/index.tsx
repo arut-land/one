@@ -1,4 +1,4 @@
-import { ChatRole } from "@arut/bindings-react";
+import { ChatRole } from "@arut/bindings-typescript";
 import type { useChat } from "./useChat";
 import { useEffect, useRef, useState, type FormEvent, type TouchEvent } from "react";
 

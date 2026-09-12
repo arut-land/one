@@ -1,3 +1,8 @@
+//! # IPC
+//!
+//! Connect over HTTP on a Unix socket. The local daemon creates a private socket;
+//! the channel uses reqwest's Unix-socket connector and shares the Connect codec.
+
 #![cfg(unix)]
 use arut_rpc::{Request, Response, RpcChannel, RpcFuture, RpcStream};
 pub struct IpcChannel(arut_transport_connect_http::HttpRpcChannel);
