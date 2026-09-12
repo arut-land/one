@@ -23,7 +23,7 @@ ADRs record decisions that are hard to reverse, surprising without context, and 
 | [0017](0017-license-split.md) | FSL for product crates, MIT/Apache-2.0 for substrates | Accepted |
 | [0018](0018-drafts-are-ephemeral-last-writer-wins.md) | Drafts are ephemeral, last-writer-wins, not facts | Accepted |
 
-The records that shaped the first vertical slice are kept under `superseded/` for history. Their numbering overlaps this set and they are not authoritative.
+The records that shaped the first vertical slice live in git history before the reset commit and are not authoritative.
 
 ## Lifecycle
 
