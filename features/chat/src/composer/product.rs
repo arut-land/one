@@ -238,14 +238,16 @@ impl ComposerClient {
                 ComposerStatus::Synced
             };
             state.error = conflict.then_some(ComposerError::RevisionConflict { current });
-        })
+        });
+        self.state.get()
     }
 
     fn apply_error(&self, error: ComposerError) -> ComposerState {
         self.state.update(|state| {
             state.status = ComposerStatus::Failed;
             state.error = Some(error);
-        })
+        });
+        self.state.get()
     }
 }
 
