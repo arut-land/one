@@ -38,7 +38,7 @@ A Node smoke run of the packed wasm module succeeded: it imports only `__boltffi
 
 - The GTK surface has been launched once: it spawned `arutd`, connected over the Unix socket, and the daemon created the storage tree under `$XDG_DATA_HOME/arut`. Sending a message through the GTK window has not been exercised yet.
 - Android and Apple builds have not been run; their adapters are template output and their views were reduced to bind to the new handles.
-- Browser invalidation delivery has been exercised only by a Node smoke run, not in a page with a UI.
+- Browser invalidation delivery is verified under Node against the packed wasm module: subscriptions on the conversation, composer, and list handles each fire on replace and send, the message round-trips, the draft clears, and IDs come from the host. It has not been exercised in a page with a UI; run `pnpm --filter @arut/surface-web dev` and send a message to close that gap.
 - No conformance suite exists for `BlobStore` yet; only `RpcChannel` and `FactLog`.
 
 ## Leftovers to clean
