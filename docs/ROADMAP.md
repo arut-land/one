@@ -19,6 +19,16 @@ Exit: the existing chat behavior runs on Linux, macOS, and Android through the n
 
 Status on 2026-09-13: the chat foundation passes the Rust, wasm, TypeScript, protocol, localization, and production-build gates. The cleanup added keyed transcript ranges across every surface, one fact-log transaction per authority decision, one candidate clone per watch update, and cancellation of composer followers without retry polling. Verified locally: GTK keyboard sending, independent drafts, and message-widget preservation; generated wasm start/send/list and transcript ranges under Node; all transport and storage conformance suites. Earlier runs exercised GTK against `arutd` and the web surface in a browser. Swift, Kotlin, and C# edits still require native compilation. Phase 0's platform exit is not yet verified: Android and macOS have not run here. The host-polled executor is implemented and tested as a port but is not wired into platform callbacks; native hosting and the remaining conversation/operation scope expansion still need completion.
 
+## Open decisions from the 2026-09-13 review
+
+Recorded here so the code they touch is not changed speculatively. Each names the ADR or phase that settles it.
+
+- **Draft write acknowledgement.** Replace futures each promise their own result, so per-keystroke writes queue behind one mutex and cannot be coalesced. Decide whether the composer offers a latest-draft setter plus a flush boundary before send, then coalesce. Settle with Phase 1 item 4 (drafts over gossip).
+- **Retry outcome retention.** ADR 0004 promises retry deduplication with no expiry window, so command outcomes are never pruned and the directory log scans the whole live log per commit. Decide the retention window before pruning; use the redb store for sustained workloads meanwhile.
+- **Idle FFI observer release.** BoltFFI's event subscriptions expose no producer-side cancellation hook, so an unsubscribed observer is retained until its source changes. Contribute the hook upstream or adopt a generated subscription-owner API; do not add polling timers.
+- **Session factory ABI.** The native and browser session constructors look interchangeable but embed hosting behavior. Settle with the native-hosting completion in Phase 0's remaining work (ADR 0011) before changing the exported ABI.
+- **BoltFFI npm packaging defect.** The generated package file list omits the Node loader; harmless while the package is unpublished. Fix upstream before publishing.
+
 ## Phase 1: Daily driver (v1)
 
 The scope in `docs/PRD.md`.
