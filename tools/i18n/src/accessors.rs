@@ -131,6 +131,7 @@ pub fn rust(default_locale: &str, locales: &[Locale]) -> String {
         out.push_str("        let _ = self;\n");
     } else {
         out.push_str("        match self {\n");
+        let mut arms: BTreeMap<String, Vec<String>> = BTreeMap::new();
         for (id, message) in carrying {
             let arguments = message.arguments();
             let bindings = arguments
@@ -138,11 +139,8 @@ pub fn rust(default_locale: &str, locales: &[Locale]) -> String {
                 .map(|argument| snake(&argument.name))
                 .collect::<Vec<_>>()
                 .join(", ");
-            let _ = writeln!(
-                out,
-                "            Self::{} {{ {bindings} }} => {{",
-                pascal(id)
-            );
+            let pattern = format!("Self::{} {{ {bindings} }}", pascal(id));
+            let mut body = String::new();
             for argument in &arguments {
                 let value = match argument.kind {
                     Kind::Number => format!("FluentValue::from(*{})", snake(&argument.name)),
@@ -151,11 +149,16 @@ pub fn rust(default_locale: &str, locales: &[Locale]) -> String {
                     }
                 };
                 let _ = writeln!(
-                    out,
+                    body,
                     "                args.set(\"{}\", {value});",
                     argument.name
                 );
             }
+            arms.entry(body).or_default().push(pattern);
+        }
+        for (body, patterns) in arms {
+            let _ = writeln!(out, "            {} => {{", patterns.join(" | "));
+            out.push_str(&body);
             out.push_str("            }\n");
         }
         out.push_str("            _ => {}\n        }\n");

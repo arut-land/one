@@ -64,7 +64,7 @@ export function ChatView(props: ChatViewProps) {
       onTouchEnd={finishSwipe}
     >
       <button
-        aria-label="Close chat history"
+        aria-label={t.actionCloseHistory(strings)}
         className="sidebar-scrim"
         type="button"
         onClick={() => setSidebarOpen(false)}
@@ -73,9 +73,9 @@ export function ChatView(props: ChatViewProps) {
       <aside className="sidebar">
         <div className="sidebar-brand">
           <span className="brand-mark">A</span>
-          <strong>Arut</strong>
+          <strong>{t.appName(strings)}</strong>
           <button
-            aria-label={sidebarOpen ? "Collapse sidebar" : "Expand sidebar"}
+            aria-label={sidebarOpen ? t.actionCollapseSidebar(strings) : t.actionExpandSidebar(strings)}
             accessKey="s"
             className="sidebar-toggle"
             type="button"
@@ -86,12 +86,12 @@ export function ChatView(props: ChatViewProps) {
         </div>
 
         <button className="new-chat" accessKey="n" type="button" onClick={newChat}>
-          <PlusIcon /><b>New chat</b>
+          <PlusIcon /><b>{t.actionNewChat(strings)}</b>
         </button>
 
-        <nav className="history" aria-label="Chat history">
-          <p>Recent</p>
-          {props.history.length === 0 && <span className="history-empty">Your chats will appear here.</span>}
+        <nav className="history" aria-label={t.labelChatHistory(strings)}>
+          <p>{t.labelRecent(strings)}</p>
+          {props.history.length === 0 && <span className="history-empty">{t.chatHistoryEmpty(strings)}</span>}
           {props.history.map((chat) => (
             <button
               aria-current={props.snapshot.chatId === chat.id ? "page" : undefined}
@@ -107,23 +107,23 @@ export function ChatView(props: ChatViewProps) {
           ))}
         </nav>
 
-        <div className="sidebar-foot"><span /> Local session</div>
+        <div className="sidebar-foot"><span /> {t.chatLocalSession(strings)}</div>
       </aside>
 
       <main className="conversation">
         <header>
           <button
-            aria-label="Open chat history"
+            aria-label={t.actionOpenHistory(strings)}
             className="mobile-menu"
             type="button"
             onClick={() => setSidebarOpen(true)}
           ><PanelIcon /></button>
           <div className="conversation-title">
             <strong>{activeTitle ?? t.actionNewConversation(strings)}</strong>
-            <span>{props.snapshot.chatId ? "Saved in this session" : "Draft synced across this session"}</span>
+            <span>{props.snapshot.chatId ? t.chatSessionSaved(strings) : t.chatDraftSynced(strings)}</span>
           </div>
           <div className={`status ${props.sending ? "busy" : ""}`}>
-            <span />{props.sending ? "Thinking" : "Ready"}
+            <span />{props.sending ? t.chatStatusThinking(strings) : t.availabilityAvailable(strings)}
           </div>
         </header>
 
@@ -131,8 +131,8 @@ export function ChatView(props: ChatViewProps) {
           {props.snapshot.messages.length === 0 ? (
             <div className="empty-state">
               <span className="empty-mark">A</span>
-              <p>What are we working on?</p>
-              <span>Write a message below. Your draft stays with this conversation.</span>
+              <p>{t.chatEmptyTitle(strings)}</p>
+              <span>{t.chatEmptyHint(strings)}</span>
             </div>
           ) : (
             <div className="message-list">
@@ -170,7 +170,7 @@ export function ChatView(props: ChatViewProps) {
               {props.sending ? <span className="spinner" /> : <SendIcon />}
             </button>
           </form>
-          <small>Enter to send</small>
+          <small>{t.composerHintEnter(strings)}</small>
         </div>
       </main>
     </section>

@@ -3,6 +3,7 @@ use arut_feature_chat::{
     errors::ChatError,
     product::{ChatClient, ChatMessage, ChatStatus},
 };
+use arut_i18n::Message;
 use gtk::prelude::*;
 use relm4::{
     ComponentParts, ComponentSender, SimpleComponent,
@@ -69,14 +70,14 @@ impl SimpleComponent for Transcript {
             gtk::ScrolledWindow {
                 set_vexpand: true,
                 set_hscrollbar_policy: gtk::PolicyType::Never,
-                update_property: &[gtk::accessible::Property::Label("Conversation transcript")],
+                update_property: &[gtk::accessible::Property::Label(&strings::show(&Message::LabelTranscript))],
                 #[local_ref]
                 rows -> gtk::Box { set_orientation: gtk::Orientation::Vertical, set_spacing: 16 },
             },
             gtk::Label {
                 #[watch]
                 set_label: &strings::chat(model.status, model.error),
-                update_property: &[gtk::accessible::Property::Label("Message status")],
+                update_property: &[gtk::accessible::Property::Label(&strings::show(&Message::LabelMessageStatus))],
             },
         }
     }

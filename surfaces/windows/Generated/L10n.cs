@@ -12,14 +12,50 @@ internal static class L10n
 {
     private static readonly ResourceLoader Resources = new();
 
+    /// <summary><c>action-close-history</c></summary>
+    public static string ActionCloseHistory() => Resources.GetString("action_close_history");
+
+    /// <summary><c>action-collapse-sidebar</c></summary>
+    public static string ActionCollapseSidebar() => Resources.GetString("action_collapse_sidebar");
+
+    /// <summary><c>action-expand-sidebar</c></summary>
+    public static string ActionExpandSidebar() => Resources.GetString("action_expand_sidebar");
+
+    /// <summary><c>action-new-chat</c></summary>
+    public static string ActionNewChat() => Resources.GetString("action_new_chat");
+
+    /// <summary><c>action-new-chat-shortcut</c></summary>
+    public static string ActionNewChatShortcut(string shortcut) => string.Format(Resources.GetString("action_new_chat_shortcut"), shortcut);
+
     /// <summary><c>action-new-conversation</c></summary>
     public static string ActionNewConversation() => Resources.GetString("action_new_conversation");
+
+    /// <summary><c>action-new-conversation-shortcut</c></summary>
+    public static string ActionNewConversationShortcut(string shortcut) => string.Format(Resources.GetString("action_new_conversation_shortcut"), shortcut);
+
+    /// <summary><c>action-open-history</c></summary>
+    public static string ActionOpenHistory() => Resources.GetString("action_open_history");
 
     /// <summary><c>action-send</c></summary>
     public static string ActionSend() => Resources.GetString("action_send");
 
     /// <summary><c>action-send-message</c></summary>
     public static string ActionSendMessage() => Resources.GetString("action_send_message");
+
+    /// <summary><c>action-toggle-history</c></summary>
+    public static string ActionToggleHistory() => Resources.GetString("action_toggle_history");
+
+    /// <summary><c>action-toggle-history-shortcut</c></summary>
+    public static string ActionToggleHistoryShortcut(string shortcut) => string.Format(Resources.GetString("action_toggle_history_shortcut"), shortcut);
+
+    /// <summary><c>action-toggle-sidebar</c></summary>
+    public static string ActionToggleSidebar() => Resources.GetString("action_toggle_sidebar");
+
+    /// <summary><c>action-toggle-sidebar-shortcut</c></summary>
+    public static string ActionToggleSidebarShortcut(string shortcut) => string.Format(Resources.GetString("action_toggle_sidebar_shortcut"), shortcut);
+
+    /// <summary><c>app-name</c></summary>
+    public static string AppName() => Resources.GetString("app_name");
 
     /// <summary><c>availability-available</c></summary>
     public static string AvailabilityAvailable() => Resources.GetString("availability_available");
@@ -36,6 +72,18 @@ internal static class L10n
     /// <summary><c>availability-unknown</c></summary>
     public static string AvailabilityUnknown() => Resources.GetString("availability_unknown");
 
+    /// <summary><c>chat-draft-synced</c></summary>
+    public static string ChatDraftSynced() => Resources.GetString("chat_draft_synced");
+
+    /// <summary><c>chat-empty-hint</c></summary>
+    public static string ChatEmptyHint() => Resources.GetString("chat_empty_hint");
+
+    /// <summary><c>chat-empty-start</c></summary>
+    public static string ChatEmptyStart() => Resources.GetString("chat_empty_start");
+
+    /// <summary><c>chat-empty-title</c></summary>
+    public static string ChatEmptyTitle() => Resources.GetString("chat_empty_title");
+
     /// <summary><c>chat-error-cancelled</c></summary>
     public static string ChatErrorCancelled() => Resources.GetString("chat_error_cancelled");
 
@@ -45,17 +93,29 @@ internal static class L10n
     /// <summary><c>chat-error-no-conversation</c></summary>
     public static string ChatErrorNoConversation() => Resources.GetString("chat_error_no_conversation");
 
+    /// <summary><c>chat-history-empty</c></summary>
+    public static string ChatHistoryEmpty() => Resources.GetString("chat_history_empty");
+
+    /// <summary><c>chat-local-session</c></summary>
+    public static string ChatLocalSession() => Resources.GetString("chat_local_session");
+
     /// <summary><c>chat-role-assistant</c></summary>
     public static string ChatRoleAssistant() => Resources.GetString("chat_role_assistant");
 
     /// <summary><c>chat-role-you</c></summary>
     public static string ChatRoleYou() => Resources.GetString("chat_role_you");
 
+    /// <summary><c>chat-session-saved</c></summary>
+    public static string ChatSessionSaved() => Resources.GetString("chat_session_saved");
+
     /// <summary><c>chat-status-failed</c></summary>
     public static string ChatStatusFailed() => Resources.GetString("chat_status_failed");
 
     /// <summary><c>chat-status-sending</c></summary>
     public static string ChatStatusSending() => Resources.GetString("chat_status_sending");
+
+    /// <summary><c>chat-status-thinking</c></summary>
+    public static string ChatStatusThinking() => Resources.GetString("chat_status_thinking");
 
     /// <summary><c>composer-error-authority-changed</c></summary>
     public static string ComposerErrorAuthorityChanged(string currentEpoch) => string.Format(Resources.GetString("composer_error_authority_changed"), currentEpoch);
@@ -75,6 +135,12 @@ internal static class L10n
     /// <summary><c>composer-error-snapshot-missing</c></summary>
     public static string ComposerErrorSnapshotMissing() => Resources.GetString("composer_error_snapshot_missing");
 
+    /// <summary><c>composer-hint-enter</c></summary>
+    public static string ComposerHintEnter() => Resources.GetString("composer_hint_enter");
+
+    /// <summary><c>composer-hint-multiline</c></summary>
+    public static string ComposerHintMultiline() => Resources.GetString("composer_hint_multiline");
+
     /// <summary><c>composer-placeholder</c></summary>
     public static string ComposerPlaceholder() => Resources.GetString("composer_placeholder");
 
@@ -83,6 +149,30 @@ internal static class L10n
 
     /// <summary><c>composer-status-failed</c></summary>
     public static string ComposerStatusFailed() => Resources.GetString("composer_status_failed");
+
+    /// <summary><c>label-chat-history</c></summary>
+    public static string LabelChatHistory() => Resources.GetString("label_chat_history");
+
+    /// <summary><c>label-conversations</c></summary>
+    public static string LabelConversations() => Resources.GetString("label_conversations");
+
+    /// <summary><c>label-draft</c></summary>
+    public static string LabelDraft() => Resources.GetString("label_draft");
+
+    /// <summary><c>label-draft-sync</c></summary>
+    public static string LabelDraftSync() => Resources.GetString("label_draft_sync");
+
+    /// <summary><c>label-message-status</c></summary>
+    public static string LabelMessageStatus() => Resources.GetString("label_message_status");
+
+    /// <summary><c>label-node-availability</c></summary>
+    public static string LabelNodeAvailability() => Resources.GetString("label_node_availability");
+
+    /// <summary><c>label-recent</c></summary>
+    public static string LabelRecent() => Resources.GetString("label_recent");
+
+    /// <summary><c>label-transcript</c></summary>
+    public static string LabelTranscript() => Resources.GetString("label_transcript");
 
     /// <summary><c>node-failure-cancelled</c></summary>
     public static string NodeFailureCancelled() => Resources.GetString("node_failure_cancelled");
