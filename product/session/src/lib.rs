@@ -1,4 +1,5 @@
 pub mod hosting;
+pub mod scopes;
 use arut_feature_chat::composer::authority::ComposerAuthority;
 use arut_feature_chat::composer::service::ComposerServiceImpl;
 use arut_feature_chat::product::{ChatClient, ChatStarted};
@@ -12,25 +13,26 @@ use arut_protocol::chat::v1::{CHAT_SERVICE_DESCRIPTOR, ChatServiceClient};
 use arut_rpc::{Request, RpcChannel, ServiceMetadata, ServiceRegistration};
 use arut_watch::{Subscription, Watch};
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex, OnceLock, Weak};
+use std::sync::{Arc, Mutex, Weak};
 
 pub struct ProductSession {
+    pub workspace: Arc<scopes::Workspace<scopes::Services>>,
     chats: Arc<SessionChats>,
     capability_service: Option<CapabilityServiceClient>,
     availability: Arc<Watch<SessionAvailability>>,
 }
 
 struct SessionChats {
-    self_weak: OnceLock<Weak<SessionChats>>,
-    state: Mutex<Option<ChatRegistry>>,
+    state: Arc<Mutex<ChatRegistry>>,
+    pending: Mutex<ChatClient>,
+    current: Mutex<ChatClient>,
     chat_service: ChatServiceClient,
     composer_service: ComposerServiceClient,
     pending_scope_id: String,
 }
 
+#[derive(Default)]
 struct ChatRegistry {
-    pending: ChatClient,
-    current: ChatClient,
     established: HashMap<String, ChatClient>,
     order: Vec<String>,
 }
@@ -41,42 +43,30 @@ pub struct ChatSummary {
     pub title: String,
 }
 
+struct RegisterChat(Weak<Mutex<ChatRegistry>>);
+impl ChatStarted for RegisterChat {
+    fn chat_started(&self, chat_id: String, chat: ChatClient) {
+        if let Some(registry) = self.0.upgrade() {
+            let mut state = registry.lock().expect("chat registry poisoned");
+            if !state.established.contains_key(&chat_id) {
+                state.order.push(chat_id.clone());
+            }
+            state.established.insert(chat_id, chat);
+        }
+    }
+}
+
 impl SessionChats {
     fn pending(&self) -> ChatClient {
         ChatClient::pending(
             self.chat_service.clone(),
             self.composer_service.clone(),
             self.pending_scope_id.clone(),
-            Some(
-                self.self_weak
-                    .get()
-                    .and_then(Weak::upgrade)
-                    .expect("session chat registry must be initialized"),
-            ),
+            Some(Arc::new(RegisterChat(Arc::downgrade(&self.state)))),
         )
     }
-
     fn with<T>(&self, read: impl FnOnce(&ChatRegistry) -> T) -> T {
-        let state = self.state.lock().expect("session chats lock poisoned");
-        read(state.as_ref().expect("session chats must be initialized"))
-    }
-
-    fn with_mut<T>(&self, write: impl FnOnce(&mut ChatRegistry) -> T) -> T {
-        let mut state = self.state.lock().expect("session chats lock poisoned");
-        write(state.as_mut().expect("session chats must be initialized"))
-    }
-}
-
-impl ChatStarted for SessionChats {
-    fn chat_started(&self, chat_id: String, chat: ChatClient) {
-        let next_pending = self.pending();
-        self.with_mut(|state| {
-            if !state.established.contains_key(&chat_id) {
-                state.order.push(chat_id.clone());
-            }
-            state.established.insert(chat_id, chat);
-            state.pending = next_pending;
-        });
+        read(&self.state.lock().expect("chat registry poisoned"))
     }
 }
 
@@ -129,26 +119,30 @@ impl ProductSession {
             !pending_scope_id.is_empty(),
             "pending scope ID must not be empty"
         );
+        let runtime = Arc::new(scopes::Services {
+            chat: chat.clone(),
+            composer: composer.clone(),
+        });
+        let node = scopes::Node::new("local".into(), runtime, Default::default());
+        let workspace = node.workspace("default".into(), Default::default());
+        let state = Arc::new(Mutex::new(ChatRegistry::default()));
+        let pending = ChatClient::pending(
+            chat.clone(),
+            composer.clone(),
+            pending_scope_id.clone(),
+            Some(Arc::new(RegisterChat(Arc::downgrade(&state)))),
+        );
         let chats = Arc::new(SessionChats {
-            self_weak: OnceLock::new(),
-            state: Mutex::new(None),
+            state,
+            pending: Mutex::new(pending.clone()),
+            current: Mutex::new(pending),
             chat_service: chat,
             composer_service: composer,
             pending_scope_id,
         });
-        chats
-            .self_weak
-            .set(Arc::downgrade(&chats))
-            .unwrap_or_else(|_| panic!("session chat registry may only be initialized once"));
-        let pending = chats.pending();
-        *chats.state.lock().expect("session chats lock poisoned") = Some(ChatRegistry {
-            pending: pending.clone(),
-            current: pending,
-            established: HashMap::new(),
-            order: Vec::new(),
-        });
 
         Self {
+            workspace,
             chats,
             capability_service: None,
             availability: Arc::new(Watch::new(SessionAvailability {
@@ -172,22 +166,26 @@ impl ProductSession {
     }
 
     pub fn chat(&self) -> ChatClient {
-        self.chats.with(|state| state.current.clone())
+        self.chats
+            .current
+            .lock()
+            .expect("current chat poisoned")
+            .clone()
     }
 
     pub fn new_chat(&self) -> ChatClient {
-        self.chats.with_mut(|state| {
-            state.current = state.pending.clone();
-            state.current.clone()
-        })
+        let mut pending = self.chats.pending.lock().expect("pending chat poisoned");
+        if pending.id().is_some() {
+            *pending = self.chats.pending();
+        }
+        *self.chats.current.lock().expect("current chat poisoned") = pending.clone();
+        pending.clone()
     }
 
     pub fn select_chat(&self, chat_id: &str) -> Option<ChatClient> {
-        self.chats.with_mut(|state| {
-            let chat = state.established.get(chat_id)?.clone();
-            state.current = chat.clone();
-            Some(chat)
-        })
+        let chat = self.established_chat(chat_id)?;
+        *self.chats.current.lock().expect("current chat poisoned") = chat.clone();
+        Some(chat)
     }
 
     pub fn established_chat(&self, chat_id: &str) -> Option<ChatClient> {
