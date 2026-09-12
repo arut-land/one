@@ -23,9 +23,14 @@ use arut_i18n::{DEFAULT_LOCALE, available_locales, locale_resources};
 const XCSTRINGS: &str = "surfaces/apple/shared/Sources/ArutSurface/Resources/Localizable.xcstrings";
 const ANDROID_RES: &str = "surfaces/android/src/main/res";
 const WINDOWS_STRINGS: &str = "surfaces/windows/Strings";
-/// The web surface serves these; the VS Code extension ships its own copy
+/// The web surface serves these and the Chromium extension packages the same
+/// entry point, so it needs its own copy; the VS Code extension ships one too,
 /// because its host resolves errors before the webview ever sees them.
-const FLUENT_COPIES: [&str; 2] = ["surfaces/web/public/locales", "surfaces/vscode/locales"];
+const FLUENT_COPIES: [&str; 3] = [
+    "surfaces/web/public/locales",
+    "surfaces/chromium/public/locales",
+    "surfaces/vscode/locales",
+];
 
 fn main() -> ExitCode {
     let root = match env::args().nth(1) {

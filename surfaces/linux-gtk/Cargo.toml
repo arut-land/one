@@ -8,6 +8,7 @@ license-file = "../../LICENSE-FSL"
 arut-runtime-local.workspace = true
 arut-product-session.workspace = true
 arut-feature-chat.workspace = true
+arut-i18n.workspace = true
 arut-watch.workspace = true
 arut-rpc.workspace = true
 gtk = { package = "gtk4", version = "0.11", features = ["v4_20"] }
