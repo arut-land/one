@@ -15,8 +15,6 @@ arut-rpc.workspace = true
 arut-watch.workspace = true
 boltffi = "=0.30.1"
 
-[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-arut-transport-http.workspace = true
 
 [dev-dependencies]
 futures-executor = "0.3.31"

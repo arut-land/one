@@ -361,6 +361,11 @@ where
     Box::pin(stream.map(move |item| item.and_then(|item| map(item))))
 }
 
+/// Runs work on an executor owned by the composition root.
+pub trait Spawner: Send + Sync + 'static {
+    fn spawn(&self, future: Pin<Box<dyn Future<Output = ()> + Send + 'static>>);
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
