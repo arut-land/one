@@ -1,0 +1,17 @@
+[package]
+name = "arut-i18n"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+fluent-bundle = "0.16.0"
+fluent-langneg = "0.13.1"
+unic-langid = "0.9.6"
+
+[dev-dependencies]
+arut-feature-chat.workspace = true
+fluent-syntax = "0.12.0"
+
+[lints]
+workspace = true

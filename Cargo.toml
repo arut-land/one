@@ -3,6 +3,7 @@ resolver = "3"
 members = [
     "bindings/ffi",
     "features/chat",
+    "product/i18n",
     "product/session",
     "protocols",
     "protocols/build",
@@ -26,6 +27,7 @@ license = "MIT OR Apache-2.0"
 [workspace.dependencies]
 arut-authority = { path = "substrates/authority" }
 arut-feature-chat = { path = "features/chat" }
+arut-i18n = { path = "product/i18n" }
 arut-product-session = { path = "product/session" }
 arut-protocol = { path = "protocols" }
 arut-rpc = { path = "protocols/rpc" }
