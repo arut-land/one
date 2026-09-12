@@ -12,6 +12,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Prepare protocol baseline
+        run: |
+          if ! git show-ref --verify --quiet refs/heads/master; then
+            git branch master origin/master
+          fi
 
       # The Linux surface links against GTK4 (ADR 0013), so its dev headers
       # must be present before any cargo command touches the workspace.
@@ -48,31 +56,11 @@ jobs:
       - name: cargo check (wasm)
         run: cargo check -p arut_ffi --target wasm32-unknown-unknown
 
-      # docs/ECOSYSTEM.md's wasm rule: the BoltFFI wasm core does not use
-      # wasm-bindgen, so nothing pulling it in may reach arut_ffi's wasm
-      # dependency graph.
-      - name: Assert no wasm-bindgen in arut_ffi's wasm graph
-        run: |
-          leaked="$(cargo tree -i wasm-bindgen --target wasm32-unknown-unknown -p arut_ffi 2>/dev/null)"
-          if [ -n "$leaked" ]; then
-            echo "wasm-bindgen leaked into the arut_ffi wasm dependency graph:"
-            echo "$leaked"
-            exit 1
-          fi
-
       - name: cargo check (wasm, arut-i18n)
         run: cargo check -p arut-i18n --target wasm32-unknown-unknown
 
-      # The Fluent string source is read by the wasm core's consumers too, so
-      # it lives under the same rule as arut_ffi.
-      - name: Assert no wasm-bindgen in arut-i18n's wasm graph
-        run: |
-          leaked="$(cargo tree -i wasm-bindgen --target wasm32-unknown-unknown -p arut-i18n 2>/dev/null)"
-          if [ -n "$leaked" ]; then
-            echo "wasm-bindgen leaked into the arut-i18n wasm dependency graph:"
-            echo "$leaked"
-            exit 1
-          fi
+      - name: Check isolated wasm dependency graphs
+        run: mise run check:wasm-graph
 
       # ADR 0022: the .ftl files are the source, so a generated resource or
       # accessor that disagrees with them is a change nobody made on purpose.
