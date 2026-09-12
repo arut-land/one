@@ -16,6 +16,7 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex, Weak};
 
 pub struct ProductSession {
+    conversations: Arc<Watch<Vec<ChatSummary>>>,
     pub workspace: Arc<scopes::Workspace<scopes::Services>>,
     chats: Arc<SessionChats>,
     capability_service: Option<CapabilityServiceClient>,
@@ -29,6 +30,7 @@ struct SessionChats {
     chat_service: ChatServiceClient,
     composer_service: ComposerServiceClient,
     pending_scope_id: String,
+    conversations: Arc<Watch<Vec<ChatSummary>>>,
 }
 
 #[derive(Default)]
@@ -37,13 +39,14 @@ struct ChatRegistry {
     order: Vec<String>,
 }
 
+#[boltffi::data]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ChatSummary {
     pub id: String,
     pub title: String,
 }
 
-struct RegisterChat(Weak<Mutex<ChatRegistry>>);
+struct RegisterChat(Weak<Mutex<ChatRegistry>>, Arc<Watch<Vec<ChatSummary>>>);
 impl ChatStarted for RegisterChat {
     fn chat_started(&self, chat_id: String, chat: ChatClient) {
         if let Some(registry) = self.0.upgrade() {
@@ -51,6 +54,32 @@ impl ChatStarted for RegisterChat {
             if !state.established.contains_key(&chat_id) {
                 state.order.push(chat_id.clone());
             }
+            let title = chat
+                .state()
+                .messages
+                .first()
+                .map(|message| {
+                    message
+                        .text
+                        .split_whitespace()
+                        .collect::<Vec<_>>()
+                        .join(" ")
+                        .chars()
+                        .take(48)
+                        .collect()
+                })
+                .unwrap_or_default();
+            self.1.update(|summaries| {
+                if !summaries.iter().any(|summary| summary.id == chat_id) {
+                    summaries.insert(
+                        0,
+                        ChatSummary {
+                            id: chat_id.clone(),
+                            title,
+                        },
+                    );
+                }
+            });
             state.established.insert(chat_id, chat);
         }
     }
@@ -62,7 +91,10 @@ impl SessionChats {
             self.chat_service.clone(),
             self.composer_service.clone(),
             self.pending_scope_id.clone(),
-            Some(Arc::new(RegisterChat(Arc::downgrade(&self.state)))),
+            Some(Arc::new(RegisterChat(
+                Arc::downgrade(&self.state),
+                self.conversations.clone(),
+            ))),
         )
     }
     fn with<T>(&self, read: impl FnOnce(&ChatRegistry) -> T) -> T {
@@ -70,12 +102,14 @@ impl SessionChats {
     }
 }
 
+#[boltffi::data]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SessionAvailability {
     pub composer: FeatureAvailability,
     pub error: String,
 }
 
+#[boltffi::data]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum FeatureAvailability {
     Unknown,
@@ -125,14 +159,19 @@ impl ProductSession {
         });
         let node = scopes::Node::new("local".into(), runtime, Default::default());
         let workspace = node.workspace("default".into(), Default::default());
+        let conversations = Arc::new(Watch::new(Vec::new()));
         let state = Arc::new(Mutex::new(ChatRegistry::default()));
         let pending = ChatClient::pending(
             chat.clone(),
             composer.clone(),
             pending_scope_id.clone(),
-            Some(Arc::new(RegisterChat(Arc::downgrade(&state)))),
+            Some(Arc::new(RegisterChat(
+                Arc::downgrade(&state),
+                conversations.clone(),
+            ))),
         );
         let chats = Arc::new(SessionChats {
+            conversations: conversations.clone(),
             state,
             pending: Mutex::new(pending.clone()),
             current: Mutex::new(pending),
@@ -142,6 +181,7 @@ impl ProductSession {
         });
 
         Self {
+            conversations,
             workspace,
             chats,
             capability_service: None,
@@ -199,32 +239,11 @@ impl ProductSession {
     }
 
     pub fn chat_summaries(&self) -> Vec<ChatSummary> {
-        self.chats.with(|state| {
-            state
-                .order
-                .iter()
-                .rev()
-                .filter_map(|id| {
-                    let chat = state.established.get(id)?;
-                    let chat_state = chat.state();
-                    let text = chat_state
-                        .messages
-                        .first()?
-                        .text
-                        .split_whitespace()
-                        .collect::<Vec<_>>()
-                        .join(" ");
-                    let mut title = text.chars().take(48).collect::<String>();
-                    if text.chars().count() > 48 {
-                        title.push_str("...");
-                    }
-                    Some(ChatSummary {
-                        id: id.clone(),
-                        title,
-                    })
-                })
-                .collect()
-        })
+        self.conversations.get()
+    }
+
+    pub fn conversations_changes(&self) -> Arc<Subscription<u64>> {
+        self.conversations.subscribe()
     }
 
     pub fn availability(&self) -> SessionAvailability {

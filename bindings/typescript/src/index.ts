@@ -1,2 +1,2 @@
-export * from "./chat";
+export * from "@arut/ffi";
 export * from "./observable";

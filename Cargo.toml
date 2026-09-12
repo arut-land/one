@@ -3,7 +3,6 @@ resolver = "3"
 members = [
     "bindings/observation",
     "bindings/ffi",
-    "bindings/qt",
     "runtimes/local",
     "features/chat",
     "protocols",
@@ -11,7 +10,7 @@ members = [
     "protocols/rpc",
     "product/session",
     "substrates/watch",
-    "surfaces/linux",
+    "surfaces/linux-gtk",
     "transports/http",
 ]
 
@@ -21,7 +20,6 @@ edition = "2024"
 license = "MIT"
 
 [workspace.dependencies]
-arut-bindings-qt = { path = "bindings/qt" }
 arut-feature-chat = { path = "features/chat" }
 arut-protocol = { path = "protocols" }
 arut-product-session = { path = "product/session" }
