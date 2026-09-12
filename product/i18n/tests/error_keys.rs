@@ -7,7 +7,7 @@
 use std::collections::BTreeSet;
 
 use arut_feature_chat::errors::{ChatError, ComposerError, NodeFailure};
-use arut_i18n::{DEFAULT_LOCALE, Localizer, available_locales, locale_resources};
+use arut_i18n::{DEFAULT_LOCALE, Localizer, Message, available_locales, locale_resources};
 use fluent_syntax::ast::Entry;
 use fluent_syntax::parser;
 
@@ -85,18 +85,22 @@ fn every_locale_carries_the_same_message_ids_as_the_default_one() {
 #[test]
 fn a_variant_with_a_payload_renders_that_payload() {
     let localizer = Localizer::for_locale(DEFAULT_LOCALE);
+    // The generated `Message` is the only way to name a string, so this also
+    // proves the generated variant and the enum's key agree.
     let conflict = ComposerError::RevisionConflict { current: 41 };
-    assert!(
-        localizer
-            .number(conflict.message_key(), "current", 41)
-            .contains("41")
+    let rendered = localizer.format(&Message::ComposerErrorRevisionConflict { current: 41 });
+    assert_eq!(
+        Message::ComposerErrorRevisionConflict { current: 41 }.key(),
+        conflict.message_key()
     );
+    assert!(rendered.contains("41"), "{rendered}");
     let moved = ComposerError::AuthorityChanged { current_epoch: 9 };
-    assert!(
-        localizer
-            .number(moved.message_key(), "currentEpoch", 9)
-            .contains('9')
+    let rendered = localizer.format(&Message::ComposerErrorAuthorityChanged { current_epoch: 9 });
+    assert_eq!(
+        Message::ComposerErrorAuthorityChanged { current_epoch: 9 }.key(),
+        moved.message_key()
     );
+    assert!(rendered.contains('9'), "{rendered}");
 }
 
 #[test]

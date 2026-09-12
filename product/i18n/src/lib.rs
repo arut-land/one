@@ -19,12 +19,15 @@
 //! Nothing here touches the environment, the filesystem, or a clock, so it
 //! builds for `wasm32-unknown-unknown` without wasm-bindgen.
 
+mod generated;
+
+use fluent_bundle::FluentResource;
 use fluent_bundle::concurrent::FluentBundle;
-use fluent_bundle::{FluentResource, FluentValue};
 use fluent_langneg::{NegotiationStrategy, negotiate_languages};
 use unic_langid::LanguageIdentifier;
 
-pub use fluent_bundle::{FluentArgs, FluentError};
+pub use fluent_bundle::{FluentArgs, FluentError, FluentValue};
+pub use generated::Message;
 
 /// The locale every negotiation falls back to, and the one the `.ftl` files are
 /// authored in.
@@ -145,11 +148,19 @@ impl Localizer {
             .any(|bundle| bundle.get_message(key).is_some_and(|m| m.value().is_some()))
     }
 
-    /// Format `key` with `args`, taking the first negotiated locale that
-    /// defines it. A key no locale defines comes back as the key itself, which
-    /// is visible in a screenshot and impossible to mistake for copy.
+    /// Format one message, taking the first negotiated locale that defines it.
+    ///
+    /// A [`Message`] is generated from the `.ftl` source, so there is no way to
+    /// ask for a string that does not exist or to pass an argument of the wrong
+    /// type; both are compile errors.
     #[must_use]
-    pub fn format(&self, key: &str, args: Option<&FluentArgs<'_>>) -> String {
+    pub fn format(&self, message: &Message) -> String {
+        self.format_key(message.key(), Some(&message.args()))
+    }
+
+    /// Format by raw key. Private on purpose: ADR 0022 says no message id is
+    /// typed by hand, and [`Message`] is how a caller names one.
+    fn format_key(&self, key: &str, args: Option<&FluentArgs<'_>>) -> String {
         for bundle in &self.bundles {
             let Some(message) = bundle.get_message(key) else {
                 continue;
@@ -164,21 +175,6 @@ impl Localizer {
             }
         }
         key.to_owned()
-    }
-
-    /// Format a key that takes no arguments.
-    #[must_use]
-    pub fn message(&self, key: &str) -> String {
-        self.format(key, None)
-    }
-
-    /// Format a key whose only argument is a number, the shape every typed
-    /// error payload in the product has so far.
-    #[must_use]
-    pub fn number(&self, key: &str, name: &str, value: u64) -> String {
-        let mut args = FluentArgs::new();
-        args.set(name.to_owned(), FluentValue::from(value));
-        self.format(key, Some(&args))
     }
 }
 
@@ -202,7 +198,7 @@ fn normalize(tag: &str) -> Option<LanguageIdentifier> {
 
 #[cfg(test)]
 mod tests {
-    use super::{DEFAULT_LOCALE, LOCALES, Localizer, available_locales, normalize};
+    use super::{DEFAULT_LOCALE, LOCALES, Localizer, Message, available_locales, normalize};
     use fluent_bundle::FluentResource;
 
     #[test]
@@ -233,7 +229,7 @@ mod tests {
         let localizer = Localizer::negotiate(&["qps-ploc"]);
         assert_eq!(localizer.locales()[0].to_string(), DEFAULT_LOCALE);
         assert_eq!(
-            localizer.message("chat-error-no-conversation"),
+            localizer.format(&Message::ChatErrorNoConversation),
             "There's no conversation to send this to yet."
         );
     }
@@ -241,21 +237,24 @@ mod tests {
     #[test]
     fn an_empty_preference_list_still_produces_strings() {
         let localizer = Localizer::negotiate::<&str>(&[]);
-        assert_eq!(localizer.message("action-send"), "Send");
+        assert_eq!(localizer.format(&Message::ActionSend), "Send");
     }
 
     #[test]
     fn a_number_argument_reaches_the_sentence() {
         let localizer = Localizer::default();
         assert_eq!(
-            localizer.number("composer-error-revision-conflict", "current", 7),
+            localizer.format(&Message::ComposerErrorRevisionConflict { current: 7 }),
             "Someone else edited this draft first, so your edit didn't go through; it is now at revision 7."
         );
     }
 
     #[test]
     fn an_unknown_key_comes_back_as_itself() {
-        assert_eq!(Localizer::default().message("no-such-key"), "no-such-key");
+        assert_eq!(
+            Localizer::default().format_key("no-such-key", None),
+            "no-such-key"
+        );
     }
 
     #[test]

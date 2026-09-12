@@ -1,17 +1,21 @@
-//! Every sentence this surface shows, looked up in the shared Fluent source.
+//! Every sentence this surface shows, as a generated [`Message`].
 //!
-//! The strings themselves live once in `product/i18n` (ADR 0022); this module
-//! is the mapping from a typed core value to the message id that describes it,
-//! which for the error enums is `message_key` on the enum itself. GTK gives us
-//! the person's language list, so the negotiation happens here rather than in
-//! the core, which never learns the locale.
+//! The strings themselves live once in `product/i18n` (ADR 0022) and no message
+//! id is written here: `Message` is generated from the `.ftl` source, so naming
+//! a string that does not exist, or passing the wrong payload, does not
+//! compile. Each `match` below is exhaustive for the same reason -- a new
+//! variant of a core enum stops this surface building until it says what to
+//! show for it.
+//!
+//! GTK gives us the person's language list, so the negotiation happens here
+//! rather than in the core, which never learns the locale.
 
 use arut_feature_chat::{
     composer::product::ComposerStatus,
     errors::{ChatError, ComposerError, NodeFailure},
     product::{ChatRole, ChatStatus},
 };
-use arut_i18n::Localizer;
+use arut_i18n::{Localizer, Message};
 use arut_product_session::FeatureAvailability;
 use arut_rpc::{Code, Status};
 use gtk::glib;
@@ -33,17 +37,17 @@ fn localizer() -> &'static Localizer {
     })
 }
 
-fn message(key: &str) -> String {
-    localizer().message(key)
+fn show(message: &Message) -> String {
+    localizer().format(message)
 }
 
 pub fn availability(value: FeatureAvailability) -> String {
-    message(match value {
-        FeatureAvailability::Unknown => "availability-unknown",
-        FeatureAvailability::Available => "availability-available",
-        FeatureAvailability::ReportedUnavailable => "availability-reported-unavailable",
-        FeatureAvailability::NotAdvertised => "availability-not-advertised",
-        FeatureAvailability::ManifestUnreachable => "availability-manifest-unreachable",
+    show(&match value {
+        FeatureAvailability::Unknown => Message::AvailabilityUnknown,
+        FeatureAvailability::Available => Message::AvailabilityAvailable,
+        FeatureAvailability::ReportedUnavailable => Message::AvailabilityReportedUnavailable,
+        FeatureAvailability::NotAdvertised => Message::AvailabilityNotAdvertised,
+        FeatureAvailability::ManifestUnreachable => Message::AvailabilityManifestUnreachable,
     })
 }
 
@@ -51,8 +55,8 @@ pub fn availability(value: FeatureAvailability) -> String {
 pub fn chat(status: ChatStatus, error: Option<ChatError>) -> String {
     match (status, error) {
         (ChatStatus::Failed, Some(error)) => chat_error(error),
-        (ChatStatus::Failed, None) => message("chat-status-failed"),
-        (ChatStatus::Sending, _) => message("chat-status-sending"),
+        (ChatStatus::Failed, None) => show(&Message::ChatStatusFailed),
+        (ChatStatus::Sending, _) => show(&Message::ChatStatusSending),
         (ChatStatus::Idle, _) => String::new(),
     }
 }
@@ -61,38 +65,50 @@ pub fn chat(status: ChatStatus, error: Option<ChatError>) -> String {
 pub fn composer(status: ComposerStatus, error: Option<ComposerError>) -> String {
     match (status, error) {
         (ComposerStatus::Failed, Some(error)) => composer_error(error),
-        (ComposerStatus::Failed, None) => message("composer-status-failed"),
-        (ComposerStatus::Connecting, _) => message("composer-status-connecting"),
+        (ComposerStatus::Failed, None) => show(&Message::ComposerStatusFailed),
+        (ComposerStatus::Connecting, _) => show(&Message::ComposerStatusConnecting),
         (ComposerStatus::Synced, _) => String::new(),
     }
 }
 
 pub fn role(role: ChatRole) -> String {
-    message(match role {
-        ChatRole::User => "chat-role-you",
-        ChatRole::Assistant => "chat-role-assistant",
+    show(&match role {
+        ChatRole::User => Message::ChatRoleYou,
+        ChatRole::Assistant => Message::ChatRoleAssistant,
     })
 }
 
 /// One sentence for every `NodeFailure` variant (ADR 0016, ADR 0022).
 pub fn node_failure(failure: NodeFailure) -> String {
-    message(failure.message_key())
+    show(&match failure {
+        NodeFailure::Unreachable => Message::NodeFailureUnreachable,
+        NodeFailure::TimedOut => Message::NodeFailureTimedOut,
+        NodeFailure::Cancelled => Message::NodeFailureCancelled,
+        NodeFailure::Refused => Message::NodeFailureRefused,
+        NodeFailure::Overloaded => Message::NodeFailureOverloaded,
+        NodeFailure::Rejected => Message::NodeFailureRejected,
+        NodeFailure::Missing => Message::NodeFailureMissing,
+        NodeFailure::Conflict => Message::NodeFailureConflict,
+        NodeFailure::Unsupported => Message::NodeFailureUnsupported,
+        NodeFailure::Internal => Message::NodeFailureInternal,
+    })
 }
 
 /// One sentence for every `ComposerError` variant, with its payload where the
 /// message asks for one.
 pub fn composer_error(error: ComposerError) -> String {
-    let key = error.message_key();
     match error {
         ComposerError::Node(failure) => node_failure(failure),
-        ComposerError::RevisionConflict { current } => localizer().number(key, "current", current),
-        ComposerError::AuthorityChanged { current_epoch } => {
-            localizer().number(key, "currentEpoch", current_epoch)
+        ComposerError::RevisionConflict { current } => {
+            show(&Message::ComposerErrorRevisionConflict { current })
         }
-        ComposerError::SnapshotMissing
-        | ComposerError::OutcomeMissing
-        | ComposerError::ScopeMissing
-        | ComposerError::ScopeMismatch => message(key),
+        ComposerError::AuthorityChanged { current_epoch } => {
+            show(&Message::ComposerErrorAuthorityChanged { current_epoch })
+        }
+        ComposerError::SnapshotMissing => show(&Message::ComposerErrorSnapshotMissing),
+        ComposerError::OutcomeMissing => show(&Message::ComposerErrorOutcomeMissing),
+        ComposerError::ScopeMissing => show(&Message::ComposerErrorScopeMissing),
+        ComposerError::ScopeMismatch => show(&Message::ComposerErrorScopeMismatch),
     }
 }
 
@@ -101,26 +117,26 @@ pub fn chat_error(error: ChatError) -> String {
     match error {
         ChatError::Node(failure) => node_failure(failure),
         ChatError::Draft(error) => composer_error(error),
-        ChatError::NoConversation | ChatError::Cancelled | ChatError::ChatIdMissing => {
-            message(error.message_key())
-        }
+        ChatError::NoConversation => show(&Message::ChatErrorNoConversation),
+        ChatError::Cancelled => show(&Message::ChatErrorCancelled),
+        ChatError::ChatIdMissing => show(&Message::ChatErrorChatIdMissing),
     }
 }
 
 /// The connect-time transport statuses, which happen before any scope exists to
 /// carry a typed failure.
 pub fn rpc(error: &Status) -> String {
-    message(match error.code {
-        Code::Unavailable => "rpc-error-unavailable",
-        Code::Cancelled => "rpc-error-cancelled",
-        Code::InvalidArgument | Code::OutOfRange => "rpc-error-rejected",
-        Code::DeadlineExceeded => "rpc-error-timed-out",
-        Code::NotFound => "rpc-error-not-found",
-        Code::AlreadyExists => "rpc-error-already-exists",
-        Code::PermissionDenied | Code::Unauthenticated => "rpc-error-denied",
-        Code::ResourceExhausted => "rpc-error-exhausted",
-        Code::FailedPrecondition | Code::Aborted => "rpc-error-changed",
-        Code::Unimplemented => "rpc-error-unsupported",
-        Code::Internal => "rpc-error-internal",
+    show(&match error.code {
+        Code::Unavailable => Message::RpcErrorUnavailable,
+        Code::Cancelled => Message::RpcErrorCancelled,
+        Code::InvalidArgument | Code::OutOfRange => Message::RpcErrorRejected,
+        Code::DeadlineExceeded => Message::RpcErrorTimedOut,
+        Code::NotFound => Message::RpcErrorNotFound,
+        Code::AlreadyExists => Message::RpcErrorAlreadyExists,
+        Code::PermissionDenied | Code::Unauthenticated => Message::RpcErrorDenied,
+        Code::ResourceExhausted => Message::RpcErrorExhausted,
+        Code::FailedPrecondition | Code::Aborted => Message::RpcErrorChanged,
+        Code::Unimplemented => Message::RpcErrorUnsupported,
+        Code::Internal => Message::RpcErrorInternal,
     })
 }

@@ -1,62 +1,47 @@
-using Microsoft.Windows.ApplicationModel.Resources;
-
 using Arut.Ffi;
 
 namespace Arut.Surface.Windows;
 
 // The core returns typed outcomes only (ADR 0016) and every sentence lives once
-// in product/i18n as Fluent (ADR 0022). This file is only the mapping from a
-// variant to its resource name in Strings/<lang>/Resources.resw, which
-// `mise run i18n` generates; the lookup and the language come from the app's
-// own ResourceLoader, so this surface localizes like any other WinUI app.
-//
-// Resource names match `message_key` on the same enum in
-// `arut_feature_chat::errors`, with `-` replaced by `_`.
+// in product/i18n as Fluent (ADR 0022). All this file does is choose which
+// generated L10n accessor a typed variant means; the resource name, the lookup
+// and the language are in Generated/L10n.cs and the app's own ResourceLoader,
+// so this surface localizes the way any other WinUI app does.
 internal static class Strings
 {
-    private static readonly ResourceLoader Resources = new();
-
-    private static string Localized(string name) => Resources.GetString(name);
-
-    private static string Localized(string name, object argument) =>
-        string.Format(Resources.GetString(name), argument);
-
-    public static string ResourceName(NodeFailure failure) => failure switch
+    public static string Describe(NodeFailure failure) => failure switch
     {
-        NodeFailure.Unreachable => "node_failure_unreachable",
-        NodeFailure.TimedOut => "node_failure_timed_out",
-        NodeFailure.Cancelled => "node_failure_cancelled",
-        NodeFailure.Refused => "node_failure_refused",
-        NodeFailure.Overloaded => "node_failure_overloaded",
-        NodeFailure.Rejected => "node_failure_rejected",
-        NodeFailure.Missing => "node_failure_missing",
-        NodeFailure.Conflict => "node_failure_conflict",
-        NodeFailure.Unsupported => "node_failure_unsupported",
-        _ => "node_failure_internal",
+        NodeFailure.Unreachable => L10n.NodeFailureUnreachable(),
+        NodeFailure.TimedOut => L10n.NodeFailureTimedOut(),
+        NodeFailure.Cancelled => L10n.NodeFailureCancelled(),
+        NodeFailure.Refused => L10n.NodeFailureRefused(),
+        NodeFailure.Overloaded => L10n.NodeFailureOverloaded(),
+        NodeFailure.Rejected => L10n.NodeFailureRejected(),
+        NodeFailure.Missing => L10n.NodeFailureMissing(),
+        NodeFailure.Conflict => L10n.NodeFailureConflict(),
+        NodeFailure.Unsupported => L10n.NodeFailureUnsupported(),
+        _ => L10n.NodeFailureInternal(),
     };
-
-    public static string Describe(NodeFailure failure) => Localized(ResourceName(failure));
 
     public static string Describe(ComposerError error) => error switch
     {
         ComposerError.Node node => Describe(node.Field0),
         ComposerError.RevisionConflict conflict =>
-            Localized("composer_error_revision_conflict", conflict.Current),
+            L10n.ComposerErrorRevisionConflict((long)conflict.Current),
         ComposerError.AuthorityChanged moved =>
-            Localized("composer_error_authority_changed", moved.CurrentEpoch),
-        ComposerError.SnapshotMissing => Localized("composer_error_snapshot_missing"),
-        ComposerError.OutcomeMissing => Localized("composer_error_outcome_missing"),
-        ComposerError.ScopeMissing => Localized("composer_error_scope_missing"),
-        ComposerError.ScopeMismatch => Localized("composer_error_scope_mismatch"),
-        _ => Localized("node_failure_internal"),
+            L10n.ComposerErrorAuthorityChanged((long)moved.CurrentEpoch),
+        ComposerError.SnapshotMissing => L10n.ComposerErrorSnapshotMissing(),
+        ComposerError.OutcomeMissing => L10n.ComposerErrorOutcomeMissing(),
+        ComposerError.ScopeMissing => L10n.ComposerErrorScopeMissing(),
+        _ => L10n.ComposerErrorScopeMismatch(),
     };
 
     public static string Describe(ChatError error) => error switch
     {
         ChatError.Node node => Describe(node.Field0),
-        ChatError.NoConversation => Localized("chat_error_no_conversation"),
-        ChatError.Cancelled => Localized("chat_error_cancelled"),
+        ChatError.NoConversation => L10n.ChatErrorNoConversation(),
+        ChatError.Cancelled => L10n.ChatErrorCancelled(),
         ChatError.Draft draft => Describe(draft.Field0),
-        _ => Localized("chat_error_chat_id_missing"),
+        _ => L10n.ChatErrorChatIdMissing(),
     };
 }

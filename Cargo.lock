@@ -50,6 +50,7 @@ name = "arut-feature-chat"
 version = "0.1.0"
 dependencies = [
  "arut-authority",
+ "arut-i18n-macros",
  "arut-protocol",
  "arut-rpc",
  "arut-storage",
@@ -81,6 +82,16 @@ dependencies = [
  "arut-i18n",
  "fluent-syntax",
  "serde_json",
+]
+
+[[package]]
+name = "arut-i18n-macros"
+version = "0.1.0"
+dependencies = [
+ "fluent-syntax",
+ "proc-macro2",
+ "quote",
+ "syn 2.0.119",
 ]
 
 [[package]]

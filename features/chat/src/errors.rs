@@ -9,18 +9,20 @@
 //! the transport's own diagnostic, so it is projected here through its code and
 //! its message is left behind at the boundary.
 //!
-//! Each enum also carries `message_key`, the Fluent message id whose sentence
-//! lives once in `product/i18n` (ADR 0022). A key is not text: it names a
-//! string a surface renders through its own localization system. The match is
-//! exhaustive, so a new variant cannot reach a surface without one, and
-//! `arut-i18n`'s `error_keys` test fails if a locale is missing the message.
+//! `#[derive(Localized)]` gives each enum `message_key`, the Fluent message id
+//! whose sentence lives once in `product/i18n` (ADR 0022). A key is not text:
+//! it names a string a surface renders through its own localization system.
+//! The derive reads the string source while this crate compiles, so a variant
+//! added without a message does not build. It is a proc macro and nothing it
+//! emits names a type from above this layer, so the core stays where it is.
 
+use arut_i18n_macros::Localized;
 use arut_rpc::{Code, Status};
 use thiserror::Error;
 
 /// Why a call to the node produced no usable answer.
 #[boltffi::data]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Error, Localized)]
 pub enum NodeFailure {
     #[error("the node could not be reached")]
     Unreachable,
@@ -48,8 +50,8 @@ impl NodeFailure {
     /// Every variant, for the localization test that proves each one has a
     /// string in every locale (ADR 0022).
     ///
-    /// A new variant makes [`NodeFailure::message_key`] below fail to compile,
-    /// which is the reminder to add it here and to `errors.ftl` as well.
+    /// A new variant makes the derived `message_key` fail to compile until
+    /// `errors.ftl` has its message; add it here too so the locale test sees it.
     pub const ALL: &'static [Self] = &[
         Self::Unreachable,
         Self::TimedOut,
@@ -62,24 +64,6 @@ impl NodeFailure {
         Self::Unsupported,
         Self::Internal,
     ];
-
-    /// The Fluent message id a surface renders for this failure (ADR 0022).
-    /// This is a key, not text: the sentence lives in `product/i18n`.
-    #[must_use]
-    pub const fn message_key(self) -> &'static str {
-        match self {
-            Self::Unreachable => "node-failure-unreachable",
-            Self::TimedOut => "node-failure-timed-out",
-            Self::Cancelled => "node-failure-cancelled",
-            Self::Refused => "node-failure-refused",
-            Self::Overloaded => "node-failure-overloaded",
-            Self::Rejected => "node-failure-rejected",
-            Self::Missing => "node-failure-missing",
-            Self::Conflict => "node-failure-conflict",
-            Self::Unsupported => "node-failure-unsupported",
-            Self::Internal => "node-failure-internal",
-        }
-    }
 }
 
 impl From<Code> for NodeFailure {
@@ -113,7 +97,7 @@ impl From<Status> for NodeFailure {
 
 /// Why the draft in one composer scope is not what the node holds.
 #[boltffi::data]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Error, Localized)]
 pub enum ComposerError {
     #[error("the node did not answer the composer: {0}")]
     Node(NodeFailure),
@@ -136,7 +120,7 @@ pub enum ComposerError {
 impl ComposerError {
     /// Every variant, one sample payload each, for the localization test.
     ///
-    /// A new variant makes [`ComposerError::message_key`] fail to compile.
+    /// A new variant makes the derived `message_key` fail to compile.
     pub const ALL: &'static [Self] = &[
         Self::Node(NodeFailure::Unreachable),
         Self::RevisionConflict { current: 0 },
@@ -146,22 +130,6 @@ impl ComposerError {
         Self::ScopeMissing,
         Self::ScopeMismatch,
     ];
-
-    /// The Fluent message id a surface renders for this error (ADR 0022).
-    /// The wrapping variants delegate, because a node failure reads the same
-    /// whichever scope met it.
-    #[must_use]
-    pub const fn message_key(self) -> &'static str {
-        match self {
-            Self::Node(failure) => failure.message_key(),
-            Self::RevisionConflict { .. } => "composer-error-revision-conflict",
-            Self::AuthorityChanged { .. } => "composer-error-authority-changed",
-            Self::SnapshotMissing => "composer-error-snapshot-missing",
-            Self::OutcomeMissing => "composer-error-outcome-missing",
-            Self::ScopeMissing => "composer-error-scope-missing",
-            Self::ScopeMismatch => "composer-error-scope-mismatch",
-        }
-    }
 }
 
 impl From<&Status> for ComposerError {
@@ -178,7 +146,7 @@ impl From<Status> for ComposerError {
 
 /// Why a chat could not accept what a person did.
 #[boltffi::data]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Error, Localized)]
 pub enum ChatError {
     #[error("the node did not answer the chat: {0}")]
     Node(NodeFailure),
@@ -197,7 +165,7 @@ pub enum ChatError {
 impl ChatError {
     /// Every variant, one sample payload each, for the localization test.
     ///
-    /// A new variant makes [`ChatError::message_key`] fail to compile.
+    /// A new variant makes the derived `message_key` fail to compile.
     pub const ALL: &'static [Self] = &[
         Self::Node(NodeFailure::Unreachable),
         Self::NoConversation,
@@ -205,18 +173,6 @@ impl ChatError {
         Self::Draft(ComposerError::SnapshotMissing),
         Self::ChatIdMissing,
     ];
-
-    /// The Fluent message id a surface renders for this error (ADR 0022).
-    #[must_use]
-    pub const fn message_key(self) -> &'static str {
-        match self {
-            Self::Node(failure) => failure.message_key(),
-            Self::NoConversation => "chat-error-no-conversation",
-            Self::Cancelled => "chat-error-cancelled",
-            Self::Draft(error) => error.message_key(),
-            Self::ChatIdMissing => "chat-error-chat-id-missing",
-        }
-    }
 }
 
 impl From<ComposerError> for ChatError {

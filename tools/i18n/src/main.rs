@@ -1,15 +1,20 @@
 //! Turn `product/i18n/locales/*.ftl` into each platform's native resources.
 //!
-//! One source, four outputs (ADR 0022): Apple's string catalog, Android's
-//! `strings.xml` per locale, a Windows `.resw` per locale, and a served copy of
-//! the raw Fluent for the two surfaces that read it with `@fluent/bundle`. The
-//! `.ftl` files reach this binary through `arut_i18n`'s own embedded copies, so
-//! the generator and the Rust runtime can never read different sources.
+//! One source, two kinds of output (ADR 0022). The resources each platform's
+//! localization API reads: Apple's string catalog, Android's `strings.xml` per
+//! locale, a Windows `.resw` per locale, and a served copy of the raw Fluent for
+//! the surfaces that read it with `@fluent/bundle`. And a typed accessor per
+//! message for every consumer -- a Rust `Message` enum, `L10n` in Swift, Kotlin
+//! and C#, and `t` in TypeScript -- so no message id is ever typed by hand.
+//!
+//! The `.ftl` files reach this binary through `arut_i18n`'s own embedded copies,
+//! so the generator and the Rust runtime can never read different sources.
 //!
 //! Run it with `mise run i18n`. It is deterministic and idempotent: `mise run
 //! check` runs it and fails if any generated file changed, which is the whole
 //! enforcement mechanism behind "the `.ftl` is the source".
 
+mod accessors;
 mod catalog;
 mod targets;
 
@@ -31,6 +36,13 @@ const FLUENT_COPIES: [&str; 3] = [
     "surfaces/chromium/public/locales",
     "surfaces/vscode/locales",
 ];
+/// The typed accessors, one file per consumer.
+const RUST_MESSAGES: &str = "product/i18n/src/generated.rs";
+const SWIFT_L10N: &str = "surfaces/apple/shared/Sources/ArutSurface/Generated/L10n.swift";
+const KOTLIN_PACKAGE: &str = "dev.arut.surface";
+const KOTLIN_L10N: &str = "surfaces/android/src/main/kotlin/dev/arut/surface/generated/L10n.kt";
+const CSHARP_L10N: &str = "surfaces/windows/Generated/L10n.cs";
+const TYPESCRIPT_L10N: &str = "bindings/typescript/src/generated/l10n.ts";
 
 fn main() -> ExitCode {
     let root = match env::args().nth(1) {
@@ -82,7 +94,36 @@ fn generate(root: &Path) -> Result<Vec<PathBuf>, String> {
         ));
     }
 
+    // A typed accessor compiles against one key set, so every locale has to
+    // define the same ids before a single file is written.
+    catalog::require_identical_key_sets(&locales)?;
+
     let mut written = Vec::new();
+    write(
+        root.join(RUST_MESSAGES),
+        &accessors::rust(DEFAULT_LOCALE, &locales),
+        &mut written,
+    )?;
+    write(
+        root.join(SWIFT_L10N),
+        &accessors::swift(DEFAULT_LOCALE, &locales),
+        &mut written,
+    )?;
+    write(
+        root.join(KOTLIN_L10N),
+        &accessors::kotlin(DEFAULT_LOCALE, &locales, KOTLIN_PACKAGE),
+        &mut written,
+    )?;
+    write(
+        root.join(CSHARP_L10N),
+        &accessors::csharp(DEFAULT_LOCALE, &locales),
+        &mut written,
+    )?;
+    write(
+        root.join(TYPESCRIPT_L10N),
+        &accessors::typescript(DEFAULT_LOCALE, &locales),
+        &mut written,
+    )?;
     write(
         root.join(XCSTRINGS),
         &targets::xcstrings(DEFAULT_LOCALE, &locales),
@@ -188,6 +229,11 @@ mod tests {
                 .any(|path| path.ends_with("en/Resources.resw"))
         );
         assert!(written.iter().any(|path| path.ends_with("en/errors.ftl")));
+        assert!(written.iter().any(|path| path.ends_with("generated.rs")));
+        assert!(written.iter().any(|path| path.ends_with("L10n.swift")));
+        assert!(written.iter().any(|path| path.ends_with("L10n.kt")));
+        assert!(written.iter().any(|path| path.ends_with("L10n.cs")));
+        assert!(written.iter().any(|path| path.ends_with("l10n.ts")));
         let _ = std::fs::remove_dir_all(&root);
     }
 

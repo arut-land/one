@@ -1,55 +1,47 @@
 package dev.arut.surface
 
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.res.stringResource
 import dev.arut.ffi.ChatError
 import dev.arut.ffi.ComposerError
 import dev.arut.ffi.NodeFailure
+import dev.arut.surface.generated.L10n
 
 // The core returns typed outcomes only (ADR 0016) and every sentence lives once
-// in product/i18n as Fluent (ADR 0022). This file is only the mapping from a
-// variant to its string resource in res/values/strings.xml, which
-// `mise run i18n` generates; the lookup and the locale come from Android's own
-// resource system, so this surface localizes like any other Android app.
-//
-// Resource names match `message_key` on the same enum in
-// `arut_feature_chat::errors`, with `-` replaced by `_`.
-
-/** The `R.string` id for a failure. */
-fun messageResource(failure: NodeFailure): Int = when (failure) {
-    NodeFailure.UNREACHABLE -> R.string.node_failure_unreachable
-    NodeFailure.TIMED_OUT -> R.string.node_failure_timed_out
-    NodeFailure.CANCELLED -> R.string.node_failure_cancelled
-    NodeFailure.REFUSED -> R.string.node_failure_refused
-    NodeFailure.OVERLOADED -> R.string.node_failure_overloaded
-    NodeFailure.REJECTED -> R.string.node_failure_rejected
-    NodeFailure.MISSING -> R.string.node_failure_missing
-    NodeFailure.CONFLICT -> R.string.node_failure_conflict
-    NodeFailure.UNSUPPORTED -> R.string.node_failure_unsupported
-    NodeFailure.INTERNAL -> R.string.node_failure_internal
-}
+// in product/i18n as Fluent (ADR 0022). All this file does is choose which
+// generated L10n accessor a typed variant means; the resource name, the lookup
+// and the locale are in generated/L10n.kt and Android's resource system, so
+// this surface localizes the way any other Android app does.
 
 @Composable
-fun describe(failure: NodeFailure): String = stringResource(messageResource(failure))
+fun describe(failure: NodeFailure): String = when (failure) {
+    NodeFailure.UNREACHABLE -> L10n.nodeFailureUnreachable()
+    NodeFailure.TIMED_OUT -> L10n.nodeFailureTimedOut()
+    NodeFailure.CANCELLED -> L10n.nodeFailureCancelled()
+    NodeFailure.REFUSED -> L10n.nodeFailureRefused()
+    NodeFailure.OVERLOADED -> L10n.nodeFailureOverloaded()
+    NodeFailure.REJECTED -> L10n.nodeFailureRejected()
+    NodeFailure.MISSING -> L10n.nodeFailureMissing()
+    NodeFailure.CONFLICT -> L10n.nodeFailureConflict()
+    NodeFailure.UNSUPPORTED -> L10n.nodeFailureUnsupported()
+    NodeFailure.INTERNAL -> L10n.nodeFailureInternal()
+}
 
 @Composable
 fun describe(error: ComposerError): String = when (error) {
     is ComposerError.Node -> describe(error.field0)
-    is ComposerError.RevisionConflict ->
-        stringResource(R.string.composer_error_revision_conflict, error.current)
-    is ComposerError.AuthorityChanged ->
-        stringResource(R.string.composer_error_authority_changed, error.currentEpoch)
-    is ComposerError.SnapshotMissing -> stringResource(R.string.composer_error_snapshot_missing)
-    is ComposerError.OutcomeMissing -> stringResource(R.string.composer_error_outcome_missing)
-    is ComposerError.ScopeMissing -> stringResource(R.string.composer_error_scope_missing)
-    is ComposerError.ScopeMismatch -> stringResource(R.string.composer_error_scope_mismatch)
+    is ComposerError.RevisionConflict -> L10n.composerErrorRevisionConflict(error.current)
+    is ComposerError.AuthorityChanged -> L10n.composerErrorAuthorityChanged(error.currentEpoch)
+    is ComposerError.SnapshotMissing -> L10n.composerErrorSnapshotMissing()
+    is ComposerError.OutcomeMissing -> L10n.composerErrorOutcomeMissing()
+    is ComposerError.ScopeMissing -> L10n.composerErrorScopeMissing()
+    is ComposerError.ScopeMismatch -> L10n.composerErrorScopeMismatch()
 }
 
 @Composable
 fun describe(error: ChatError): String = when (error) {
     is ChatError.Node -> describe(error.field0)
-    is ChatError.NoConversation -> stringResource(R.string.chat_error_no_conversation)
-    is ChatError.Cancelled -> stringResource(R.string.chat_error_cancelled)
+    is ChatError.NoConversation -> L10n.chatErrorNoConversation()
+    is ChatError.Cancelled -> L10n.chatErrorCancelled()
     is ChatError.Draft -> describe(error.field0)
-    is ChatError.ChatIdMissing -> stringResource(R.string.chat_error_chat_id_missing)
+    is ChatError.ChatIdMissing -> L10n.chatErrorChatIdMissing()
 }
