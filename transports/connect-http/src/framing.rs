@@ -1,5 +1,8 @@
 use arut_rpc::{Code, Status};
-use base64::{Engine, engine::general_purpose::STANDARD};
+use base64::{
+    Engine,
+    engine::general_purpose::{STANDARD, STANDARD_NO_PAD},
+};
 use serde_json::{Value, json};
 pub const MAX_MESSAGE: usize = 8 * 1024 * 1024;
 
@@ -59,9 +62,16 @@ pub fn parse_error(value: &Value) -> Status {
     .find(|code| Some(code_name(*code)) == value["code"].as_str())
     .unwrap_or(Code::Internal);
     let mut status = Status::new(code, value["message"].as_str().unwrap_or("RPC failed"));
+    // Connect writes detail values with the unpadded standard alphabet;
+    // accept the padded form too rather than dropping a well-formed detail.
     status.details = value["details"][0]["value"]
         .as_str()
-        .and_then(|s| STANDARD.decode(s).ok())
+        .and_then(|s| {
+            STANDARD_NO_PAD
+                .decode(s)
+                .or_else(|_| STANDARD.decode(s))
+                .ok()
+        })
         .unwrap_or_default();
     status
 }

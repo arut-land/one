@@ -22,7 +22,7 @@ pub async fn rpc(channel: &dyn RpcChannel) {
     let mut request = Request::new(vec![0, 128, 255]);
     request.metadata.insert("x-test-bin", [0, 128, 255]);
     request.metadata.insert("x-test", b"scope".to_vec());
-    let response = channel.unary("/echo", request).await.unwrap();
+    let response = channel.unary(ECHO, request).await.unwrap();
     assert_eq!(response.message, [0, 128, 255]);
     assert_eq!(
         response.metadata.get("x-test-bin"),
@@ -30,13 +30,13 @@ pub async fn rpc(channel: &dyn RpcChannel) {
     );
     assert_eq!(response.metadata.get("x-test"), Some(b"scope".as_slice()));
     let error = channel
-        .unary("/error", Request::new(vec![]))
+        .unary(ERROR, Request::new(vec![]))
         .await
         .unwrap_err();
     assert_eq!(error.code, Code::FailedPrecondition);
     assert_eq!(error.details, [7, 8, 9]);
     let mut stream = channel
-        .server_stream("/stream", Request::new(vec![42]))
+        .server_stream(STREAM, Request::new(vec![42]))
         .await
         .unwrap()
         .message;
@@ -44,7 +44,7 @@ pub async fn rpc(channel: &dyn RpcChannel) {
     assert_eq!(stream.next().await.unwrap().unwrap(), [43]);
     assert!(stream.next().await.is_none());
     let mut stream = channel
-        .server_stream("/stream-error", Request::new(vec![]))
+        .server_stream(STREAM_ERROR, Request::new(vec![]))
         .await
         .unwrap()
         .message;
@@ -55,7 +55,7 @@ pub async fn rpc(channel: &dyn RpcChannel) {
     assert!(stream.next().await.is_none());
     assert_eq!(
         channel
-            .unary("/unknown", Request::new(vec![]))
+            .unary("/arut.conformance.v1.Echo/Unknown", Request::new(vec![]))
             .await
             .unwrap_err()
             .code,
@@ -154,11 +154,17 @@ pub fn key_value(store: &dyn KeyValue) {
 
 /// The service every channel implementation is measured against.
 pub struct Echo;
+/// Connect requires `/package.Service/Method`, so the suite's own procedures
+/// have that shape too: a framing implementation may reject anything else.
+pub const ECHO: &str = "/arut.conformance.v1.Echo/Echo";
+pub const ERROR: &str = "/arut.conformance.v1.Echo/Error";
+pub const STREAM: &str = "/arut.conformance.v1.Echo/Stream";
+pub const STREAM_ERROR: &str = "/arut.conformance.v1.Echo/StreamError";
 static ECHO_METHODS: &[MethodDescriptor] = &[
-    method("Echo", "/echo", StreamingKind::Unary),
-    method("Error", "/error", StreamingKind::Unary),
-    method("Stream", "/stream", StreamingKind::Server),
-    method("StreamError", "/stream-error", StreamingKind::Server),
+    method("Echo", ECHO, StreamingKind::Unary),
+    method("Error", ERROR, StreamingKind::Unary),
+    method("Stream", STREAM, StreamingKind::Server),
+    method("StreamError", STREAM_ERROR, StreamingKind::Server),
 ];
 pub static ECHO_DESCRIPTOR: ServiceDescriptor = ServiceDescriptor {
     name: "Echo",
@@ -192,7 +198,7 @@ fn error() -> Status {
 impl RpcChannel for Echo {
     fn unary(&self, procedure: &str, request: Request<Vec<u8>>) -> RpcFuture<Response<Vec<u8>>> {
         let result = match procedure {
-            "/echo" => {
+            ECHO => {
                 let mut metadata = Metadata::default();
                 for key in ["x-test", "x-test-bin"] {
                     if let Some(value) = request.metadata.get(key) {
@@ -204,7 +210,7 @@ impl RpcChannel for Echo {
                     metadata,
                 })
             }
-            "/error" => Err(error()),
+            ERROR => Err(error()),
             _ => Err(Status::unimplemented(procedure)),
         };
         Box::pin(async { result })
@@ -215,8 +221,8 @@ impl RpcChannel for Echo {
         request: Request<Vec<u8>>,
     ) -> RpcFuture<Response<RpcStream<Vec<u8>>>> {
         let items = match procedure {
-            "/stream" => vec![Ok(request.message), Ok(vec![43])],
-            "/stream-error" => vec![Ok(vec![1]), Err(error())],
+            STREAM => vec![Ok(request.message), Ok(vec![43])],
+            STREAM_ERROR => vec![Ok(vec![1]), Err(error())],
             _ => vec![Err(Status::unimplemented(procedure))],
         };
         Box::pin(async {
