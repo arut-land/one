@@ -29,9 +29,9 @@ use std::sync::{Arc, Mutex, Weak};
 
 pub struct ProductSession {
     pub workspace: Arc<scopes::Workspace<scopes::Services>>,
-    chats: Arc<SessionChats>,
+    chats: SessionChats,
     capability_service: Option<CapabilityServiceClient>,
-    availability: Arc<Watch<SessionAvailability>>,
+    availability: Watch<SessionAvailability>,
 }
 
 type Established = Arc<Mutex<HashMap<String, ChatClient>>>;
@@ -40,7 +40,6 @@ struct SessionChats {
     ids: Arc<dyn IdSource>,
     established: Established,
     pending: Mutex<ChatClient>,
-    current: Mutex<ChatClient>,
     workspace: Arc<scopes::Workspace<scopes::Services>>,
     pending_scope_id: String,
     conversations: Arc<Watch<Vec<ChatSummary>>>,
@@ -91,18 +90,19 @@ impl ChatStarted for RegisterChat {
 }
 
 fn title_of(chat: &ChatClient) -> String {
-    chat.first_message()
-        .map(|message| {
-            message
-                .text
-                .split_whitespace()
-                .collect::<Vec<_>>()
-                .join(" ")
-                .chars()
-                .take(48)
-                .collect()
-        })
-        .unwrap_or_default()
+    chat.read_first_message(|message| {
+        message
+            .map(|message| {
+                message
+                    .text
+                    .split_whitespace()
+                    .flat_map(|word| std::iter::once(' ').chain(word.chars()))
+                    .skip(1)
+                    .take(48)
+                    .collect()
+            })
+            .unwrap_or_default()
+    })
 }
 
 impl SessionChats {
@@ -233,23 +233,22 @@ impl ProductSession {
             ids.clone(),
             workspace.conversation_cancellation(),
         );
-        let chats = Arc::new(SessionChats {
+        let chats = SessionChats {
             ids,
             conversations,
             established,
-            pending: Mutex::new(pending.clone()),
-            current: Mutex::new(pending),
+            pending: Mutex::new(pending),
             workspace: workspace.clone(),
             pending_scope_id,
-        });
+        };
 
         Self {
             workspace,
             chats,
             capability_service: None,
-            availability: Arc::new(Watch::new(SessionAvailability {
+            availability: Watch::new(SessionAvailability {
                 composer: FeatureAvailability::Available,
-            })),
+            }),
         }
     }
 
@@ -273,9 +272,9 @@ impl ProductSession {
 
     pub fn chat(&self) -> ChatClient {
         self.chats
-            .current
+            .pending
             .lock()
-            .expect("current chat poisoned")
+            .expect("pending chat poisoned")
             .clone()
     }
 
@@ -284,14 +283,11 @@ impl ProductSession {
         if pending.id().is_some() {
             *pending = self.chats.new_pending();
         }
-        *self.chats.current.lock().expect("current chat poisoned") = pending.clone();
         pending.clone()
     }
 
     pub fn select_chat(&self, chat_id: &str) -> Option<ChatClient> {
-        let chat = self.chats.established(chat_id)?;
-        *self.chats.current.lock().expect("current chat poisoned") = chat.clone();
-        Some(chat)
+        self.chats.established(chat_id)
     }
 
     /// The conversation list a surface renders, newest first.

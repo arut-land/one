@@ -1,3 +1,7 @@
+//! Discovers Protobuf packages and generates their Rust modules, service traits,
+//! direct and remote clients, routers, and descriptors. `RpcChannel` carries
+//! encoded values only at remote boundaries; direct clients pass typed values.
+
 use prost_build::{Method, Service, ServiceGenerator};
 use std::fmt::Write;
 use std::io;
@@ -8,6 +12,7 @@ pub struct ArutServiceGenerator;
 
 pub fn compile_dir(root: impl AsRef<Path>) -> io::Result<()> {
     let root = root.as_ref();
+    println!("cargo:rerun-if-changed={}", root.display());
     let mut protos = Vec::new();
     collect_protos(root, &mut protos)?;
     protos.sort();
@@ -26,10 +31,8 @@ pub fn compile_dir(root: impl AsRef<Path>) -> io::Result<()> {
 }
 
 fn collect_protos(directory: &Path, protos: &mut Vec<PathBuf>) -> io::Result<()> {
-    let mut entries = std::fs::read_dir(directory)?.collect::<Result<Vec<_>, _>>()?;
-    entries.sort_by_key(std::fs::DirEntry::file_name);
-    for entry in entries {
-        let path = entry.path();
+    for entry in std::fs::read_dir(directory)? {
+        let path = entry?.path();
         if path.is_dir() {
             collect_protos(&path, protos)?;
         } else if path
@@ -174,25 +177,23 @@ fn write_remote_client_call(
     method: &Method,
     procedure: &str,
 ) -> std::fmt::Result {
+    let shape = method_shape(method);
+    let input = if method.client_streaming {
+        "request.map(|stream| ::arut_rpc::map_stream(stream, |message| Ok(::arut_rpc::encode(message))))"
+    } else {
+        "request.map(::arut_rpc::encode)"
+    };
     let output_type = &method.output_type;
-    match (method.client_streaming, method.server_streaming) {
-        (false, false) => writeln!(
-            output,
-            "                Box::pin(async move {{ let response = channel.unary({procedure:?}, request.map(::arut_rpc::encode)).await?; response.map(|bytes| ::arut_rpc::decode::<{output_type}>(&bytes)).transpose() }})"
-        ),
-        (false, true) => writeln!(
-            output,
-            "                Box::pin(async move {{ let response = channel.server_stream({procedure:?}, request.map(::arut_rpc::encode)).await?; Ok(response.map(|stream| ::arut_rpc::map_stream(stream, |bytes| ::arut_rpc::decode::<{output_type}>(&bytes)))) }})"
-        ),
-        (true, false) => writeln!(
-            output,
-            "                Box::pin(async move {{ let response = channel.client_stream({procedure:?}, request.map(|stream| ::arut_rpc::map_stream(stream, |message| Ok(::arut_rpc::encode(message))))).await?; response.map(|bytes| ::arut_rpc::decode::<{output_type}>(&bytes)).transpose() }})"
-        ),
-        (true, true) => writeln!(
-            output,
-            "                Box::pin(async move {{ let response = channel.bidirectional({procedure:?}, request.map(|stream| ::arut_rpc::map_stream(stream, |message| Ok(::arut_rpc::encode(message))))).await?; Ok(response.map(|stream| ::arut_rpc::map_stream(stream, |bytes| ::arut_rpc::decode::<{output_type}>(&bytes)))) }})"
-        ),
-    }
+    let decode = format!("|bytes| ::arut_rpc::decode::<{output_type}>(&bytes)");
+    let result = if method.server_streaming {
+        format!("Ok(response.map(|stream| ::arut_rpc::map_stream(stream, {decode})))")
+    } else {
+        format!("response.map({decode}).transpose()")
+    };
+    writeln!(
+        output,
+        "                Box::pin(async move {{ let response = channel.{shape}({procedure:?}, {input}).await?; {result} }})"
+    )
 }
 
 fn write_router_impl(
@@ -271,24 +272,21 @@ fn write_router_arm(output: &mut String, service: &Service, method: &Method) -> 
         output,
         "                let service = self.service.clone();"
     )?;
-    match (method.client_streaming, method.server_streaming) {
-        (false, false) => writeln!(
-            output,
-            "                Box::pin(async move {{ let request = request.map(|bytes| ::arut_rpc::decode::<{input}>(&bytes)).transpose()?; let response = service.{call}(request).await?; Ok(response.map(::arut_rpc::encode)) }})"
-        )?,
-        (false, true) => writeln!(
-            output,
-            "                Box::pin(async move {{ let request = request.map(|bytes| ::arut_rpc::decode::<{input}>(&bytes)).transpose()?; let response = service.{call}(request).await?; Ok(response.map(|stream| ::arut_rpc::map_stream(stream, |message| Ok(::arut_rpc::encode(message))))) }})"
-        )?,
-        (true, false) => writeln!(
-            output,
-            "                Box::pin(async move {{ let request = request.map(|stream| ::arut_rpc::map_stream(stream, |bytes| ::arut_rpc::decode::<{input}>(&bytes))); let response = service.{call}(request).await?; Ok(response.map(::arut_rpc::encode)) }})"
-        )?,
-        (true, true) => writeln!(
-            output,
-            "                Box::pin(async move {{ let request = request.map(|stream| ::arut_rpc::map_stream(stream, |bytes| ::arut_rpc::decode::<{input}>(&bytes))); let response = service.{call}(request).await?; Ok(response.map(|stream| ::arut_rpc::map_stream(stream, |message| Ok(::arut_rpc::encode(message))))) }})"
-        )?,
-    }
+    let decode = format!("|bytes| ::arut_rpc::decode::<{input}>(&bytes)");
+    let request = if method.client_streaming {
+        format!("request.map(|stream| ::arut_rpc::map_stream(stream, {decode}))")
+    } else {
+        format!("request.map({decode}).transpose()?")
+    };
+    let response = if method.server_streaming {
+        "response.map(|stream| ::arut_rpc::map_stream(stream, |message| Ok(::arut_rpc::encode(message))))"
+    } else {
+        "response.map(::arut_rpc::encode)"
+    };
+    writeln!(
+        output,
+        "                Box::pin(async move {{ let request = {request}; let response = service.{call}(request).await?; Ok({response}) }})"
+    )?;
     writeln!(output, "            }}")
 }
 

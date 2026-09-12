@@ -8,9 +8,8 @@
 //! compiles, links, and is simply absent from every generated binding --
 //! `boltffi pack wasm --deny-skipped` reports success and skips nothing, because
 //! it never saw the item to skip it. That was measured, not assumed. What can be
-//! shared without hiding an export is shared: one `From` impl per handle for its
-//! construction, and one `ffi_subscription` for the watch-to-event bridge every
-//! scope repeats.
+//! shared without hiding an export is shared: `ffi_subscription` bridges every
+//! watch to the same event subscription.
 pub use arut_feature_chat::composer::product::{ComposerState, ComposerStatus};
 pub use arut_feature_chat::errors::{ChatError, ComposerError, NodeFailure};
 use arut_feature_chat::ports::IdSource;
@@ -39,47 +38,35 @@ pub struct AvailabilityHandle {
     session: Arc<ProductSession>,
 }
 
-/// Construction, once per handle, so the exported bodies stay one line each.
-impl From<Arc<ProductSession>> for ConversationsHandle {
-    fn from(session: Arc<ProductSession>) -> Self {
-        Self { session }
-    }
-}
-impl From<Arc<ProductSession>> for AvailabilityHandle {
-    fn from(session: Arc<ProductSession>) -> Self {
-        Self { session }
-    }
-}
-impl From<ChatClient> for ChatHandle {
-    fn from(client: ChatClient) -> Self {
-        Self { client }
-    }
-}
-impl From<ComposerClient> for ComposerHandle {
-    fn from(client: ComposerClient) -> Self {
-        Self { client }
-    }
-}
-
 #[export]
 impl ProductSessionHandle {
     pub async fn initialize(&self) -> bool {
         self.session.initialize().await.is_ok()
     }
     pub fn chat(&self) -> ChatHandle {
-        self.session.chat().into()
+        ChatHandle {
+            client: self.session.chat(),
+        }
     }
     pub fn new_chat(&self) -> ChatHandle {
-        self.session.new_chat().into()
+        ChatHandle {
+            client: self.session.new_chat(),
+        }
     }
     pub fn select_chat(&self, id: String) -> Option<ChatHandle> {
-        self.session.select_chat(&id).map(Into::into)
+        self.session
+            .select_chat(&id)
+            .map(|client| ChatHandle { client })
     }
     pub fn conversations(&self) -> ConversationsHandle {
-        self.session.clone().into()
+        ConversationsHandle {
+            session: self.session.clone(),
+        }
     }
     pub fn availability(&self) -> AvailabilityHandle {
-        self.session.clone().into()
+        AvailabilityHandle {
+            session: self.session.clone(),
+        }
     }
 }
 #[export]
@@ -107,9 +94,6 @@ impl AvailabilityHandle {
 }
 #[export]
 impl ChatHandle {
-    pub fn id(&self) -> String {
-        self.client.id().unwrap_or_default()
-    }
     pub fn state(&self) -> ChatState {
         self.client.state()
     }
@@ -117,7 +101,9 @@ impl ChatHandle {
         self.client.messages_after(after_id)
     }
     pub fn composer(&self) -> ComposerHandle {
-        self.client.composer().into()
+        ComposerHandle {
+            client: self.client.composer(),
+        }
     }
     pub async fn send(&self, text: String) -> ChatState {
         self.client.send(text).await

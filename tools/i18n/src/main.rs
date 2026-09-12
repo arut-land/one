@@ -130,48 +130,25 @@ fn generate(root: &Path, run: Run) -> Result<Outcome, String> {
 
     let mut written = Vec::new();
     let mut stale = Vec::new();
-    write(
-        root.join(RUST_MESSAGES),
-        &rustfmt(&accessors::rust(DEFAULT_LOCALE, &locales)),
-        &mut written,
-        &mut stale,
-        run,
-    )?;
-    write(
-        root.join(SWIFT_L10N),
-        &accessors::swift(DEFAULT_LOCALE, &locales),
-        &mut written,
-        &mut stale,
-        run,
-    )?;
-    write(
-        root.join(KOTLIN_L10N),
-        &accessors::kotlin(DEFAULT_LOCALE, &locales, KOTLIN_PACKAGE),
-        &mut written,
-        &mut stale,
-        run,
-    )?;
-    write(
-        root.join(CSHARP_L10N),
-        &accessors::csharp(DEFAULT_LOCALE, &locales),
-        &mut written,
-        &mut stale,
-        run,
-    )?;
-    write(
-        root.join(TYPESCRIPT_L10N),
-        &accessors::typescript(DEFAULT_LOCALE, &locales),
-        &mut written,
-        &mut stale,
-        run,
-    )?;
-    write(
-        root.join(XCSTRINGS),
-        &targets::xcstrings(DEFAULT_LOCALE, &locales),
-        &mut written,
-        &mut stale,
-        run,
-    )?;
+    for (path, contents) in [
+        (
+            RUST_MESSAGES,
+            rustfmt(&accessors::rust(DEFAULT_LOCALE, &locales)),
+        ),
+        (SWIFT_L10N, accessors::swift(DEFAULT_LOCALE, &locales)),
+        (
+            KOTLIN_L10N,
+            accessors::kotlin(DEFAULT_LOCALE, &locales, KOTLIN_PACKAGE),
+        ),
+        (CSHARP_L10N, accessors::csharp(DEFAULT_LOCALE, &locales)),
+        (
+            TYPESCRIPT_L10N,
+            accessors::typescript(DEFAULT_LOCALE, &locales),
+        ),
+        (XCSTRINGS, targets::xcstrings(DEFAULT_LOCALE, &locales)),
+    ] {
+        write(root.join(path), &contents, &mut written, &mut stale, run)?;
+    }
     for locale in &locales {
         let values = if locale.tag == DEFAULT_LOCALE {
             "values".to_owned()

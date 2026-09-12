@@ -9,7 +9,6 @@ use arut_protocol::chat::v1::{
 };
 use arut_rpc::{Cancellation, Request};
 use arut_watch::{Subscription, Watch};
-use futures_util::lock::Mutex as AsyncMutex;
 use std::{
     collections::BTreeMap,
     ops::Bound::{Excluded, Unbounded},
@@ -70,7 +69,6 @@ pub struct ChatClient {
     composer: ComposerClient,
     state: Arc<Watch<ChatState>>,
     messages: Arc<Mutex<BTreeMap<u64, ChatMessage>>>,
-    send_lock: Arc<AsyncMutex<()>>,
     start: Option<PendingStart>,
     ids: Arc<dyn IdSource>,
     cancellation: Arc<Cancellation>,
@@ -104,7 +102,6 @@ impl ChatClient {
                 ..Default::default()
             })),
             messages: Arc::new(Mutex::new(messages)),
-            send_lock: Arc::new(AsyncMutex::new(())),
             start: None,
             ids,
             cancellation,
@@ -129,7 +126,6 @@ impl ChatClient {
             ),
             state: Arc::new(Watch::new(ChatState::default())),
             messages: Arc::default(),
-            send_lock: Arc::new(AsyncMutex::new(())),
             start: Some(PendingStart {
                 scope_id: pending_scope_id,
                 command_id: ids.new_id(),
@@ -163,12 +159,14 @@ impl ChatClient {
             .collect()
     }
 
-    pub fn first_message(&self) -> Option<ChatMessage> {
-        self.messages
-            .lock()
-            .unwrap()
-            .first_key_value()
-            .map(|(_, message)| message.clone())
+    pub fn read_first_message<R>(&self, read: impl FnOnce(Option<&ChatMessage>) -> R) -> R {
+        read(
+            self.messages
+                .lock()
+                .unwrap()
+                .first_key_value()
+                .map(|(_, message)| message),
+        )
     }
 
     fn accept_messages(&self, messages: Vec<WireMessage>) -> u64 {
@@ -193,12 +191,11 @@ impl ChatClient {
         if text.is_empty() {
             return self.state.get();
         }
+        let operations = self.composer.operations();
+        let _composer_operation = operations.lock().await;
         if self.cancellation.is_cancelled() {
             return self.fail(ChatError::Cancelled);
         }
-        let _send = self.send_lock.lock().await;
-        let operations = self.composer.operations();
-        let _composer_operation = operations.lock().await;
         self.state.update(|state| {
             state.status = ChatStatus::Sending;
             state.error = None;

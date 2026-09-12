@@ -30,7 +30,7 @@ export function useChat(session: ProductSessionHandle) {
       ? describeComposerError(composerState.error)
       : null;
   return {
-    snapshot: { ...state, chatId: chat.id(), error },
+    snapshot: { ...state, chatId: state.id, error },
     draft: composerState.text,
     history,
     sending: state.status === ChatStatus.Sending,

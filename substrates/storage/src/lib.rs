@@ -18,10 +18,12 @@
 //! implementations provide the same ports for in-process sessions.
 
 //! Separate durability contracts for facts, content, and small unordered values.
+#[cfg(not(target_arch = "wasm32"))]
 mod directory;
 mod memory;
 #[cfg(feature = "redb")]
 mod redb;
+#[cfg(not(target_arch = "wasm32"))]
 pub use directory::{Directory, DirectoryLog};
 pub use memory::{MemoryLog, MemoryStore};
 #[cfg(feature = "redb")]
