@@ -3,8 +3,9 @@
 //! The composition root owns the desktop executor and ChildHost. Components read
 //! ProductSession handles directly and await independent watches on GLib. Only
 //! navigation is persisted here, under XDG_STATE_HOME/arut/linux-ui.
-//! Chat and composer errors are currently strings in the core; strings.rs maps
-//! their typed statuses and the typed availability/RPC errors to English.
+//! Chat and composer errors are typed enums from the core (ADR 0016); strings.rs
+//! maps every `ChatError`/`ComposerError`/`NodeFailure` variant, plus the typed
+//! availability and connect-time RPC statuses, to English.
 //! GTK reads scheme and contrast from its portal settings. Theme colors come
 //! from named GTK colors; ashpd supplies live accent and reduced-motion settings.
 //! Only Arut classes receive additional CSS, and icons come from the desktop.
