@@ -70,6 +70,7 @@ pub struct ChatClient {
     state: Arc<Watch<ChatState>>,
     messages: Arc<Mutex<BTreeMap<u64, ChatMessage>>>,
     start: Option<PendingStart>,
+    pending_send: Arc<Mutex<Option<SendMessageRequest>>>,
     ids: Arc<dyn IdSource>,
     cancellation: Arc<Cancellation>,
 }
@@ -103,6 +104,7 @@ impl ChatClient {
             })),
             messages: Arc::new(Mutex::new(messages)),
             start: None,
+            pending_send: Arc::default(),
             ids,
             cancellation,
         }
@@ -126,6 +128,7 @@ impl ChatClient {
             ),
             state: Arc::new(Watch::new(ChatState::default())),
             messages: Arc::default(),
+            pending_send: Arc::default(),
             start: Some(PendingStart {
                 scope_id: pending_scope_id,
                 command_id: ids.new_id(),
@@ -255,26 +258,31 @@ impl ChatClient {
     }
 
     async fn send_established(&self, chat_id: String, text: String) -> ChatState {
-        match self
-            .service
-            .send_message(Request::new(SendMessageRequest {
-                chat_id,
-                text,
-                command_id: self.ids.new_id(),
-            }))
-            .await
-        {
+        let request = {
+            let mut pending = self.pending_send.lock().unwrap();
+            if pending
+                .as_ref()
+                .is_none_or(|request| request.chat_id != chat_id || request.text != text)
+            {
+                *pending = Some(SendMessageRequest {
+                    chat_id,
+                    text,
+                    command_id: self.ids.new_id(),
+                });
+            }
+            pending.as_ref().unwrap().clone()
+        };
+        match self.service.send_message(Request::new(request)).await {
             Ok(response) => {
-                let cleared = self.composer.replace_unlocked(String::new()).await;
-                if let Some(error) = cleared.error {
-                    return self.fail(error.into());
-                }
+                self.pending_send.lock().unwrap().take();
                 let last_message_id = self.accept_messages(response.message.messages);
                 self.state.update(|state| {
                     state.last_message_id = last_message_id;
                     state.status = ChatStatus::Idle;
                     state.error = None;
                 });
+                // Draft cleanup has its own error state. Acceptance is already durable.
+                self.composer.replace_unlocked(String::new()).await;
                 self.state.get()
             }
             Err(error) => self.fail(error.into()),
