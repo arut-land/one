@@ -65,7 +65,7 @@ pub fn parse_error(value: &Value) -> Status {
         .unwrap_or_default();
     status
 }
-pub fn code_name(code: Code) -> &'static str {
+fn code_name(code: Code) -> &'static str {
     match code {
         Code::Cancelled => "cancelled",
         Code::InvalidArgument => "invalid_argument",

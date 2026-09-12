@@ -68,7 +68,7 @@ impl ComposerAuthority {
     pub fn snapshot(&self, scope: &ComposerScope) -> ComposerSnapshot {
         self.try_snapshot(scope).expect("read composer recovery")
     }
-    pub fn try_snapshot(&self, scope: &ComposerScope) -> Result<ComposerSnapshot, StorageError> {
+    fn try_snapshot(&self, scope: &ComposerScope) -> Result<ComposerSnapshot, StorageError> {
         let mut scopes = self.inner.lock().unwrap();
         if !scopes.contains_key(scope) {
             scopes.insert(scope.clone(), self.load(scope)?);

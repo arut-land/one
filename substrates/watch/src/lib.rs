@@ -23,11 +23,6 @@ impl<T: Send + 'static> Subscription<T> {
     pub async fn changed(&self) -> Option<T> {
         self.0.lock().await.next().await
     }
-
-    pub fn try_recv(&self) -> Option<T> {
-        use futures_util::FutureExt;
-        self.0.try_lock()?.next().now_or_never().flatten()
-    }
 }
 
 impl<T: Clone + Send + Sync + 'static> Watch<T> {
@@ -73,16 +68,22 @@ impl<T: Clone + Send + Sync + 'static> Watch<T> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use futures_util::FutureExt;
+
+    fn ready(changes: &Subscription<u64>) -> Option<u64> {
+        changes.changed().now_or_never().flatten()
+    }
+
     #[test]
     fn coalesces_and_closes_after_the_writer_is_dropped() {
         let watch = Watch::new(0);
         let changes = watch.subscribe();
-        assert_eq!(changes.try_recv(), Some(0));
+        assert_eq!(ready(&changes), Some(0));
         for n in 1..=100 {
             watch.set(n);
         }
-        assert_eq!(changes.try_recv(), Some(100));
-        assert_eq!(changes.try_recv(), None);
+        assert_eq!(ready(&changes), Some(100));
+        assert_eq!(ready(&changes), None);
         drop(watch);
         assert_eq!(futures_executor::block_on(changes.changed()), None);
     }

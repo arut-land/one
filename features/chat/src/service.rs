@@ -34,9 +34,6 @@ impl ChatServiceImpl {
             start_gate: Mutex::new(()),
         })
     }
-    pub fn composer_authority(&self) -> Arc<ComposerAuthority> {
-        self.composer.clone()
-    }
     pub fn projection(&self) -> ChatProjection {
         self.authority.projection()
     }
