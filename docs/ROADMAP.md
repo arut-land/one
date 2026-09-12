@@ -23,7 +23,7 @@ Status on 2026-09-12: all eight steps are implemented and gated. Verified on rea
 
 The scope in `docs/PRD.md`.
 
-1. iroh endpoint per node (ADR 0019): the endpoint key is the device key; pairing by QR and code exchanges endpoint ids and transfers the root key; `keyring` holds secrets on desktop.
+1. iroh endpoint per node (ADR 0019): the endpoint key is the device key; pairing by QR needs no PAKE, pairing by short code runs SPAKE2 before revealing identity; the root key transfers inside that channel; `keyring` with per-platform store crates holds desktop secrets, mobile secrets stay native behind FFI.
 2. `RpcChannel` over an iroh bi-directional stream; the relay is a deployed `iroh-relay` plus a small pairing service. Direct, LAN, and relayed routes come from iroh.
 3. Peer-assisted store-and-forward: envelopes sealed for the target node, carried by any paired device, delivered over iroh when the target is reachable.
 4. Drafts and presence over `iroh-gossip`, last-writer-wins on revision; the composer service becomes a local projection fed by gossip.
@@ -41,7 +41,7 @@ Exit: every v1 scenario passes on real devices; the author uses it daily.
 
 1. Checkpoints and snapshots of conversation state; explicit "continue on another node"; authority epoch advances for real.
 2. The `Harness` port with a mock implementation; tools and approvals as facts; approval accepted from any surface with typed stale results.
-3. First external harness through an open agent protocol; tools through MCP.
+3. First external harness through the Agent Client Protocol (ACP), whose session updates and permission requests map onto streamed facts and any-surface approvals; tools through MCP via `rmcp` with its transport riding an existing channel. The harness port mirrors the model port: one event stream plus out-of-band resolve and cancel; approvals are in-band events so no surface owns the answer. Pin `schemars` to one major first.
 4. Automatic failover policy for cloud-coordinated conversations. Local-only failover stays explicit.
 
 Candidate for the tool execution plane: iii (iii-hq/iii), a Rust orchestration engine with workers in Node, Python, Rust, and Go, triggers, queues, an exec worker, and built-in tracing. It does not belong in the node core (server daemon, JSON over WebSocket, no mobile or wasm), but it may host tools behind the harness port with MCP as the open protocol. Spike criteria before adopting: tools callable from the harness port through a typed adapter with streaming output; the engine runs beside the cloud node and optionally beside a desktop daemon with no change to surfaces; traces flow into our OpenTelemetry pipeline; the Elastic License 2.0 engine is compatible with on-premises packaging.
