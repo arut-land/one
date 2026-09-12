@@ -1,8 +1,10 @@
+use crate::command::ChatCommand;
 use crate::composer::authority::{ComposerAuthority, PromoteError};
 use crate::{
     composer::{ComposerScope, ComposerSnapshot},
     facts::{ChatFact, ChatProjection},
 };
+use arut_authority::{Authority, Outcome};
 use arut_protocol::chat::v1::{
     ChatMessage, ChatRole, ChatService, SendMessageRequest, SendMessageResponse, StartChatRequest,
     StartChatResponse,
@@ -14,12 +16,8 @@ use uuid::Uuid;
 
 pub struct ChatServiceImpl {
     composer: Arc<ComposerAuthority>,
-    log: Arc<dyn FactLog<ChatFact>>,
-    state: Mutex<Stored>,
-}
-struct Stored {
-    projection: ChatProjection,
-    sequence: u64,
+    authority: Authority<ChatCommand>,
+    start_gate: Mutex<()>,
 }
 impl Default for ChatServiceImpl {
     fn default() -> Self {
@@ -34,44 +32,31 @@ impl ChatServiceImpl {
         composer: Arc<ComposerAuthority>,
         log: Arc<dyn FactLog<ChatFact>>,
     ) -> Result<Self, StorageError> {
-        let snapshot = log.snapshot()?;
-        let mut projection: ChatProjection = snapshot
-            .as_ref()
-            .map(|s| serde_json::from_slice(&s.data))
-            .transpose()?
-            .unwrap_or_default();
-        let mut sequence = snapshot.as_ref().map_or(0, |s| s.sequence);
-        for record in log.read_from(sequence)? {
-            projection.apply(&record.fact);
-            sequence = record.sequence;
-        }
         Ok(Self {
             composer,
-            log,
-            state: Mutex::new(Stored {
-                projection,
-                sequence,
-            }),
+            authority: Authority::open(log, 1)?,
+            start_gate: Mutex::new(()),
         })
     }
     pub fn composer_authority(&self) -> Arc<ComposerAuthority> {
         self.composer.clone()
     }
     pub fn projection(&self) -> ChatProjection {
-        self.state.lock().unwrap().projection.clone()
+        self.authority.projection()
     }
-    fn commit(
-        &self,
-        state: &mut Stored,
-        id: &str,
-        fact: ChatFact,
-    ) -> Result<ChatFact, StorageError> {
-        let record = self.log.append(state.sequence, 1, id, fact)?;
-        if record.sequence > state.sequence {
-            state.projection.apply(&record.fact);
-            state.sequence = record.sequence;
+    fn commit(&self, command: ChatCommand) -> Result<ChatFact, StorageError> {
+        match self.authority.execute(command)? {
+            Outcome::Applied(record) | Outcome::Duplicate(record) => Ok(record.fact),
+            Outcome::RevisionConflict { current } => {
+                Err(StorageError::Conflict { actual: current })
+            }
+            Outcome::AuthorityMismatch { current_epoch } => Err(StorageError::Epoch {
+                current: current_epoch,
+            }),
+            outcome => Err(StorageError::Corrupt(format!(
+                "command rejected: {outcome:?}"
+            ))),
         }
-        Ok(record.fact)
     }
 }
 fn wire(messages: Vec<crate::product::ChatMessage>) -> Vec<ChatMessage> {
@@ -132,27 +117,31 @@ impl ChatService for ChatServiceImpl {
                     "send requires a UUIDv7 command ID",
                 ));
             }
-            let mut state = self.state.lock().unwrap();
-            if let Some(record) = self.log.outcome_of(&message.command_id).map_err(storage)? {
+
+            if let Some(record) = self
+                .authority
+                .outcome_of(&message.command_id)
+                .map_err(storage)?
+            {
                 return Ok(Response::new(SendMessageResponse {
                     messages: wire(record.fact.messages),
                 }));
             }
-            if !state
-                .projection
+            if !self
+                .authority
+                .projection()
                 .conversations
                 .contains_key(&message.chat_id)
             {
                 return Err(Status::new(Code::NotFound, "conversation not found"));
             }
-            let fact = state.projection.exchange(
-                message.chat_id,
-                None,
-                message.text,
-                message.command_id.clone(),
-            );
             let fact = self
-                .commit(&mut state, &message.command_id, fact)
+                .commit(ChatCommand {
+                    command_id: message.command_id,
+                    chat_id: message.chat_id,
+                    pending_scope: None,
+                    text: message.text,
+                })
                 .map_err(storage)?;
             Ok(Response::new(SendMessageResponse {
                 messages: wire(fact.messages),
@@ -165,18 +154,22 @@ impl ChatService for ChatServiceImpl {
         request: Request<StartChatRequest>,
     ) -> RpcFuture<Response<StartChatResponse>> {
         let message = request.message;
+        let _start = self.start_gate.lock().unwrap();
         let result = (|| {
-            let mut state = self.state.lock().unwrap();
-            if let Some(record) = self.log.outcome_of(&message.command_id).map_err(storage)? {
+            if let Some(record) = self
+                .authority
+                .outcome_of(&message.command_id)
+                .map_err(storage)?
+            {
                 return Ok(Response::new(start_response(record.fact)));
             }
             let chat_id = Uuid::now_v7().to_string();
-            let fact = state.projection.exchange(
-                chat_id.clone(),
-                Some(message.pending_scope_id.clone()),
-                message.text.clone(),
-                message.command_id.clone(),
-            );
+            let command = ChatCommand {
+                command_id: message.command_id.clone(),
+                chat_id: chat_id.clone(),
+                pending_scope: Some(message.pending_scope_id.clone()),
+                text: message.text.clone(),
+            };
             let result = self
                 .composer
                 .promote_pending(
@@ -184,7 +177,7 @@ impl ChatService for ChatServiceImpl {
                     message.expected_revision,
                     &message.text,
                     &chat_id,
-                    || self.commit(&mut state, &message.command_id, fact),
+                    || self.commit(command),
                 )
                 .map_err(storage)?;
             match result {
