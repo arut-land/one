@@ -46,9 +46,16 @@ private fun ConversationView(chat: ChatHandle) {
     val state by transcript.state.collectAsState()
     val composing by draft.state.collectAsState()
     val scope = rememberCoroutineScope()
+    // The chat's own error takes precedence; a composer-only failure (a
+    // background resync, say) still needs to reach the person even when the
+    // chat itself is idle.
+    val errorMessage = state.error?.let { describe(it) } ?: composing.error?.let { describe(it) }
     Column {
         LazyColumn { items(state.messages, key = { it.id }) { Text(it.text) } }
         TextField(value = composing.text, onValueChange = { text -> scope.launch { composer.replace(text) } })
+        if (errorMessage != null) {
+            Text(text = errorMessage, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+        }
         Button(onClick = { scope.launch { chat.send(composer.state().text) } }) { Text("Send") }
     }
 }
