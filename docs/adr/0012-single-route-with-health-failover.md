@@ -1,5 +1,6 @@
 ---
 status: accepted
+amended-by: 0019 (route selection and failover are iroh's; the ordered-failover policy described here is not implemented by us)
 ---
 
 # One active route with health-scored failover in the first release

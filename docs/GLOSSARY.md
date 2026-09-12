@@ -70,7 +70,11 @@ Implementation vocabulary used in code, ADRs, and `ARCHITECTURE.md`. Product lan
 
 **Metadata**: The typed key-value side channel on requests and responses. Never carries product meaning.
 
-**Route policy**: The code that picks which transport reaches a node right now and fails over when health degrades.
+**Endpoint**: A node's iroh identity and connection point. Its Ed25519 public key is the product-level device key; other nodes dial it by key.
+
+**Gossip topic**: An `iroh-gossip` pub/sub topic among a person's paired nodes, used for ephemeral state such as drafts and presence. Best effort, unordered, never a carrier of facts.
+
+**Route policy**: What is ours above iroh's connection choice: which channel a feature prefers (gossip, stream, relay store). Direct-versus-relay selection and failover belong to iroh.
 
 ## Hosting
 
