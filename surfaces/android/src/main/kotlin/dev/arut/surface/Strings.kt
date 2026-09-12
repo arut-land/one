@@ -29,8 +29,8 @@ fun describe(failure: NodeFailure): String = when (failure) {
 @Composable
 fun describe(error: ComposerError): String = when (error) {
     is ComposerError.Node -> describe(error.field0)
-    is ComposerError.RevisionConflict -> L10n.composerErrorRevisionConflict(error.current)
-    is ComposerError.AuthorityChanged -> L10n.composerErrorAuthorityChanged(error.currentEpoch)
+    is ComposerError.RevisionConflict -> L10n.composerErrorRevisionConflict(error.current.toString())
+    is ComposerError.AuthorityChanged -> L10n.composerErrorAuthorityChanged(error.currentEpoch.toString())
     is ComposerError.SnapshotMissing -> L10n.composerErrorSnapshotMissing()
     is ComposerError.OutcomeMissing -> L10n.composerErrorOutcomeMissing()
     is ComposerError.ScopeMissing -> L10n.composerErrorScopeMissing()

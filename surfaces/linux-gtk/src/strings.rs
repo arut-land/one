@@ -100,10 +100,14 @@ pub fn composer_error(error: ComposerError) -> String {
     match error {
         ComposerError::Node(failure) => node_failure(failure),
         ComposerError::RevisionConflict { current } => {
-            show(&Message::ComposerErrorRevisionConflict { current })
+            show(&Message::ComposerErrorRevisionConflict {
+                current: current.to_string(),
+            })
         }
         ComposerError::AuthorityChanged { current_epoch } => {
-            show(&Message::ComposerErrorAuthorityChanged { current_epoch })
+            show(&Message::ComposerErrorAuthorityChanged {
+                current_epoch: current_epoch.to_string(),
+            })
         }
         ComposerError::SnapshotMissing => show(&Message::ComposerErrorSnapshotMissing),
         ComposerError::OutcomeMissing => show(&Message::ComposerErrorOutcomeMissing),

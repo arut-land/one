@@ -26,9 +26,9 @@ func describe(_ error: ComposerError) -> String {
     case .node(let failure):
         return describe(failure)
     case .revisionConflict(let current):
-        return L10n.composerErrorRevisionConflict(current: Int(current))
+        return L10n.composerErrorRevisionConflict(current: String(current))
     case .authorityChanged(let currentEpoch):
-        return L10n.composerErrorAuthorityChanged(currentEpoch: Int(currentEpoch))
+        return L10n.composerErrorAuthorityChanged(currentEpoch: String(currentEpoch))
     case .snapshotMissing: return L10n.composerErrorSnapshotMissing()
     case .outcomeMissing: return L10n.composerErrorOutcomeMissing()
     case .scopeMissing: return L10n.composerErrorScopeMissing()

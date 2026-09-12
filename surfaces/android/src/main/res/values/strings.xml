@@ -16,9 +16,9 @@
     <string name="chat_role_you">You</string>
     <string name="chat_status_failed">Could not send the message. Try again.</string>
     <string name="chat_status_sending">Sending…</string>
-    <string name="composer_error_authority_changed">This conversation moved to a new authority (epoch %1$d), so your edit didn\'t go through. Try again.</string>
+    <string name="composer_error_authority_changed">This conversation moved to a new authority (epoch %1$s), so your edit didn\'t go through. Try again.</string>
     <string name="composer_error_outcome_missing">Your node didn\'t say what happened to your edit.</string>
-    <string name="composer_error_revision_conflict">Someone else edited this draft first, so your edit didn\'t go through; it is now at revision %1$d.</string>
+    <string name="composer_error_revision_conflict">Someone else edited this draft first, so your edit didn\'t go through; it is now at revision %1$s.</string>
     <string name="composer_error_scope_mismatch">Your node answered about a different draft.</string>
     <string name="composer_error_scope_missing">Your node didn\'t say which draft it meant.</string>
     <string name="composer_error_snapshot_missing">Your node didn\'t send back the draft, so it may be out of sync.</string>

@@ -88,19 +88,39 @@ fn a_variant_with_a_payload_renders_that_payload() {
     // The generated `Message` is the only way to name a string, so this also
     // proves the generated variant and the enum's key agree.
     let conflict = ComposerError::RevisionConflict { current: 41 };
-    let rendered = localizer.format(&Message::ComposerErrorRevisionConflict { current: 41 });
+    let rendered = localizer.format(&Message::ComposerErrorRevisionConflict {
+        current: "41".into(),
+    });
     assert_eq!(
-        Message::ComposerErrorRevisionConflict { current: 41 }.key(),
+        Message::ComposerErrorRevisionConflict {
+            current: "41".into()
+        }
+        .key(),
         conflict.message_key()
     );
     assert!(rendered.contains("41"), "{rendered}");
     let moved = ComposerError::AuthorityChanged { current_epoch: 9 };
-    let rendered = localizer.format(&Message::ComposerErrorAuthorityChanged { current_epoch: 9 });
+    let rendered = localizer.format(&Message::ComposerErrorAuthorityChanged {
+        current_epoch: "9".into(),
+    });
     assert_eq!(
-        Message::ComposerErrorAuthorityChanged { current_epoch: 9 }.key(),
+        Message::ComposerErrorAuthorityChanged {
+            current_epoch: "9".into()
+        }
+        .key(),
         moved.message_key()
     );
     assert!(rendered.contains('9'), "{rendered}");
+}
+
+#[test]
+fn revision_identifiers_keep_all_unsigned_bits() {
+    let current = u64::MAX.to_string();
+    let localizer = Localizer::for_locale(DEFAULT_LOCALE);
+    let rendered = localizer.format(&Message::ComposerErrorRevisionConflict {
+        current: current.clone(),
+    });
+    assert!(rendered.contains(&current), "{rendered}");
 }
 
 #[test]

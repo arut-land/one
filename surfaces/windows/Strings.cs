@@ -27,9 +27,9 @@ internal static class Strings
     {
         ComposerError.Node node => Describe(node.Field0),
         ComposerError.RevisionConflict conflict =>
-            L10n.ComposerErrorRevisionConflict((long)conflict.Current),
+            L10n.ComposerErrorRevisionConflict(conflict.Current.ToString(System.Globalization.CultureInfo.InvariantCulture)),
         ComposerError.AuthorityChanged moved =>
-            L10n.ComposerErrorAuthorityChanged((long)moved.CurrentEpoch),
+            L10n.ComposerErrorAuthorityChanged(moved.CurrentEpoch.ToString(System.Globalization.CultureInfo.InvariantCulture)),
         ComposerError.SnapshotMissing => L10n.ComposerErrorSnapshotMissing(),
         ComposerError.OutcomeMissing => L10n.ComposerErrorOutcomeMissing(),
         ComposerError.ScopeMissing => L10n.ComposerErrorScopeMissing(),

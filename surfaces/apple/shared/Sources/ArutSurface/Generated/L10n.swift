@@ -69,7 +69,7 @@ enum L10n {
         String(localized: "chat-status-sending", table: "Localizable", bundle: .module)
     }
     /// `composer-error-authority-changed`
-    static func composerErrorAuthorityChanged(currentEpoch: Int) -> String {
+    static func composerErrorAuthorityChanged(currentEpoch: String) -> String {
         String(format: String(localized: "composer-error-authority-changed", table: "Localizable", bundle: .module), currentEpoch)
     }
     /// `composer-error-outcome-missing`
@@ -77,7 +77,7 @@ enum L10n {
         String(localized: "composer-error-outcome-missing", table: "Localizable", bundle: .module)
     }
     /// `composer-error-revision-conflict`
-    static func composerErrorRevisionConflict(current: Int) -> String {
+    static func composerErrorRevisionConflict(current: String) -> String {
         String(format: String(localized: "composer-error-revision-conflict", table: "Localizable", bundle: .module), current)
     }
     /// `composer-error-scope-mismatch`

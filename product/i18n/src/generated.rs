@@ -42,11 +42,11 @@ pub enum Message {
     /// `chat-status-sending`
     ChatStatusSending,
     /// `composer-error-authority-changed`
-    ComposerErrorAuthorityChanged { current_epoch: u64 },
+    ComposerErrorAuthorityChanged { current_epoch: String },
     /// `composer-error-outcome-missing`
     ComposerErrorOutcomeMissing,
     /// `composer-error-revision-conflict`
-    ComposerErrorRevisionConflict { current: u64 },
+    ComposerErrorRevisionConflict { current: String },
     /// `composer-error-scope-mismatch`
     ComposerErrorScopeMismatch,
     /// `composer-error-scope-missing`
@@ -162,10 +162,10 @@ impl Message {
         let mut args = FluentArgs::new();
         match self {
             Self::ComposerErrorAuthorityChanged { current_epoch } => {
-                args.set("currentEpoch", FluentValue::from(*current_epoch));
+                args.set("currentEpoch", FluentValue::from(current_epoch.as_str()));
             }
             Self::ComposerErrorRevisionConflict { current } => {
-                args.set("current", FluentValue::from(*current));
+                args.set("current", FluentValue::from(current.as_str()));
             }
             _ => {}
         }
