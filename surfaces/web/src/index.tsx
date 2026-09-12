@@ -1,4 +1,4 @@
-import { ChatRole } from "@arut/bindings-typescript";
+import { ChatRole, strings, t } from "@arut/bindings-typescript";
 import type { useChat } from "./useChat";
 import { useEffect, useRef, useState, type FormEvent, type TouchEvent } from "react";
 
@@ -119,7 +119,7 @@ export function ChatView(props: ChatViewProps) {
             onClick={() => setSidebarOpen(true)}
           ><PanelIcon /></button>
           <div className="conversation-title">
-            <strong>{activeTitle ?? "New conversation"}</strong>
+            <strong>{activeTitle ?? t.actionNewConversation(strings)}</strong>
             <span>{props.snapshot.chatId ? "Saved in this session" : "Draft synced across this session"}</span>
           </div>
           <div className={`status ${props.sending ? "busy" : ""}`}>
@@ -143,7 +143,7 @@ export function ChatView(props: ChatViewProps) {
                 >
                   <span className="avatar">{message.role === ChatRole.User ? "Y" : "A"}</span>
                   <div>
-                    <span>{message.role === ChatRole.User ? "You" : "Arut"}</span>
+                    <span>{message.role === ChatRole.User ? t.chatRoleYou(strings) : t.chatRoleAssistant(strings)}</span>
                     <p>{message.text}</p>
                   </div>
                 </article>
@@ -156,14 +156,14 @@ export function ChatView(props: ChatViewProps) {
           {props.snapshot.error && <p className="error">{props.snapshot.error}</p>}
           <form onSubmit={submit}>
             <input
-              aria-label="Message Arut"
+              aria-label={t.composerPlaceholder(strings)}
               autoFocus
               ref={composer}
-              placeholder="Message Arut"
+              placeholder={t.composerPlaceholder(strings)}
               value={props.draft}
               onChange={(event) => props.setDraft(event.target.value)}
             />
-            <button aria-label="Send message" disabled={props.sending || !props.draft.trim()}>
+            <button aria-label={t.actionSendMessage(strings)} disabled={props.sending || !props.draft.trim()}>
               {props.sending ? <span className="spinner" /> : <SendIcon />}
             </button>
           </form>

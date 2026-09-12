@@ -5,6 +5,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import dev.arut.surface.generated.L10n
 import dev.arut.bindings.ObservableState
 import dev.arut.ffi.*
 import kotlinx.coroutines.launch
@@ -21,7 +22,7 @@ fun ChatScreen(session: ProductSessionHandle) {
     val conversations by observer.state.collectAsState()
     Row {
         Column {
-            Button(onClick = { selected = session.newChat() }) { Text("New conversation") }
+            Button(onClick = { selected = session.newChat() }) { Text(L10n.actionNewConversation()) }
             conversations.forEach { summary ->
                 TextButton(onClick = { session.selectChat(summary.id)?.let { selected = it } }) { Text(summary.title) }
             }
@@ -36,7 +37,8 @@ private fun ConversationView(chat: ChatHandle) {
     val transcript = remember {
         var messages = emptyList<ChatMessage>()
         ObservableState(read = {
-            messages = messages + chat.messagesAfter(messages.lastOrNull()?.id ?: 0uL)
+            val added = chat.messagesAfter(messages.lastOrNull()?.id ?: 0uL)
+            if (added.isNotEmpty()) messages = messages + added
             chat.state() to messages
         }) { callback ->
             val subscription = chat.chatChanges(callback)
@@ -62,6 +64,6 @@ private fun ConversationView(chat: ChatHandle) {
         if (errorMessage != null) {
             Text(text = errorMessage, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
         }
-        Button(onClick = { scope.launch { chat.send(composer.state().text) } }) { Text("Send") }
+        Button(onClick = { scope.launch { chat.send(composer.state().text) } }) { Text(L10n.actionSend()) }
     }
 }

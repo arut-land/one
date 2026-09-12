@@ -21,7 +21,7 @@ public struct ChatView: View {
     public var body: some View {
         NavigationSplitView {
             List {
-                Button("New conversation") { selected = session.newChat() }
+                Button(L10n.actionNewConversation()) { selected = session.newChat() }
                 ForEach(conversations.state, id: \.id) { summary in
                     Button(summary.title) { if let chat = session.selectChat(id: summary.id) { selected = chat } }
                 }
@@ -71,8 +71,8 @@ private struct ConversationView: View {
                     .font(.footnote)
             }
             HStack {
-                TextField("Message Arut", text: Binding(get: { draft.state.text }, set: { text in Task { _ = await composer.replace(text: text) } }))
-                Button("Send") { Task { _ = await chat.send(text: composer.state().text) } }
+                TextField(L10n.composerPlaceholder(), text: Binding(get: { draft.state.text }, set: { text in Task { _ = await composer.replace(text: text) } }))
+                Button(L10n.actionSend()) { Task { _ = await chat.send(text: composer.state().text) } }
             }
         }.task { _ = await composer.initialize(); await composer.follow() }
     }
