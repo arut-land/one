@@ -31,6 +31,7 @@ run = [
   "cargo check -p arut-i18n --target wasm32-unknown-unknown",
   "test -z \"$(cargo tree -i wasm-bindgen --target wasm32-unknown-unknown -p arut-i18n 2>/dev/null)\" || (echo 'wasm-bindgen leaked into the arut-i18n wasm dependency graph; see docs/ECOSYSTEM.md wasm rule' && exit 1)",
   "buf lint",
+  "buf breaking --against '.git#branch=master'",
   "pnpm check",
   # ADR 0022: the .ftl files are the source, so a generated resource that
   # disagrees with them is a change nobody made on purpose.

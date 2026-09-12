@@ -8,7 +8,6 @@
 //! moves only when the value actually differs: `update` and `set` compare through
 //! `send_if_modified` and leave the revision alone when a write is a no-op.
 
-//! A versioned cell over Tokio watch. No executor, queues, or callback registry.
 use futures_lite::{StreamExt, stream::Boxed};
 use std::sync::Arc;
 use tokio::sync::{Mutex, watch};
@@ -54,28 +53,21 @@ impl<T: Clone + PartialEq + Send + Sync + 'static> Watch<T> {
     /// closure is handed a `&mut T` and needs nothing else; capturing the
     /// `Watch` itself is the mistake this note exists to prevent.
     ///
-    /// Cost: one clone to build the candidate, plus one clone of the stored
-    /// value when it is really new. That buys the comparison that keeps a no-op
-    /// write from waking every binding, which costs a full projection re-read
-    /// and a scheduler hop each.
-    pub fn update(&self, update: impl FnOnce(&mut T)) -> T {
-        let mut result = None;
+    /// Clones one candidate. Call `get` separately only when a snapshot is needed.
+    pub fn update(&self, update: impl FnOnce(&mut T)) {
         self.0.send_if_modified(|state| {
             let mut next = state.value.clone();
             update(&mut next);
             if next == state.value {
-                result = Some(next);
                 return false;
             }
-            state.value = next;
             state.revision = state
                 .revision
                 .checked_add(1)
                 .expect("watch revision overflow");
-            result = Some(state.value.clone());
+            state.value = next;
             true
         });
-        result.expect("watch modification runs synchronously")
     }
 
     /// Stores `next`, bumping the revision only when it differs from the current
@@ -147,11 +139,42 @@ mod tests {
         assert_eq!(ready(&changes), Some(0));
 
         assert_eq!(watch.set("draft".into()), "draft");
-        assert_eq!(watch.update(|value| value.truncate(5)), "draft");
+        watch.update(|value| value.truncate(5));
+        assert_eq!(watch.get(), "draft");
         assert_eq!(ready(&changes), None);
 
-        assert_eq!(watch.update(|value| value.push('s')), "drafts");
+        watch.update(|value| value.push('s'));
+        assert_eq!(watch.get(), "drafts");
         assert_eq!(ready(&changes), Some(1));
+    }
+
+    #[test]
+    fn update_clones_once_and_a_panicking_edit_leaves_the_value_unchanged() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        struct Counted(u64, Arc<AtomicUsize>);
+        impl Clone for Counted {
+            fn clone(&self) -> Self {
+                self.1.fetch_add(1, Ordering::Relaxed);
+                Self(self.0, self.1.clone())
+            }
+        }
+        impl PartialEq for Counted {
+            fn eq(&self, other: &Self) -> bool {
+                self.0 == other.0
+            }
+        }
+        let clones = Arc::new(AtomicUsize::new(0));
+        let watch = Watch::new(Counted(0, clones.clone()));
+        watch.update(|value| value.0 = 1);
+        assert_eq!(clones.load(Ordering::Relaxed), 1);
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            watch.update(|value| {
+                value.0 = 2;
+                panic!("cancel edit");
+            });
+        }));
+        assert!(result.is_err());
+        assert_eq!(watch.read(|value| value.0), 1);
     }
 
     #[test]

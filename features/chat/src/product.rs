@@ -206,7 +206,7 @@ impl ChatClient {
                 if let Err(error) = self.composer.promote(&chat_id, snapshot) {
                     return self.fail(error.into());
                 }
-                let state = self.state.update(|state| {
+                self.state.update(|state| {
                     state.id = Some(chat_id.clone());
                     state.messages = response
                         .messages
@@ -219,7 +219,7 @@ impl ChatClient {
                 if let Some(callback) = &start.on_started {
                     callback.chat_started(chat_id, self.clone());
                 }
-                state
+                self.state.get()
             }
             Err(error) => self.fail(error.into()),
         }
@@ -246,7 +246,8 @@ impl ChatClient {
                         .extend(response.message.messages.into_iter().filter_map(from_wire));
                     state.status = ChatStatus::Idle;
                     state.error = None;
-                })
+                });
+                self.state.get()
             }
             Err(error) => self.fail(error.into()),
         }
@@ -256,7 +257,8 @@ impl ChatClient {
         self.state.update(|state| {
             state.status = ChatStatus::Failed;
             state.error = Some(error);
-        })
+        });
+        self.state.get()
     }
 }
 
