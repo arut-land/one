@@ -1,9 +1,8 @@
-//! Parent-owned construction and compile-time service capabilities.
+//! Parent-owned node and workspace construction with compile-time chat capabilities.
 //!
-//! Each scope owns a [`Cancellation`] whose token is a `child_token()` of its
-//! parent's, so the token tree has exactly the shape of the scope tree:
-//! cancelling or dropping a node stops every workspace, conversation, and
-//! operation under it, and dropping one workspace stops only its own.
+//! Cancellation follows the ownership tree. Workspaces create child cancellation
+//! scopes for conversations; cancelling a parent cancels its descendants.
+
 use arut_protocol::chat::{composer::v1::ComposerServiceClient, v1::ChatServiceClient};
 use arut_rpc::Cancellation;
 use std::sync::Arc;

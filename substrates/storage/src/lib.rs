@@ -1,23 +1,15 @@
-//! # Storage
+//! Separate durability ports for facts, content-addressed blobs, and key-value data.
 //!
-//! FactLog appends immutable, sequenced command outcomes and supports cursor reads,
-//! snapshots, compaction, deduplication, and epoch fencing. DirectoryLog locks across
-//! processes, writes one Protobuf record per append, fsyncs the file, atomically
-//! renames it, and fsyncs the directory. Compaction requires a snapshot and retains
-//! outcomes for retry deduplication. It never rewrites all state on append.
+//! [`FactLog::commit`] refreshes, deduplicates, and appends under one lock or
+//! transaction. Facts and snapshots are Protobuf rows. Compaction requires a
+//! snapshot and retains outcomes for retries.
 //!
-//! Redb, behind the off-by-default `redb` feature because the wasm core has no
-//! filesystem, gives the same contract in one crash-safe file with typed tables
-//! and no C dependency, and carries the KeyValue port beside it. Both pass the
-//! same conformance suite; a composition root picks one.
-//!
-//! BlobStore stores BLAKE3-addressed raw bytes and verifies them on read. BLAKE3 is
-//! what `iroh-blobs` hashes with, so an address minted here is the address a peer
-//! fetches by once that store backs the port. KeyValue stores each small value
-//! independently. Directory keys are hashed to prevent path traversal. Memory
-//! implementations provide the same ports for in-process sessions.
+//! Memory implements all three ports. Native directory storage uses cross-process
+//! locks, atomic temporary-file persistence, and file and directory fsyncs. Keys
+//! are hashed to prevent path traversal; BLAKE3-addressed blobs verify on read.
+//! The optional native `redb` feature supplies fact logs and key-value tables in
+//! one exclusively owned database file. All implementations share conformance tests.
 
-//! Separate durability contracts for facts, content, and small unordered values.
 #[cfg(not(target_arch = "wasm32"))]
 mod directory;
 mod memory;

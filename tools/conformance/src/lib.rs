@@ -1,16 +1,10 @@
-//! # Conformance
+//! Behavioral suites shared by every implementation of each port.
 //!
-//! Reusable suites exercise unary and server-stream RPC ordering, metadata, typed
-//! errors and stream termination; fact-log sequencing, fencing, retries, snapshots,
-//! and compaction; blob content addressing pinned to BLAKE3 by literal, size
-//! range, absence, and malformed digests; and independent key-value updates.
-//!
-//! The same RPC suite runs against the in-process registry, TCP Connect, and Unix
-//! IPC. Storage suites run against memory and directory implementations. Extra
-//! tests cover independent writers, reopening a compacted log and its blobs, and
-//! fragmented or malformed Connect envelopes.
+//! RPC checks cover unary and server streams over the registry, TCP Connect, and
+//! Unix IPC. Fact-log and key-value checks cover memory, directory, and redb;
+//! blob checks cover memory and directory. They exercise retries, fencing,
+//! atomic decisions, compaction, content addressing, and independent writers.
 
-//! Shared behavioral suites. An implementation must pass without changing them.
 use arut_rpc::{
     Code, Metadata, MethodDescriptor, Request, Response, RpcChannel, RpcFuture, RpcService,
     RpcStream, ServiceDescriptor, Status, StreamingKind,

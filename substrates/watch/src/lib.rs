@@ -92,13 +92,8 @@ impl<T: Clone + PartialEq + Send + Sync + 'static> Watch<T> {
 
     pub fn subscribe(&self) -> Arc<Subscription<u64>> {
         let mut receiver = self.0.subscribe();
-        // `Sender::subscribe` hands back a receiver that has already "seen" the
-        // current value, while `watch::channel` hands back one that has not.
-        // Marking it changed makes every subscriber alike: the first `changed()`
-        // always delivers the revision that was current at subscribe time, so a
-        // surface renders from the invalidation stream rather than needing a
-        // separate first read. Removing this line silently drops that first
-        // invalidation and a scope handle renders empty until the next write.
+        // New receivers have already seen the current value. Mark an initial
+        // invalidation; subsequent writes may coalesce before it is consumed.
         receiver.mark_changed();
         let stream = futures_lite::stream::unfold(receiver, |mut receiver| async move {
             receiver.changed().await.ok()?;

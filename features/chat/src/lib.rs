@@ -1,21 +1,14 @@
-//! # Chat
+//! Chat commands, transcript projections, composer drafts, and services.
 //!
-//! Chat owns transcript projections, composer drafts, commands, and services. The
-//! mock response is unchanged. Accepted exchanges append an atomic batch of message
-//! and operation lifecycle facts. Send command IDs are UUIDv7 and retries return the
-//! stored outcome. Projections replay facts on restart.
+//! Accepted mock exchanges append message and operation lifecycle facts atomically.
+//! UUIDv7 command IDs deduplicate retries; projections replay on restart. Clients
+//! keep immutable messages keyed by ID and expose exclusive range reads separately
+//! from watched status and error metadata.
 //!
-//! Composer drafts are ephemeral snapshots streamed per scope. KeyValue recovers
-//! the local draft, including a pending draft. Drafts are never transcript facts.
-//! Projection data carries BoltFFI attributes here and is re-exported by bindings.
-//!
-//! A failed projection carries a typed variant from `errors`, never a sentence
-//! (ADR 0016); a transport status reaches it as a product failure and leaves its
-//! developer text at the boundary.
-//!
-//! Both ends of a composer stream record the cursor they resume from, and
-//! nothing else: a scope ID addresses a draft and a draft is a person's words.
-//! No subscriber is installed here.
+//! Drafts stream as ephemeral snapshots per scope and recover locally through
+//! KeyValue, including the pending draft. They never become transcript facts.
+//! Projection types declare their FFI data once here. Typed errors leave sentence
+//! selection to surfaces; tracing records stream cursors without draft content.
 
 pub mod command;
 pub mod composer;

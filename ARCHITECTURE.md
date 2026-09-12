@@ -122,6 +122,8 @@ Connectivity             route, health, paired nodes
 
 The watch substrate is a newtype over `tokio::sync::watch` compiled with only the `sync` feature, so it runs on every target including wasm with no threads. Bindings coalesce invalidations and re-read on the native scheduler. Transcripts use a keyed collection with changed-range signals so a token does not re-marshal the whole conversation; Qt-style parallel string lists and joined transcript strings are not permitted.
 
+The current durable transcript exposes `last_message_id` in watched chat metadata and `messages_after(id)` for immutable rows. A surface keeps its cursor and reads only newly accepted messages after an invalidation, including coalesced changes. Token streaming remains a separate resumable stream.
+
 Optimism is intent-specific and decided in Rust. Draft edits apply locally at once. Sending, approvals, authority changes, and irreversible operations wait for authoritative acceptance. Surfaces never choose consistency behavior.
 
 ## Commands, facts, and the log
@@ -223,46 +225,46 @@ Sharing a conversation copies explicitly shareable history and grants nothing el
 
 ## Repository layout
 
+The current workspace has 18 Rust crates. The tree below names each crate beside its directory; planned implementations are added when they exist.
+
 ```text
 /
-|-- CONTEXT.md                      product language
-|-- ARCHITECTURE.md                 this document
-|-- docs/{PRD,ROADMAP,GLOSSARY}.md
-|-- docs/adr/
-|-- protocols/
+|-- CONTEXT.md, ARCHITECTURE.md
+|-- docs/{PRD,ROADMAP,GLOSSARY,ECOSYSTEM}.md
+|-- docs/adr/                       decisions and index.md
+|-- protocols/                     arut-protocol: generated Protobuf contracts
 |   |-- proto/arut/<pkg>/v1/*.proto
-|   |-- build/                      generator (MIT/Apache-2.0)
-|   `-- rpc/                        RpcChannel, Request, Response, Status, descriptors
+|   |-- build/                      arut-protocol-build: service generator
+|   `-- rpc/                        arut-rpc: channels, registry, cancellation, spawning
 |-- substrates/
-|   |-- watch/                      reactive cell over tokio::sync::watch
-|   |-- authority/                  Command, Authority<C>, Projection, Machine
-|   |-- storage/                    FactLog, BlobStore, KeyValue ports + directory impl
-|   `-- identity/                   pairing, root key, sealed envelopes (keys are iroh endpoint keys)
-|-- features/
-|   `-- chat/                       transcript, operations, composer; commands, facts, projections, service
+|   |-- watch/                      arut-watch: revisioned cells and subscriptions
+|   |-- authority/                  arut-authority: commands, reducers, machines
+|   `-- storage/                    arut-storage: memory, directory, optional redb
+|-- features/chat/                  arut-feature-chat: transcript and composer
 |-- product/
-|   |-- session/                    scopes, scope handles, availability, connectivity
-|   `-- i18n/                       locales/<lang>/*.ftl, the one source of user-facing strings
-|       `-- macros/                  #[derive(Localized)]: an error variant's message id, checked at compile time
+|   |-- session/                    arut-product-session: scopes, registry, availability
+|   `-- i18n/                       arut-i18n: Fluent locales and Rust localization
+|       `-- macros/                 arut-i18n-macros: checked error message keys
 |-- transports/
-|   |-- ipc/  connect-http/  iroh/     (in-process calls use the RpcRegistry directly; no memory transport)
+|   |-- connect-http/               arut-transport-connect-http: Connect framing
+|   `-- ipc/                        arut-transport-ipc: Unix sockets over Connect
 |-- runtimes/
-|   |-- local/                      Tokio host, arutd daemon, LAN discovery
-|   |-- android/  apple/  browser/   port implementations and drivers
+|   |-- local/                      arut-runtime-local: Tokio host and arutd
+|   `-- host-polled/                arut-runtime-host-polled: host-driven executor
 |-- bindings/
-|   |-- ffi/                        BoltFFI exports, watch-to-event bridge, re-exported projection types
-|   |-- swift/  kotlin/  dotnet/     one observation adapter each, nothing else
-|   `-- typescript/                 observation adapter, wasm session bootstrap, ./react hook
-|-- surfaces/                       one flat directory per surface, each its own composition root
-|   |-- linux-gtk/  apple/  android/  windows/  web/  chromium/  vscode/
-|-- backend/
-|   `-- relay/                      pairing, relay, encrypted store-and-forward
+|   |-- ffi/                        arut_ffi: explicit exports and watch bridge
+|   |-- swift/, kotlin/, dotnet/    native observation adapters
+|   `-- typescript/                 observations, wasm bootstrap, React hook
+|-- surfaces/
+|   |-- linux-gtk/                  arut-linux-gtk: relm4 composition root and views
+|   |-- apple/, android/, windows/
+|   `-- web/, chromium/, vscode/
 `-- tools/
-    |-- conformance/                suites every channel and storage impl must pass
-    `-- i18n/                       .ftl -> xcstrings, strings.xml, .resw, served .ftl, and a typed accessor per language
+    |-- conformance/                arut-conformance: shared port suites
+    `-- i18n/                       arut-i18n-gen: native resources and typed accessors
 ```
 
-Directories appear when their first concrete implementation exists. No `shared`, `common`, `utils`, or `services` directories. Crates document themselves in `//!` comments at the top of `lib.rs`; there are no per-directory READMEs. The only prose in the repository is this file, `CONTEXT.md`, `docs/`, and the root README.
+Do not add generic `shared`, `common`, `utils`, or `services` buckets. The existing `surfaces/apple/shared` is a Swift package shared by the Apple application targets. Rust crates document themselves with `//!` comments at their entry point. Repository prose lives in `CONTEXT.md`, `ARCHITECTURE.md`, and `docs/`; no `README.md` files are maintained.
 
 Surfaces outside the current release stay in the tree and stay compiling where this machine can compile them, but they are not on the release's bar. Nothing in the build assumes every surface is present.
 
