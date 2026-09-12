@@ -1,7 +1,7 @@
 //! # Authority
 //!
-//! Command defines scope, facts, pure application, preconditions, expiry, queueability,
-//! and optimism. Authority serializes acceptance, fences epochs before deduplication,
+//! Command defines scope, facts, pure application, preconditions, and expiry.
+//! Authority serializes acceptance, fences epochs before deduplication,
 //! checks preconditions, appends through FactLog, and reduces the accepted fact.
 //! Outcomes distinguish application, duplicate delivery, revision conflict, stale
 //! authority, supersession, and rejection. Projection reducers have no I/O.
