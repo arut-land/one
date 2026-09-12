@@ -1,5 +1,5 @@
 use crate::{framing, metadata};
-use arut_rpc::{Code, Request, RpcChannel, Status};
+use arut_rpc::{Request, RpcChannel, Status};
 use axum::{
     Router,
     body::{Body, Bytes},
@@ -59,6 +59,9 @@ async fn invoke(
             _ => return failure(Status::invalid_argument("expected one request envelope")),
         }
     } else {
+        if bytes.len() > framing::MAX_MESSAGE {
+            return failure(framing::message_limit());
+        }
         bytes
     };
     let request = Request {
@@ -69,6 +72,9 @@ async fn invoke(
     if !streaming {
         return match channel.unary(&procedure, request).await {
             Ok(result) => {
+                if result.message.len() > framing::MAX_MESSAGE {
+                    return failure(framing::message_limit());
+                }
                 let mut response =
                     ([("content-type", "application/proto")], result.message).into_response();
                 headers(&mut response, &result.metadata);
@@ -91,24 +97,12 @@ async fn invoke(
             return None;
         }
         let (body, ended) = match stream.next().await {
-            Some(Ok(body)) if body.len() <= framing::MAX_MESSAGE => {
-                (framing::envelope(0, &body), false)
-            }
-            item => {
-                let error = match item {
-                    Some(Err(error)) => Some(error),
-                    Some(Ok(_)) => Some(Status::new(
-                        Code::ResourceExhausted,
-                        "message exceeds limit",
-                    )),
-                    None => None,
-                };
-                let end = error.map_or_else(
-                    || serde_json::json!({}),
-                    |e| serde_json::json!({"error": framing::error_json(&e)}),
-                );
-                (framing::envelope(2, end.to_string().as_bytes()), true)
-            }
+            Some(Ok(body)) => match framing::envelope(0, &body) {
+                Ok(envelope) => (envelope, false),
+                Err(error) => (framing::end_envelope(Some(error)), true),
+            },
+            Some(Err(error)) => (framing::end_envelope(Some(error)), true),
+            None => (framing::end_envelope(None), true),
         };
         Some((Ok::<_, std::convert::Infallible>(body), (stream, ended)))
     });

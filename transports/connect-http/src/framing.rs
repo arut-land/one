@@ -6,12 +6,31 @@ use base64::{
 use serde_json::{Value, json};
 pub const MAX_MESSAGE: usize = 8 * 1024 * 1024;
 
-pub fn envelope(flags: u8, body: &[u8]) -> Vec<u8> {
+pub fn envelope(flags: u8, body: &[u8]) -> Result<Vec<u8>, Status> {
+    if body.len() > MAX_MESSAGE {
+        return Err(message_limit());
+    }
+    let length = u32::try_from(body.len()).map_err(|_| message_limit())?;
     let mut bytes = Vec::with_capacity(5 + body.len());
     bytes.push(flags);
-    bytes.extend_from_slice(&(body.len() as u32).to_be_bytes());
+    bytes.extend_from_slice(&length.to_be_bytes());
     bytes.extend_from_slice(body);
-    bytes
+    Ok(bytes)
+}
+
+pub fn message_limit() -> Status {
+    Status::new(Code::ResourceExhausted, "message exceeds limit")
+}
+
+pub fn end_envelope(error: Option<Status>) -> Vec<u8> {
+    let end = error.map_or_else(|| json!({}), |error| json!({"error": error_json(&error)}));
+    envelope(2, end.to_string().as_bytes()).unwrap_or_else(|_| {
+        envelope(
+            2,
+            br#"{"error":{"code":"resource_exhausted","message":"message exceeds limit"}}"#,
+        )
+        .expect("fixed end envelope fits the message limit")
+    })
 }
 
 pub fn take(buffer: &mut Vec<u8>) -> Result<Option<(u8, Vec<u8>)>, Status> {

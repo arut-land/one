@@ -178,7 +178,7 @@ async fn unix_socket_rpc() {
 #[test]
 fn framing_handles_fragmentation_limits_and_invalid_flags() {
     use arut_transport_connect_http::framing::*;
-    let envelope = envelope(0, b"message");
+    let envelope = envelope(0, b"message").unwrap();
     let mut buffer = vec![];
     for byte in &envelope[..envelope.len() - 1] {
         buffer.push(*byte);
@@ -191,4 +191,72 @@ fn framing_handles_fragmentation_limits_and_invalid_flags() {
     let mut too_large = vec![0];
     too_large.extend_from_slice(&((MAX_MESSAGE + 1) as u32).to_be_bytes());
     assert!(take(&mut too_large).is_err());
+}
+
+#[tokio::test]
+async fn http_bounds_chunked_unary_and_error_bodies_and_outbound_requests() {
+    use arut_rpc::{Code, Request, RpcChannel};
+    use arut_transport_connect_http::{
+        HttpRpcChannel,
+        framing::{MAX_MESSAGE, envelope},
+    };
+    let oversized = vec![0; MAX_MESSAGE + 1];
+    assert_eq!(
+        envelope(0, &oversized).unwrap_err().code,
+        Code::ResourceExhausted
+    );
+    let unreachable = HttpRpcChannel::new("http://127.0.0.1:1");
+    assert_eq!(
+        unreachable
+            .unary("/large", Request::new(oversized.clone()))
+            .await
+            .unwrap_err()
+            .code,
+        Code::ResourceExhausted
+    );
+    let error = unreachable
+        .server_stream("/large", Request::new(oversized))
+        .await
+        .err()
+        .unwrap();
+    assert_eq!(error.code, Code::ResourceExhausted);
+
+    for status in [
+        axum::http::StatusCode::OK,
+        axum::http::StatusCode::BAD_REQUEST,
+    ] {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let router = axum::Router::new().route(
+            "/large",
+            axum::routing::post(move || async move {
+                let chunks = futures_util::stream::iter(
+                    (0..=MAX_MESSAGE / 4096)
+                        .map(|_| Ok::<_, std::convert::Infallible>(vec![0; 4096])),
+                );
+                (status, axum::body::Body::from_stream(chunks))
+            }),
+        );
+        let server = tokio::spawn(async move {
+            axum::serve(listener, router).await.unwrap();
+        });
+        let channel = HttpRpcChannel::new(format!("http://{address}"));
+        assert_eq!(
+            channel
+                .unary("/large", Request::new(vec![]))
+                .await
+                .unwrap_err()
+                .code,
+            Code::ResourceExhausted
+        );
+        if !status.is_success() {
+            let error = channel
+                .server_stream("/large", Request::new(vec![]))
+                .await
+                .err()
+                .unwrap();
+            assert_eq!(error.code, Code::ResourceExhausted);
+        }
+        server.abort();
+    }
 }
