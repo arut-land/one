@@ -2,18 +2,20 @@
 //!
 //! Reusable suites exercise unary and server-stream RPC ordering, metadata, typed
 //! errors and stream termination; fact-log sequencing, fencing, retries, snapshots,
-//! and compaction; blob content addressing; and independent key-value updates.
+//! and compaction; blob content addressing, size range, absence, and malformed
+//! digests; and independent key-value updates.
 //!
-//! The same RPC suite runs against memory, TCP Connect, and Unix IPC. Storage suites
-//! run against memory and directory implementations. Extra tests cover independent
-//! writers, reopening compacted logs, and fragmented/malformed Connect envelopes.
+//! The same RPC suite runs against the in-process registry, TCP Connect, and Unix
+//! IPC. Storage suites run against memory and directory implementations. Extra
+//! tests cover independent writers, reopening a compacted log and its blobs, and
+//! fragmented or malformed Connect envelopes.
 
 //! Shared behavioral suites. An implementation must pass without changing them.
 use arut_rpc::{
     Code, Metadata, MethodDescriptor, Request, Response, RpcChannel, RpcFuture, RpcService,
     RpcStream, ServiceDescriptor, Status, StreamingKind,
 };
-use arut_storage::{BlobStore, FactLog, KeyValue, Snapshot, StorageError};
+use arut_storage::{BlobStore, FactLog, KeyValue, Snapshot, StorageError, digest};
 use futures_util::StreamExt;
 
 pub async fn rpc(channel: &dyn RpcChannel) {
@@ -102,12 +104,32 @@ pub fn fact_log(log: &dyn FactLog<String>) {
     );
     assert_eq!(log.read_from(2).unwrap().len(), 1);
 }
+/// Blobs are addressed by the SHA-256 of their content, everywhere alike.
 pub fn blobs(store: &dyn BlobStore) {
     let id = store.put_blob(b"content").unwrap();
+    assert_eq!(id, digest(b"content"));
+    assert_eq!(id.len(), 64);
+    assert!(
+        id.bytes()
+            .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
+    );
     assert_eq!(id, store.put_blob(b"content").unwrap());
     assert_eq!(store.get_blob(&id).unwrap(), Some(b"content".to_vec()));
     assert_ne!(id, store.put_blob(b"different").unwrap());
+
+    let empty = store.put_blob(b"").unwrap();
+    assert_eq!(store.get_blob(&empty).unwrap(), Some(Vec::new()));
+
+    let large = vec![0xa5; 1 << 20];
+    let large_id = store.put_blob(&large).unwrap();
+    assert_eq!(store.get_blob(&large_id).unwrap(), Some(large));
+
+    // A well-formed digest nobody stored is absent, not an error.
     assert!(store.get_blob(&"0".repeat(64)).unwrap().is_none());
+    // Anything that is not a digest is refused before it can reach a path.
+    for malformed in ["", "0", &"0".repeat(63), &"g".repeat(64), "../values/key"] {
+        assert_eq!(store.get_blob(malformed), Err(StorageError::Corrupt));
+    }
 }
 pub fn key_value(store: &dyn KeyValue) {
     assert!(store.get("../scope/key").unwrap().is_none());
