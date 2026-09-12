@@ -35,13 +35,17 @@ public struct ChatView: View {
 private struct ConversationView: View {
     let chat: ChatHandle
     let composer: ComposerHandle
-    @StateObject private var transcript: ObservableState<ChatState>
+    @StateObject private var transcript: ObservableState<(state: ChatState, messages: [ChatMessage])>
     @StateObject private var draft: ObservableState<ComposerState>
     init(chat: ChatHandle) {
         self.chat = chat
         let composer = chat.composer()
         self.composer = composer
-        _transcript = StateObject(wrappedValue: ObservableState(read: chat.state, subscribe: { callback in
+        var messages: [ChatMessage] = []
+        _transcript = StateObject(wrappedValue: ObservableState(read: {
+            messages += chat.messagesAfter(afterId: messages.last?.id ?? 0)
+            return (state: chat.state(), messages: messages)
+        }, subscribe: { callback in
             let subscription = chat.chatChanges(callback: callback)
             return { subscription.cancel() }
         }))
@@ -54,7 +58,7 @@ private struct ConversationView: View {
     // background resync, say) still needs to reach the person even when the
     // chat itself is idle.
     private var errorMessage: String? {
-        if let error = transcript.state.error { return describe(error) }
+        if let error = transcript.state.state.error { return describe(error) }
         if let error = draft.state.error { return describe(error) }
         return nil
     }

@@ -1,3 +1,4 @@
+import type { ChatHandle, ChatMessage } from "@arut/ffi";
 import type { StreamCancellable } from "@boltffi/runtime";
 
 export interface ObservableStore<T> {
@@ -66,4 +67,14 @@ export function observeScope<T>(handle: {
   changes(listener: () => void): StreamCancellable<bigint>;
 }): ObservableState<T> {
   return new ObservableState(() => handle.state(), listener => handle.changes(listener));
+}
+
+/** Cache immutable keyed rows while reading chat metadata on each invalidation. */
+export function chatReader(chat: ChatHandle) {
+  let messages: ChatMessage[] = [];
+  return () => {
+    const added = chat.messagesAfter(messages.at(-1)?.id ?? 0n);
+    if (added.length) messages = messages.concat(added);
+    return { ...chat.state(), messages };
+  };
 }

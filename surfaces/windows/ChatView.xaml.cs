@@ -5,6 +5,7 @@ namespace Arut.Surface.Windows;
 public sealed partial class ChatView : UserControl
 {
     private readonly ProductSessionHandle session;
+    private readonly System.Collections.ObjectModel.ObservableCollection<ChatMessage> messages = new();
     private ChatHandle chat;
     private ComposerHandle composer;
     private System.IDisposable? chatSubscription;
@@ -25,7 +26,9 @@ public sealed partial class ChatView : UserControl
     {
         chatSubscription?.Dispose(); composerSubscription?.Dispose();
         chat = next; composer = chat.Composer();
-        chatSubscription = chat.ChatChanges(_ => DispatcherQueue.TryEnqueue(() => { Transcript.ItemsSource = chat.State().Messages; UpdateError(); }));
+        messages.Clear();
+        Transcript.ItemsSource = messages;
+        chatSubscription = chat.ChatChanges(_ => DispatcherQueue.TryEnqueue(() => { foreach (var message in chat.MessagesAfter(messages.Count == 0 ? 0UL : messages[messages.Count - 1].Id)) messages.Add(message); UpdateError(); }));
         composerSubscription = composer.ComposerChanges(_ => DispatcherQueue.TryEnqueue(() => { if (Composer.Text != composer.State().Text) Composer.Text = composer.State().Text; UpdateError(); }));
         UpdateError();
     }

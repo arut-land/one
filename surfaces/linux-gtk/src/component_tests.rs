@@ -86,7 +86,7 @@ fn watches_preserve_message_widgets_and_bind_independent_drafts() {
     ));
     drain(&context);
     assert!(
-        chat.state().messages.is_empty(),
+        chat.messages_after(0).is_empty(),
         "Shift+Enter must not send"
     );
     assert!(keys.emit_by_name::<bool>(
@@ -98,13 +98,13 @@ fn watches_preserve_message_widgets_and_bind_independent_drafts() {
         ]
     ));
     drain(&context);
-    assert_eq!(chat.state().messages.len(), 2);
+    assert_eq!(chat.messages_after(0).len(), 2);
     assert_eq!(editor.buffer().char_count(), 0);
     let rows = transcript_rows(&transcript);
     let original = rows.first_child().unwrap();
     context.block_on(chat.send("second message".into()));
     drain(&context);
-    assert_eq!(chat.state().messages.len(), 4);
+    assert_eq!(chat.messages_after(0).len(), 4);
     assert_eq!(
         rows.first_child().unwrap(),
         original,

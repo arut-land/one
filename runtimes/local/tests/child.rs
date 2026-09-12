@@ -17,7 +17,7 @@ async fn child_process_hosts_a_chat_over_unix_socket() {
         ProductSession::remote(host.connect().await.unwrap(), "test", Arc::new(NativeIds));
     let chat = session.chat();
     let state = chat.send("through child IPC".into()).await;
-    assert_eq!(state.messages.len(), 2, "{:?}", state.error);
+    assert_eq!(chat.messages_after(0).len(), 2, "{:?}", state.error);
     assert_eq!(session.chat_summaries()[0].title, "through child IPC");
     drop(chat);
     drop(session);
