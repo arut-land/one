@@ -63,6 +63,7 @@ version = "0.1.0"
 dependencies = [
  "arut-feature-chat",
  "arut-product-session",
+ "arut-runtime-local",
  "gtk4",
 ]
 
@@ -81,6 +82,7 @@ dependencies = [
  "arut-feature-chat",
  "arut-protocol",
  "arut-rpc",
+ "arut-storage",
  "arut-watch",
  "boltffi",
  "futures-executor",

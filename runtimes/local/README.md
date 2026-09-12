@@ -1,10 +1,11 @@
 # Local runtime
 
-`arutd` hosts chat and composer services. `TokioSpawner` receives an executor
-handle from the root. `ChannelHost` supplies a scheduled channel to a session.
-Unix-socket child-process hosting is completed with the IPC transport in step 5.
-The current checkpoint persistence is replaced by storage ports in step 6.
+`arutd` hosts chat and composer services over Connect HTTP or a private Unix
+socket. Directory storage contains immutable chat facts, raw blobs, and local
+draft recovery values. ARUT_DATA selects the directory; ARUT_SOCKET selects IPC;
+ARUT_ADDRESS selects TCP.
 
-ChildHost starts arutd, waits for its READY handshake, and returns a scheduled
-Unix-socket channel. The final channel drop terminates the child and removes its
-socket. Set ARUT_SOCKET for IPC, ARUT_ADDRESS for TCP, and ARUT_DATA for storage.
+TokioSpawner receives an executor handle from the composition root. ChannelHost
+provides scheduled RPC for foreign pollers. ChildHost starts arutd and awaits its
+READY handshake. The final channel drop terminates the child and removes its
+socket. No HTTP transport creates an executor.

@@ -5,6 +5,7 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
+arut-runtime-local = { path = "../../runtimes/local" }
 arut-product-session.workspace = true
 arut-feature-chat.workspace = true
 gtk = { package = "gtk4", version = "0.10.3" }

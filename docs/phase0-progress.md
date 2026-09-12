@@ -1,85 +1,46 @@
 # Phase 0 progress
 
-This is an incomplete working checkpoint, not a completed Phase 0.
+Status as of 2026-09-12. Phase 0 of `docs/ROADMAP.md` is implemented on the Rust side and verified by the four gates. Items listed under "Not yet verified" are the honest remainder before the phase's exit criterion is fully met.
 
-The project was not a Git repository when work started. No Git repository or
-commits were created. The requested design documents were read before edits.
+## Gates on the current tree
 
-## Status
+| Gate | Result |
+| --- | --- |
+| `cargo build --workspace` | pass |
+| `cargo test --workspace` | pass, 30 tests |
+| `cargo clippy --workspace --all-targets -- -D warnings` | pass |
+| `cargo check -p arut_ffi --target wasm32-unknown-unknown` | pass |
 
-1. Watch: partial. `substrates/state` moved to `substrates/watch`, using Tokio
-   watch with only `sync` enabled. Updates coalesce by revision. The Condvar
-   queue, FFI bridge thread, and Qt observer thread were removed. The wrapper
-   currently also contains scheduler callback registration; it is not yet the
-   target's minimal newtype. Browser runtime delivery has not been exercised.
-2. Spawner and Host: not started.
-3. Typed scopes: not started.
-4. Scope handles and generated bindings: not started. ChatModels remain.
-5. Connect framing and streaming: not started.
-6. Storage ports: not started.
-7. Generic authority: not started.
-8. Conformance suites: not started.
+A Node smoke run of the packed wasm module succeeded: it imports only `__boltffi_wake`, `__boltffi_stream_wake`, and the host ID callback, and `createBrowserSession(...).chat().state()` returns a valid empty conversation. No thread imports remain.
 
-Steps 2 through 8 remain unimplemented because the required workspace test gate
-cannot pass in this sandbox. The existing HTTP integration test binds a loopback
-TCP listener and receives `PermissionDenied: Operation not permitted` at
-`backend/composer/src/lib.rs`. This also failed before the watch changes.
-Tests have not been disabled or changed to hide this failure. This session's
-permission policy does not allow requesting elevation.
+## Steps
 
-## Decisions
+1. **Watch substrate.** Done. `substrates/watch` is a newtype over `tokio::sync::watch` with only the `sync` feature. `substrates/state`, the FFI bridge thread, and the Qt observer thread are gone.
+2. **Spawner and Host ports.** Done. `runtimes/local` owns the Tokio executor and the `arutd` daemon; `ChildHost` spawns and supervises it over a Unix socket. The global runtime inside the HTTP transport is gone.
+3. **Typed scopes.** Done. Node, workspace, conversation scopes in `product/session/src/scopes.rs`; the `OnceLock` self-reference is gone.
+4. **Scope handles and bindings.** Done. Projection types carry `#[boltffi::data]` in `features/chat` and are re-exported by `bindings/ffi`. The five per-language ChatModels are deleted. Swift, Kotlin, .NET, and TypeScript bindings are observation adapters only, rendered from `bindings/templates` by `bindings/generate-observers.py`. `bindings/qt` and the Qt Linux surface are removed; `surfaces/linux-gtk` is a Rust-owned GTK4 surface with no FFI and no libadwaita.
+5. **Connect framing and streaming.** Done. `transports/connect-http` (framing, server), `transports/ipc` (Unix socket), `transports/memory`. `WatchComposer` is a server stream; the 500 ms polling loops are gone.
+6. **Storage ports.** Done. `substrates/storage` defines `FactLog`, `BlobStore`, `KeyValue` with memory and directory implementations. Chat facts persist through the log; drafts stay ephemeral per ADR 0018. `SendMessage` carries a UUIDv7 `command_id`. The whole-file checkpoint and its proto messages are gone.
+7. **Generic authority.** Done. `substrates/authority` provides `Authority<C: Command>` and pure reducers; the chat service uses it for start and send.
+8. **Conformance suites.** Done. `tools/conformance` runs shared suites against every `RpcChannel` and `FactLog` implementation.
 
-ADR 0018 and ARCHITECTURE.md explicitly make drafts ephemeral, with local recovery
-through KeyValue. They take precedence over the contradictory Phase 0 roadmap
-sentence saying drafts are facts. Storage work has not begun and the roadmap was
-not edited.
+## Decisions made during implementation
 
-The old Qt surface remains wired into the workspace. Only its observation adapter
-was changed. Its command worker and polling remain for the later ordered steps.
-No GTK surface was added.
+- **`IdSource` port.** UUIDv7 needs a clock and entropy, which the BoltFFI wasm core cannot reach. IDs come from a port the composition root supplies: native runtimes use `uuid`, the browser runtime supplies them from JavaScript. The `NativeIds` fallback panics on wasm by design.
+- **Executor ownership.** The GTK composition root builds the Tokio runtime and passes a `TokioSpawner`; nothing below it creates one.
+- **Daemon placement.** `ChildHost` looks for `arutd` next to the current executable, puts the socket in the temp directory, and stores data under `$XDG_DATA_HOME/arut`.
+- **VS Code.** Moved to `surfaces/vscode` as a prototype over the TypeScript observation adapter; extension-host hosting is deferred to its roadmap phase.
+- **Browser runtime.** `runtimes/browser` is a small TypeScript package that initializes the wasm core and supplies `IdSource`; the web surface composes through it.
 
-## Verification environment
+## Not yet verified
 
-The configured sccache cannot execute in this sandbox. Commands use the system
-C/C++ compilers and disable the Rust wrapper for the individual process. The
-explicit protoc path is needed because the shortened PATH excludes mise tools.
+- The TypeScript workspace (`pnpm check`, `pnpm build`) has not been run; `node_modules` and `bindings/generated` are absent in this checkout.
+- The GTK surface compiles but has not been launched against a running `arutd`.
+- Android and Apple builds have not been run; their adapters are template output and their views were reduced to bind to the new handles.
+- Browser invalidation delivery has been exercised only by a Node smoke run, not in a page with a UI.
+- No conformance suite exists for `BlobStore` yet; only `RpcChannel` and `FactLog`.
 
-```sh
-export PATH=/usr/bin:/home/raj/.cargo/bin
-export RUSTC_WRAPPER=
-export PROTOC=/home/raj/.local/share/mise/installs/protoc/36.1/bin/protoc
-cargo build --workspace
-cargo test --workspace
-cargo clippy --workspace --all-targets -- -D warnings
-cargo test -p arut-watch -p arut-feature-chat -p arut-product-session -p arut_ffi -p arut-bindings-qt
-cargo check -p arut-watch --target wasm32-unknown-unknown
-```
+## Leftovers to clean
 
-Workspace test: FAIL, denied loopback socket bind. Watch wasm compilation: PASS.
-A wasm compilation check is not evidence of browser invalidation delivery.
-
-## Layout audit
-
-Only the watch directory has reached its target location. `transports/http`,
-`backend/composer`, `bindings/qt`, and `surfaces/linux` remain. `runtimes/` and
-`tools/conformance/` do not yet exist. The target layout is not achieved.
-
-The five per-language ChatModels remain in Qt, Swift, Kotlin, TypeScript, and
-.NET. Their deletion and replacement remain required.
-
-## Final results for this checkpoint
-
-- `cargo build --workspace`: PASS.
-- `cargo test --workspace`: FAIL at the existing HTTP listener bind.
-- `cargo clippy --workspace --all-targets -- -D warnings`: PASS, exit 0.
-- Focused watch, feature, session, FFI, and Qt tests: PASS, 16 tests.
-- Watch `wasm32-unknown-unknown` check: PASS.
-
-The build still emits upstream Qt C++ warnings and a gold linker warning. A
-successful clippy exit does not mean the complete build output has zero warnings.
-The focused tests exercise conversation creation/listing, independent composer
-drafts, established sends, FFI access, and Qt updates.
-
-Full logs for this session are in `/tmp/arut-phase0-build.log`,
-`/tmp/arut-phase0-test.log`, `/tmp/arut-phase0-clippy.log`,
-`/tmp/arut-phase0-core-test.log`, and `/tmp/arut-phase0-wasm.log`.
+- `docs/adr/superseded/` holds the pre-reset ADRs for history; delete when no longer wanted.
+- The old `backend/` directory is empty; the relay from roadmap Phase 1 will recreate it as `backend/relay`.

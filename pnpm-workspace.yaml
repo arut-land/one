@@ -1,10 +1,11 @@
 packages:
   - "bindings/generated/wasm/pkg"
   - "bindings/typescript"
+  - "runtimes/browser"
   - "bindings/react"
   - "surfaces/web"
   - "surfaces/browser-extension/chromium"
-  - "surfaces/ide-extensions/vscode"
+  - "surfaces/vscode"
 
 catalog:
   "@boltffi/runtime": 0.30.1

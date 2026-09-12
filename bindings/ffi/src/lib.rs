@@ -144,6 +144,27 @@ fn ffi_subscription(source: Arc<Subscription<u64>>) -> Arc<EventSubscription<u64
     });
     target
 }
+#[export]
+pub trait HostIds: Send + Sync {
+    fn new_id(&self) -> String;
+}
+struct BrowserIds(Arc<dyn HostIds>);
+impl arut_feature_chat::ports::IdSource for BrowserIds {
+    fn new_id(&self) -> String {
+        self.0.new_id()
+    }
+}
+#[export]
+pub fn create_browser_session(
+    pending_scope_id: String,
+    ids: Arc<dyn HostIds>,
+) -> ProductSessionHandle {
+    ProductSessionHandle::from_session(ProductSession::local_with_ids(
+        pending_scope_id,
+        Arc::new(BrowserIds(ids)),
+    ))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

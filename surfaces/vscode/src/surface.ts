@@ -1,71 +1,40 @@
-import type { ChatController, ChatSnapshot } from "@arut/bindings-typescript";
+import type { ProductSessionHandle } from "@arut/bindings-typescript";
 import * as vscode from "vscode";
 
-type IncomingMessage =
-  | { type: "send"; text: string }
-  | { type: "draft"; text: string }
-  | { type: "selectChat"; chatId: string }
-  | { type: "newChat" };
-
-export function registerChat(
-  context: vscode.ExtensionContext,
-  chat: ChatController,
-): void {
+export function registerChat(context: vscode.ExtensionContext, session: ProductSessionHandle): void {
   let panel: vscode.WebviewPanel | undefined;
-  const command = vscode.commands.registerCommand("arut.chat", () => {
-    if (panel) {
-      panel.reveal(vscode.ViewColumn.Beside);
-      return;
-    }
-    panel = vscode.window.createWebviewPanel(
-      "arut.chat",
-      "Arut Chat",
-      vscode.ViewColumn.Beside,
-      { enableScripts: true },
-    );
+  context.subscriptions.push(vscode.commands.registerCommand("arut.chat", () => {
+    if (panel) { panel.reveal(vscode.ViewColumn.Beside); return; }
+    panel = vscode.window.createWebviewPanel("arut.chat", "Arut", vscode.ViewColumn.Beside, { enableScripts: true });
     panel.webview.html = markup();
-
-    const currentPanel = panel;
-    const publish = (state: ChatSnapshot) => currentPanel.webview.postMessage({
-      type: "state",
-      state: {
-        ...state,
-        history: chat.history(),
-        messages: state.messages.map((message) => ({ ...message, id: message.id.toString() })),
-      },
-    });
-    const unsubscribe = chat.subscribe(() => { void publish(chat.state()); });
-    panel.webview.onDidReceiveMessage(
-      async (message: IncomingMessage) => {
-        if (message.type === "newChat") {
-          await publish(chat.newChat());
-          return;
-        }
-        if (message.type === "draft") {
-          chat.setDraft(message.text);
-          return;
-        }
-        if (message.type === "selectChat") {
-          await publish(chat.selectChat(message.chatId));
-          return;
-        }
-        const text = message.text.trim();
-        if (text) {
-          chat.setDraft(text);
-          await publish(await chat.send());
-        }
-      },
-      undefined,
-      context.subscriptions,
-    );
-    panel.onDidDispose(() => {
-      unsubscribe();
-      panel = undefined;
-    });
-    void publish(chat.state());
-  });
-
-  context.subscriptions.push(command);
+    const current = panel;
+    let chat = session.chat();
+    let composer = chat.composer();
+    const list = session.conversations();
+    const publish = () => current.webview.postMessage({ type: "state", state: {
+      ...chat.state(), chatId: chat.id(), draft: composer.state().text, history: list.state(),
+      messages: chat.state().messages.map(message => ({ ...message, id: message.id.toString() })),
+    } });
+    let chatChanges = chat.chatChanges(() => { void publish(); });
+    let composerChanges = composer.composerChanges(() => { void publish(); });
+    const listChanges = list.listChanges(() => { void publish(); });
+    const bind = () => {
+      chatChanges.cancel(); composerChanges.cancel(); composer.dispose();
+      composer = chat.composer();
+      chatChanges = chat.chatChanges(() => { void publish(); });
+      composerChanges = composer.composerChanges(() => { void publish(); });
+      void composer.initialize();
+      void publish();
+    };
+    current.webview.onDidReceiveMessage(async (message: { type: string; text: string; chatId: string }) => {
+      if (message.type === "newChat") { chat = session.newChat(); bind(); }
+      else if (message.type === "selectChat") { const next = session.selectChat(message.chatId); if (next) { chat = next; bind(); } }
+      else if (message.type === "draft") { await composer.replace(message.text); }
+      else if (message.type === "send") { await chat.send(message.text); }
+    }, undefined, context.subscriptions);
+    current.onDidDispose(() => { chatChanges.cancel(); composerChanges.cancel(); listChanges.cancel(); panel = undefined; });
+    void publish();
+  }));
 }
 
 function markup(): string {

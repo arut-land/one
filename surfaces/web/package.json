@@ -11,7 +11,8 @@
   "dependencies": {
     "@arut/bindings-react": "workspace:*",
     "react": "catalog:",
-    "react-dom": "catalog:"
+    "react-dom": "catalog:",
+    "@arut/runtime-browser": "workspace:*"
   },
   "devDependencies": {
     "@types/react": "catalog:",

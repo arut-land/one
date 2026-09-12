@@ -1,5 +1,8 @@
 use super::service::{scope_from_wire, scope_to_wire};
 use super::{ComposerScope, ComposerSnapshot};
+use crate::ports::IdSource;
+#[cfg(test)]
+use crate::ports::NativeIds;
 use arut_protocol::chat::composer::v1::{
     ComposerServiceClient, ComposerSnapshot as WireSnapshot, GetComposerRequest,
     ReplaceComposerRequest, WatchComposerRequest, replace_composer_response,
@@ -10,7 +13,6 @@ use futures_util::lock::Mutex as AsyncMutex;
 use futures_util::{FutureExt, StreamExt};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
-use uuid::Uuid;
 
 #[boltffi::data]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -41,7 +43,15 @@ pub struct ComposerClient {
 }
 
 impl ComposerClient {
+    #[cfg(test)]
     pub(crate) fn new(service: ComposerServiceClient, scope: ComposerScope) -> Self {
+        Self::with_ids(service, scope, Arc::new(NativeIds))
+    }
+    pub(crate) fn with_ids(
+        service: ComposerServiceClient,
+        scope: ComposerScope,
+        ids: Arc<dyn IdSource>,
+    ) -> Self {
         Self {
             service,
             state: Arc::new(Watch::new(ComposerState {
@@ -51,7 +61,7 @@ impl ComposerClient {
                 error: String::new(),
             })),
             scope: Arc::new(Watch::new(scope)),
-            client_id: Uuid::new_v4().to_string(),
+            client_id: ids.new_id(),
             next_command: Arc::new(AtomicU64::new(1)),
             authority_epoch: Arc::new(AtomicU64::new(1)),
             operations: Arc::new(AsyncMutex::new(())),
