@@ -8,13 +8,11 @@ license.workspace = true
 crate-type = ["rlib", "staticlib", "cdylib"]
 
 [dependencies]
-futures-util = "0.3.31"
 arut-feature-chat.workspace = true
 arut-product-session.workspace = true
-arut-rpc.workspace = true
 arut-watch.workspace = true
 boltffi = "=0.30.1"
-
+futures-util = "0.3.31"
 
 [dev-dependencies]
 futures-executor = "0.3.31"

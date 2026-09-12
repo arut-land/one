@@ -3,7 +3,7 @@ name = "arut-transport-ipc"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+
 [dependencies]
-arut-rpc.workspace = true
 arut-transport-connect-http.workspace = true
 reqwest = { version = "0.13.2", default-features = false }

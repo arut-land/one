@@ -117,9 +117,7 @@ dependencies = [
  "arut-transport-ipc",
  "axum",
  "futures-util",
- "prost",
  "tokio",
- "tower-http",
 ]
 
 [[package]]
@@ -139,7 +137,6 @@ dependencies = [
  "base64 0.22.1",
  "futures-util",
  "reqwest",
- "serde",
  "serde_json",
 ]
 
@@ -147,7 +144,6 @@ dependencies = [
 name = "arut-transport-ipc"
 version = "0.1.0"
 dependencies = [
- "arut-rpc",
  "arut-transport-connect-http",
  "reqwest",
 ]
@@ -167,7 +163,6 @@ version = "0.1.0"
 dependencies = [
  "arut-feature-chat",
  "arut-product-session",
- "arut-rpc",
  "arut-watch",
  "boltffi",
  "futures-executor",

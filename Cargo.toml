@@ -1,20 +1,20 @@
 [workspace]
 resolver = "3"
 members = [
-    "tools/conformance",
-    "substrates/authority",
-    "substrates/storage",
-    "transports/ipc",
     "bindings/ffi",
-    "runtimes/local",
     "features/chat",
+    "product/session",
     "protocols",
     "protocols/build",
     "protocols/rpc",
-    "product/session",
+    "runtimes/local",
+    "substrates/authority",
+    "substrates/storage",
     "substrates/watch",
     "surfaces/linux-gtk",
+    "tools/conformance",
     "transports/connect-http",
+    "transports/ipc",
 ]
 
 [workspace.package]
@@ -23,15 +23,13 @@ edition = "2024"
 license = "MIT"
 
 [workspace.dependencies]
-arut-feature-chat = { path = "features/chat" }
-arut-protocol = { path = "protocols" }
-arut-product-session = { path = "product/session" }
-arut-rpc = { path = "protocols/rpc" }
-arut-watch = { path = "substrates/watch" }
-arut-transport-connect-http = { path = "transports/connect-http" }
-
-arut-transport-ipc = { path = "transports/ipc" }
-
-arut-storage = { path = "substrates/storage" }
-
 arut-authority = { path = "substrates/authority" }
+arut-feature-chat = { path = "features/chat" }
+arut-product-session = { path = "product/session" }
+arut-protocol = { path = "protocols" }
+arut-rpc = { path = "protocols/rpc" }
+arut-runtime-local = { path = "runtimes/local" }
+arut-storage = { path = "substrates/storage" }
+arut-transport-connect-http = { path = "transports/connect-http" }
+arut-transport-ipc = { path = "transports/ipc" }
+arut-watch = { path = "substrates/watch" }
