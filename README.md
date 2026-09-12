@@ -7,6 +7,7 @@ One product, native on every device, executed on whichever of your nodes you cho
 - [docs/PRD.md](docs/PRD.md): what v1 is and is not
 - [docs/ROADMAP.md](docs/ROADMAP.md): phases and exit criteria
 - [docs/GLOSSARY.md](docs/GLOSSARY.md): engineering vocabulary
+- [docs/ECOSYSTEM.md](docs/ECOSYSTEM.md): what to use from the ecosystem for each part, with verdicts
 - [docs/adr/](docs/adr/README.md): decisions and why
 
 ## License

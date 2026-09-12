@@ -14,5 +14,5 @@ Surfaces include browsers, editors, and messaging integrations that cannot all s
 
 ## Consequences
 
-- Rust Connect server libraries are immature, so the framing is implemented once over axum; browsers use the official Connect-ES client.
+- Rust Connect server libraries were immature when this was written, so the framing is implemented once over axum; browsers use the official Connect-ES client. The `connectrpc` crate (0.9, Apache-2.0, conformance-suite clean as of 2026-09) is a candidate to replace the hand-written framing; see the spike in `docs/ECOSYSTEM.md`.
 - On wasm, BoltFFI does not use wasm-bindgen, so a browser channel must route through host callbacks rather than `reqwest`.
