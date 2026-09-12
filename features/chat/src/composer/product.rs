@@ -11,6 +11,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use uuid::Uuid;
 
+#[boltffi::data]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ComposerStatus {
     Connecting,
@@ -18,6 +19,7 @@ pub enum ComposerStatus {
     Failed,
 }
 
+#[boltffi::data]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ComposerState {
     pub text: String,

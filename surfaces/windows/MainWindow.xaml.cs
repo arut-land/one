@@ -1,4 +1,4 @@
-using Arut.Bindings;
+using Arut.Ffi;
 using Arut.Surface.Windows;
 using Microsoft.UI.Xaml;
 
@@ -9,9 +9,9 @@ public sealed partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
-        var model = new ChatModel();
-        Content = new ChatView(model);
-        Closed += (_, _) => model.Dispose();
+        var session = ArutFfi.CreateProductSession("local-demo");
+        Content = new ChatView(session);
+        Closed += (_, _) => session.Dispose();
     }
 
 }

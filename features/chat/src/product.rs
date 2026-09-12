@@ -11,12 +11,14 @@ use futures_util::lock::Mutex as AsyncMutex;
 use std::sync::Arc;
 use uuid::Uuid;
 
+#[boltffi::data]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ChatRole {
     User,
     Assistant,
 }
 
+#[boltffi::data]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ChatMessage {
     pub id: u64,
@@ -24,6 +26,7 @@ pub struct ChatMessage {
     pub text: String,
 }
 
+#[boltffi::data]
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum ChatStatus {
     #[default]
@@ -32,6 +35,7 @@ pub enum ChatStatus {
     Failed,
 }
 
+#[boltffi::data]
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct ChatState {
     pub id: Option<String>,
