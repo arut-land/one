@@ -113,6 +113,9 @@ impl ChatHandle {
     pub fn state(&self) -> ChatState {
         self.client.state()
     }
+    pub fn messages_after(&self, after_id: u64) -> Vec<ChatMessage> {
+        self.client.messages_after(after_id)
+    }
     pub fn composer(&self) -> ComposerHandle {
         self.client.composer().into()
     }
@@ -211,12 +214,8 @@ mod tests {
         let composer = chat.composer();
         futures_executor::block_on(composer.replace("hello".into()));
         assert_eq!(composer.state().text, "hello");
-        assert_eq!(
-            futures_executor::block_on(chat.send("hello".into()))
-                .messages
-                .len(),
-            2
-        );
+        futures_executor::block_on(chat.send("hello".into()));
+        assert_eq!(chat.messages_after(0).len(), 2);
         assert_eq!(list.state().len(), 1);
         assert_eq!(composer.state().text, "");
     }

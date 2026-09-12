@@ -50,6 +50,7 @@ impl FactoryComponent for MessageRow {
 pub struct Transcript {
     chat: ChatClient,
     rows: FactoryHashMap<u64, MessageRow>,
+    last_message_id: u64,
     status: ChatStatus,
     error: Option<ChatError>,
     _tasks: Tasks,
@@ -89,6 +90,7 @@ impl SimpleComponent for Transcript {
         tasks.watch(chat.changes(), sender.input_sender().clone(), ());
         let initial = chat.state();
         let model = Self {
+            last_message_id: 0,
             status: initial.status,
             error: initial.error,
             chat,
@@ -104,44 +106,9 @@ impl SimpleComponent for Transcript {
         self.status = state.status;
         self.error = state.error;
         let _ = sender.output(state.id);
-        let removed: Vec<_> = self
-            .rows
-            .keys()
-            .copied()
-            .filter(|id| !state.messages.iter().any(|message| message.id == *id))
-            .collect();
-        for id in removed {
-            self.rows.remove(&id);
-        }
-        for message in &state.messages {
-            match self.rows.get(&message.id) {
-                Some(row) if row.message != *message => {
-                    self.rows
-                        .get_mut(&message.id)
-                        .expect("existing message")
-                        .message
-                        .clone_from(message);
-                }
-                None => {
-                    self.rows.insert(message.id, message.clone());
-                }
-                _ => (),
-            }
-        }
-        // HashMap keys retain component identity; GTK sibling order follows the projection.
-        let container = self.rows.widget();
-        let mut children = std::collections::HashMap::new();
-        let mut child = container.first_child();
-        while let Some(widget) = child {
-            child = widget.next_sibling();
-            children.insert(widget.widget_name().to_string(), widget);
-        }
-        let mut previous: Option<gtk::Widget> = None;
-        for message in &state.messages {
-            if let Some(widget) = children.remove(&message.id.to_string()) {
-                container.reorder_child_after(&widget, previous.as_ref());
-                previous = Some(widget);
-            }
+        for message in self.chat.messages_after(self.last_message_id) {
+            self.last_message_id = message.id;
+            self.rows.insert(message.id, message);
         }
     }
 }

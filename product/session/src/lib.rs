@@ -91,25 +91,18 @@ impl ChatStarted for RegisterChat {
 }
 
 fn title_of(chat: &ChatClient) -> String {
-    // Reads the first message in place: a title is two words off the front of
-    // a transcript and must not cost a copy of the whole thing, once per
-    // conversation, every time a session lists them.
-    chat.read_state(|state| {
-        state
-            .messages
-            .first()
-            .map(|message| {
-                message
-                    .text
-                    .split_whitespace()
-                    .collect::<Vec<_>>()
-                    .join(" ")
-                    .chars()
-                    .take(48)
-                    .collect()
-            })
-            .unwrap_or_default()
-    })
+    chat.first_message()
+        .map(|message| {
+            message
+                .text
+                .split_whitespace()
+                .collect::<Vec<_>>()
+                .join(" ")
+                .chars()
+                .take(48)
+                .collect()
+        })
+        .unwrap_or_default()
 }
 
 impl SessionChats {
@@ -386,7 +379,7 @@ mod tests {
 
         assert_eq!(titles(&session), ["first"]);
         assert!(session.select_chat(&chat_id).is_some());
-        assert_eq!(sent.messages.len(), 2);
+        assert_eq!(pending.messages_after(0).len(), 2);
         assert_eq!(pending.composer().state().text, "");
         let next = session.new_chat();
         assert_eq!(next.id(), None);
@@ -394,6 +387,26 @@ mod tests {
             next.composer().scope(),
             ComposerScope::pending("account:one")
         );
+    }
+
+    #[test]
+    fn transcript_reads_only_the_requested_key_range() {
+        let session = session();
+        let chat = session.chat();
+        let first = block_on(chat.send("first".into()));
+        let initial = chat.messages_after(0);
+        assert_eq!(initial.len(), 2);
+        assert_eq!(first.last_message_id, initial.last().unwrap().id);
+        assert!(chat.messages_after(first.last_message_id).is_empty());
+        let second = block_on(chat.send("second".into()));
+        let added = chat.messages_after(first.last_message_id);
+        assert_eq!(added.len(), 2);
+        assert_eq!(added[0].text, "second");
+        assert_eq!(second.last_message_id, added.last().unwrap().id);
+        assert_eq!(&chat.messages_after(0)[..2], initial);
+        assert!(chat.messages_after(u64::MAX).is_empty());
+        block_on(chat.composer().replace("unfinished".into()));
+        assert!(chat.messages_after(second.last_message_id).is_empty());
     }
 
     #[test]

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   ChatStatus,
+  chatReader,
   describeChatError,
   describeComposerError,
   observeScope,
@@ -12,7 +13,7 @@ import { useObservable } from "@arut/bindings-typescript/react";
 export function useChat(session: ProductSessionHandle) {
   const [chat, select] = useState(() => session.chat());
   const composer = useMemo(() => chat.composer(), [chat]);
-  const transcript = useMemo(() => observeScope({ state: () => chat.state(), changes: cb => chat.chatChanges(cb) }), [chat]);
+  const transcript = useMemo(() => observeScope({ state: chatReader(chat), changes: cb => chat.chatChanges(cb) }), [chat]);
   const draft = useMemo(() => observeScope({ state: () => composer.state(), changes: cb => composer.composerChanges(cb) }), [composer]);
   const list = useMemo(() => observeScope({ state: () => session.conversations().state(), changes: cb => session.conversations().listChanges(cb) }), [session]);
   useEffect(() => { void composer.initialize(); void composer.follow(); return () => { transcript.dispose(); draft.dispose(); }; }, [composer, transcript, draft]);

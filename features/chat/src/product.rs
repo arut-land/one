@@ -10,7 +10,11 @@ use arut_protocol::chat::v1::{
 use arut_rpc::{Cancellation, Request};
 use arut_watch::{Subscription, Watch};
 use futures_util::lock::Mutex as AsyncMutex;
-use std::sync::Arc;
+use std::{
+    collections::BTreeMap,
+    ops::Bound::{Excluded, Unbounded},
+    sync::{Arc, Mutex},
+};
 
 #[boltffi::data]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -40,7 +44,8 @@ pub enum ChatStatus {
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct ChatState {
     pub id: Option<String>,
-    pub messages: Vec<ChatMessage>,
+    /// Immutable messages through this key are available from `messages_after`.
+    pub last_message_id: u64,
     pub status: ChatStatus,
     /// Set exactly when `status` is `Failed`; a surface reads the variant.
     pub error: Option<ChatError>,
@@ -64,6 +69,7 @@ pub struct ChatClient {
     service: ChatServiceClient,
     composer: ComposerClient,
     state: Arc<Watch<ChatState>>,
+    messages: Arc<Mutex<BTreeMap<u64, ChatMessage>>>,
     send_lock: Arc<AsyncMutex<()>>,
     start: Option<PendingStart>,
     ids: Arc<dyn IdSource>,
@@ -79,6 +85,11 @@ impl ChatClient {
         ids: Arc<dyn IdSource>,
         cancellation: Arc<Cancellation>,
     ) -> Self {
+        let messages: BTreeMap<_, _> = messages
+            .into_iter()
+            .filter_map(from_wire)
+            .map(|message| (message.id, message))
+            .collect();
         Self {
             service,
             composer: ComposerClient::new(
@@ -89,9 +100,10 @@ impl ChatClient {
             ),
             state: Arc::new(Watch::new(ChatState {
                 id: Some(id),
-                messages: messages.into_iter().filter_map(from_wire).collect(),
+                last_message_id: messages.last_key_value().map_or(0, |(id, _)| *id),
                 ..Default::default()
             })),
+            messages: Arc::new(Mutex::new(messages)),
             send_lock: Arc::new(AsyncMutex::new(())),
             start: None,
             ids,
@@ -116,6 +128,7 @@ impl ChatClient {
                 cancellation.clone(),
             ),
             state: Arc::new(Watch::new(ChatState::default())),
+            messages: Arc::default(),
             send_lock: Arc::new(AsyncMutex::new(())),
             start: Some(PendingStart {
                 scope_id: pending_scope_id,
@@ -139,9 +152,31 @@ impl ChatClient {
         self.state.get()
     }
 
-    /// Reads part of the state without cloning the transcript to get at it.
-    pub fn read_state<R>(&self, read: impl FnOnce(&ChatState) -> R) -> R {
-        self.state.read(read)
+    /// Reads only newly accepted messages, in key order. A key never changes or
+    /// disappears: operation streaming is separate from the durable transcript.
+    pub fn messages_after(&self, after_id: u64) -> Vec<ChatMessage> {
+        self.messages
+            .lock()
+            .unwrap()
+            .range((Excluded(after_id), Unbounded))
+            .map(|(_, message)| message.clone())
+            .collect()
+    }
+
+    pub fn first_message(&self) -> Option<ChatMessage> {
+        self.messages
+            .lock()
+            .unwrap()
+            .first_key_value()
+            .map(|(_, message)| message.clone())
+    }
+
+    fn accept_messages(&self, messages: Vec<WireMessage>) -> u64 {
+        let mut stored = self.messages.lock().unwrap();
+        for message in messages.into_iter().filter_map(from_wire) {
+            stored.entry(message.id).or_insert(message);
+        }
+        stored.last_key_value().map_or(0, |(id, _)| *id)
     }
 
     pub fn changes(&self) -> Arc<Subscription<u64>> {
@@ -206,13 +241,10 @@ impl ChatClient {
                 if let Err(error) = self.composer.promote(&chat_id, snapshot) {
                     return self.fail(error.into());
                 }
+                let last_message_id = self.accept_messages(response.messages);
                 self.state.update(|state| {
                     state.id = Some(chat_id.clone());
-                    state.messages = response
-                        .messages
-                        .into_iter()
-                        .filter_map(from_wire)
-                        .collect();
+                    state.last_message_id = last_message_id;
                     state.status = ChatStatus::Idle;
                     state.error = None;
                 });
@@ -240,10 +272,9 @@ impl ChatClient {
                 if let Some(error) = cleared.error {
                     return self.fail(error.into());
                 }
+                let last_message_id = self.accept_messages(response.message.messages);
                 self.state.update(|state| {
-                    state
-                        .messages
-                        .extend(response.message.messages.into_iter().filter_map(from_wire));
+                    state.last_message_id = last_message_id;
                     state.status = ChatStatus::Idle;
                     state.error = None;
                 });

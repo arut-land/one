@@ -33,10 +33,16 @@ fun ChatScreen(session: ProductSessionHandle) {
 @Composable
 private fun ConversationView(chat: ChatHandle) {
     val composer = remember { chat.composer() }
-    val transcript = remember { ObservableState(chat::state) { callback ->
-        val subscription = chat.chatChanges(callback)
-        AutoCloseable { subscription.cancel() }
-    } }
+    val transcript = remember {
+        var messages = emptyList<ChatMessage>()
+        ObservableState(read = {
+            messages = messages + chat.messagesAfter(messages.lastOrNull()?.id ?: 0uL)
+            chat.state() to messages
+        }) { callback ->
+            val subscription = chat.chatChanges(callback)
+            AutoCloseable { subscription.cancel() }
+        }
+    }
     val draft = remember { ObservableState(composer::state) { callback ->
         val subscription = composer.composerChanges(callback)
         AutoCloseable { subscription.cancel() }
@@ -49,9 +55,9 @@ private fun ConversationView(chat: ChatHandle) {
     // The chat's own error takes precedence; a composer-only failure (a
     // background resync, say) still needs to reach the person even when the
     // chat itself is idle.
-    val errorMessage = state.error?.let { describe(it) } ?: composing.error?.let { describe(it) }
+    val errorMessage = state.first.error?.let { describe(it) } ?: composing.error?.let { describe(it) }
     Column {
-        LazyColumn { items(state.messages, key = { it.id }) { Text(it.text) } }
+        LazyColumn { items(state.second, key = { it.id }) { Text(it.text) } }
         TextField(value = composing.text, onValueChange = { text -> scope.launch { composer.replace(text) } })
         if (errorMessage != null) {
             Text(text = errorMessage, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)

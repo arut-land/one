@@ -20,12 +20,16 @@ export function registerChat(context: vscode.ExtensionContext, session: ProductS
     const current = panel;
     let chat = session.chat();
     let composer = chat.composer();
+    let lastPostedId = 0n;
+    let generation = 0;
     const list = session.conversations();
     // Errors carry bigint payloads (a revision, an epoch) that the webview's
     // JSON postMessage channel cannot serialize, so the extension host
     // resolves each typed error to its sentence before it crosses the wire.
     const publish = () => {
       const chatState = chat.state();
+      const added = chat.messagesAfter(lastPostedId);
+      lastPostedId = added.at(-1)?.id ?? lastPostedId;
       const composerState = composer.state();
       const error = chatState.error
         ? describeChatError(chatState.error)
@@ -33,8 +37,8 @@ export function registerChat(context: vscode.ExtensionContext, session: ProductS
           ? describeComposerError(composerState.error)
           : null;
       current.webview.postMessage({ type: "state", state: {
-        ...chatState, chatId: chat.id(), draft: composerState.text, history: list.state(), error,
-        messages: chatState.messages.map(message => ({ ...message, id: message.id.toString() })),
+        generation, status: chatState.status, chatId: chat.id(), draft: composerState.text, history: list.state(), error,
+        messages: added.map(message => ({ ...message, id: message.id.toString() })),
       } });
     };
     let chatChanges = chat.chatChanges(() => { void publish(); });
@@ -48,6 +52,8 @@ export function registerChat(context: vscode.ExtensionContext, session: ProductS
     const bind = () => {
       chatChanges.cancel(); composerChanges.cancel(); composer.dispose();
       composer = chat.composer();
+      lastPostedId = 0n;
+      generation++;
       chatChanges = chat.chatChanges(() => { void publish(); });
       composerChanges = composer.composerChanges(() => { void publish(); });
       void composer.initialize();
@@ -55,7 +61,8 @@ export function registerChat(context: vscode.ExtensionContext, session: ProductS
       void publish();
     };
     current.webview.onDidReceiveMessage(async (message: { type: string; text: string; chatId: string }) => {
-      if (message.type === "newChat") { chat = session.newChat(); bind(); }
+      if (message.type === "ready") { lastPostedId = 0n; generation++; publish(); }
+      else if (message.type === "newChat") { chat = session.newChat(); bind(); }
       else if (message.type === "selectChat") { const next = session.selectChat(message.chatId); if (next) { chat = next; bind(); } }
       else if (message.type === "draft") { await composer.replace(message.text); }
       else if (message.type === "send") { await chat.send(message.text); }
@@ -162,9 +169,13 @@ function markup(): string {
       if (event.altKey && event.key.toLowerCase() === 'n') { event.preventDefault(); document.querySelector('#new-chat').click(); }
       if (event.key === '/' && document.activeElement !== input) { event.preventDefault(); input.focus(); }
     });
+    let generation = -1;
     window.addEventListener('message', ({ data }) => {
       if (data.type !== 'state') return;
-      messages.replaceChildren();
+      if (generation !== data.state.generation) {
+        generation = data.state.generation;
+        messages.replaceChildren();
+      }
       history.replaceChildren();
       const historyLabel = document.createElement('span');
       historyLabel.textContent = 'Recent';
@@ -182,7 +193,8 @@ function markup(): string {
         history.append(item);
       }
       title.textContent = data.state.history.find(chat => chat.id === data.state.chatId)?.title || 'New conversation';
-      if (data.state.messages.length === 0) {
+      if (data.state.messages.length > 0) messages.querySelector('.empty')?.remove();
+      if (!messages.firstChild && data.state.messages.length === 0) {
         const empty = document.createElement('p');
         empty.className = 'empty';
         empty.textContent = 'Start a conversation.';
@@ -204,6 +216,7 @@ function markup(): string {
       if (input.value !== data.state.draft) input.value = data.state.draft;
       messages.scrollTop = messages.scrollHeight;
     });
+    vscode.postMessage({ type: 'ready' });
   </script>
 </body>
 </html>`;
