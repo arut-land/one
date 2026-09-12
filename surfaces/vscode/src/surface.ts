@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import type { ProductSessionHandle } from "@arut/bindings-typescript";
+import { describeChatError, describeComposerError, type ProductSessionHandle } from "@arut/bindings-typescript";
 import * as vscode from "vscode";
 
 function nonce(): string {
@@ -21,10 +21,22 @@ export function registerChat(context: vscode.ExtensionContext, session: ProductS
     let chat = session.chat();
     let composer = chat.composer();
     const list = session.conversations();
-    const publish = () => current.webview.postMessage({ type: "state", state: {
-      ...chat.state(), chatId: chat.id(), draft: composer.state().text, history: list.state(),
-      messages: chat.state().messages.map(message => ({ ...message, id: message.id.toString() })),
-    } });
+    // Errors carry bigint payloads (a revision, an epoch) that the webview's
+    // JSON postMessage channel cannot serialize, so the extension host
+    // resolves each typed error to its sentence before it crosses the wire.
+    const publish = () => {
+      const chatState = chat.state();
+      const composerState = composer.state();
+      const error = chatState.error
+        ? describeChatError(chatState.error)
+        : composerState.error
+          ? describeComposerError(composerState.error)
+          : null;
+      current.webview.postMessage({ type: "state", state: {
+        ...chatState, chatId: chat.id(), draft: composerState.text, history: list.state(), error,
+        messages: chatState.messages.map(message => ({ ...message, id: message.id.toString() })),
+      } });
+    };
     let chatChanges = chat.chatChanges(() => { void publish(); });
     let composerChanges = composer.composerChanges(() => { void publish(); });
     const listChanges = list.listChanges(() => { void publish(); });
@@ -80,6 +92,7 @@ function markup(): string {
     article span { display: block; margin-bottom: 4px; color: var(--vscode-descriptionForeground); font-size: 11px; }
     article.user span { color: inherit; opacity: .75; }
     article p { margin: 0; line-height: 1.5; white-space: pre-wrap; }
+    #error { grid-column: 2; margin: 0 14px; color: var(--vscode-errorForeground); font-size: 12px; }
     form { display: flex; grid-column: 2; gap: 8px; margin: 10px 14px 14px; padding: 5px 5px 5px 12px; border: 1px solid var(--vscode-input-border); border-radius: 9px; background: var(--vscode-input-background); }
     input { min-width: 0; flex: 1; border: 0; background: transparent; color: var(--vscode-input-foreground); outline: none; }
     form button { border: 0; border-radius: 6px; padding: 0 14px; background: var(--vscode-button-background); color: var(--vscode-button-foreground); cursor: pointer; }
@@ -100,6 +113,7 @@ function markup(): string {
   <button id="scrim" type="button" aria-label="Close chat history"></button>
   <aside id="history"><span>Recent</span></aside>
   <main id="messages"><p class="empty">Start a conversation.</p></main>
+  <p id="error" hidden></p>
   <form><input autofocus aria-label="Message Arut" placeholder="Message Arut"><button>Send</button></form>
   <script nonce="${scriptNonce}">
     const vscode = acquireVsCodeApi();
@@ -111,6 +125,7 @@ function markup(): string {
     const toggle = document.querySelector('#toggle-history');
     const scrim = document.querySelector('#scrim');
     const title = document.querySelector('#title');
+    const error = document.querySelector('#error');
     const saved = vscode.getState() || {};
     let sidebarOpen = saved.sidebarOpen ?? window.innerWidth > 560;
     const applySidebar = () => {
@@ -178,6 +193,8 @@ function markup(): string {
         messages.append(item);
       }
       send.disabled = data.state.status === 1;
+      error.hidden = !data.state.error;
+      error.textContent = data.state.error || '';
       if (input.value !== data.state.draft) input.value = data.state.draft;
       messages.scrollTop = messages.scrollHeight;
     });
