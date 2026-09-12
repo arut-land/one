@@ -1,5 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
-import { ChatStatus, observeScope, type ProductSessionHandle } from "@arut/bindings-typescript";
+import {
+  ChatStatus,
+  describeChatError,
+  describeComposerError,
+  observeScope,
+  type ProductSessionHandle,
+} from "@arut/bindings-typescript";
 import { useObservable } from "@arut/bindings-typescript/react";
 
 // Navigation is surface state. Every rendered projection has its own observer.
@@ -14,8 +20,16 @@ export function useChat(session: ProductSessionHandle) {
   const state = useObservable(transcript);
   const composerState = useObservable(draft);
   const history = useObservable(list);
+  // The chat's own error takes precedence; a composer-only failure (a
+  // background resync, say) still needs to reach the person even when the
+  // chat itself is idle.
+  const error = state.error
+    ? describeChatError(state.error)
+    : composerState.error
+      ? describeComposerError(composerState.error)
+      : null;
   return {
-    snapshot: { ...state, chatId: chat.id() },
+    snapshot: { ...state, chatId: chat.id(), error },
     draft: composerState.text,
     history,
     sending: state.status === ChatStatus.Sending,
