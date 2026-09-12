@@ -2,8 +2,8 @@
 //!
 //! Reusable suites exercise unary and server-stream RPC ordering, metadata, typed
 //! errors and stream termination; fact-log sequencing, fencing, retries, snapshots,
-//! and compaction; blob content addressing, size range, absence, and malformed
-//! digests; and independent key-value updates.
+//! and compaction; blob content addressing pinned to BLAKE3 by literal, size
+//! range, absence, and malformed digests; and independent key-value updates.
 //!
 //! The same RPC suite runs against the in-process registry, TCP Connect, and Unix
 //! IPC. Storage suites run against memory and directory implementations. Extra
@@ -104,9 +104,19 @@ pub fn fact_log(log: &dyn FactLog<String>) {
     );
     assert_eq!(log.read_from(2).unwrap().len(), 1);
 }
-/// Blobs are addressed by the SHA-256 of their content, everywhere alike.
+/// The address every implementation must mint for the same bytes.
+///
+/// BLAKE3, lowercase hex, 64 characters -- pinned as a literal rather than
+/// recomputed, because the point is that the format cannot drift: the same
+/// bytes must land on the same address in this process, in a directory, in
+/// SQLite, and in whatever `iroh-blobs` fetches them by later.
+const CONTENT_DIGEST: &str = "3fba5250be9ac259c56e7250c526bc83bacb4be825f2799d3d59e5b4878dd74e";
+const EMPTY_DIGEST: &str = "af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262";
+
+/// Blobs are addressed by the BLAKE3 of their content, everywhere alike.
 pub fn blobs(store: &dyn BlobStore) {
     let id = store.put_blob(b"content").unwrap();
+    assert_eq!(id, CONTENT_DIGEST);
     assert_eq!(id, digest(b"content"));
     assert_eq!(id.len(), 64);
     assert!(
@@ -118,6 +128,7 @@ pub fn blobs(store: &dyn BlobStore) {
     assert_ne!(id, store.put_blob(b"different").unwrap());
 
     let empty = store.put_blob(b"").unwrap();
+    assert_eq!(empty, EMPTY_DIGEST);
     assert_eq!(store.get_blob(&empty).unwrap(), Some(Vec::new()));
 
     let large = vec![0xa5; 1 << 20];

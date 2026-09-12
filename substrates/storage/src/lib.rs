@@ -6,16 +6,17 @@
 //! renames it, and fsyncs the directory. Compaction requires a snapshot and retains
 //! outcomes for retry deduplication. It never rewrites all state on append.
 //!
-//! BlobStore stores SHA-256 addressed raw bytes and verifies them on read. KeyValue
-//! stores each small value independently. Directory keys are hashed to prevent path
-//! traversal. Memory implementations provide the same ports for in-process sessions.
+//! BlobStore stores BLAKE3-addressed raw bytes and verifies them on read. BLAKE3 is
+//! what `iroh-blobs` hashes with, so an address minted here is the address a peer
+//! fetches by once that store backs the port. KeyValue stores each small value
+//! independently. Directory keys are hashed to prevent path traversal. Memory
+//! implementations provide the same ports for in-process sessions.
 
 //! Separate durability contracts for facts, content, and small unordered values.
 mod directory;
 mod memory;
 pub use directory::{Directory, DirectoryLog};
 pub use memory::{MemoryLog, MemoryStore};
-use sha2::{Digest, Sha256};
 
 /// Facts and snapshots are Protobuf rows, as every persisted contract is.
 pub trait Fact: prost::Message + Default + Clone + 'static {}
@@ -73,7 +74,7 @@ pub trait FactLog<F: Fact>: Send + Sync {
 }
 pub trait BlobStore: Send + Sync {
     fn put_blob(&self, bytes: &[u8]) -> Result<String>;
-    /// Rejects anything that is not a SHA-256 digest; verifies what it returns.
+    /// Rejects anything that is not a BLAKE3 digest; verifies what it returns.
     fn get_blob(&self, digest: &str) -> Result<Option<Vec<u8>>>;
 }
 pub trait KeyValue: Send + Sync {
@@ -81,8 +82,10 @@ pub trait KeyValue: Send + Sync {
     fn put(&self, key: &str, value: &[u8]) -> Result<()>;
     fn remove(&self, key: &str) -> Result<()>;
 }
+/// The address of a blob: BLAKE3, lowercase hex, 64 characters. It is also what
+/// `iroh-blobs` addresses by, so the two agree without a translation table.
 pub fn digest(bytes: &[u8]) -> String {
-    format!("{:x}", Sha256::digest(bytes))
+    blake3::hash(bytes).to_hex().to_string()
 }
 pub(crate) fn checked_digest(id: &str) -> Result<&str> {
     if id.len() == 64 && id.bytes().all(|byte| byte.is_ascii_hexdigit()) {

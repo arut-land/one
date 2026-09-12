@@ -6,7 +6,7 @@ license.workspace = true
 
 [dependencies]
 prost = "0.14.1"
-sha2 = "0.10"
+blake3 = "1.8.7"
 
 [lints]
 workspace = true
