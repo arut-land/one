@@ -158,7 +158,7 @@ mod tests {
             let chat = ChatServiceClient::remote(channel);
             let request = StartChatRequest {
                 pending_scope_id: "account".into(),
-                command_id: "start".into(),
+                command_id: "01900000-0000-7000-8000-000000000001".into(),
                 expected_revision: 0,
                 text: String::new(),
             };
@@ -211,7 +211,7 @@ mod tests {
             .unwrap();
         let request = StartChatRequest {
             pending_scope_id: "account".into(),
-            command_id: "start".into(),
+            command_id: "01900000-0000-7000-8000-000000000001".into(),
             expected_revision: 1,
             text: "over HTTP".into(),
         };

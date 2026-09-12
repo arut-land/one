@@ -116,7 +116,29 @@ impl ComposerAuthority {
             duplicate: false,
         })
     }
-    /// Commits the caller's fact and rebinds the pending draft in one step.
+    /// Repairs recovery state using the revision consumed by a durable start fact.
+    pub fn recover_pending(&self, pending_id: &str, consumed: u64) -> Result<(), StorageError> {
+        let scope = ComposerScope::pending(pending_id);
+        let mut scopes = self.inner.lock().unwrap();
+        if !scopes.contains_key(&scope) {
+            scopes.insert(scope.clone(), self.load(&scope)?);
+        }
+        let mut snapshot = scopes[&scope].watch.get();
+        if snapshot.revision <= consumed {
+            snapshot = ComposerSnapshot::empty(scope.clone());
+            snapshot.revision = consumed.checked_add(1).ok_or(StorageError::Corrupt)?;
+            scopes.insert(
+                scope.clone(),
+                ScopeState {
+                    watch: Watch::new(snapshot.clone()),
+                    last_command: None,
+                },
+            );
+        }
+        self.store.put(&key(&scope), &stored(&snapshot))
+    }
+
+    /// The committed fact records the consumed revision so cleanup can resume after a crash.
     pub fn promote_pending<T, E: From<StorageError>>(
         &self,
         pending_id: &str,
@@ -137,12 +159,21 @@ impl ComposerAuthority {
         if pending.text != text {
             return Ok(Err(PromoteError::TextMismatch(pending)));
         }
+        let mut cleared = ComposerSnapshot::empty(scope.clone());
+        cleared.revision = pending
+            .revision
+            .checked_add(1)
+            .ok_or(StorageError::Corrupt)?;
         let result = commit()?;
         let chat_scope = ComposerScope::chat(chat_id);
         let snapshot = ComposerSnapshot::empty(chat_scope.clone());
-        self.store.put(&key(&chat_scope), &stored(&snapshot))?;
-        self.store.remove(&key(&scope))?;
-        scopes.remove(&scope);
+        scopes.insert(
+            scope.clone(),
+            ScopeState {
+                watch: Watch::new(cleared.clone()),
+                last_command: None,
+            },
+        );
         scopes.insert(
             chat_scope,
             ScopeState {
@@ -150,6 +181,7 @@ impl ComposerAuthority {
                 last_command: None,
             },
         );
+        self.store.put(&key(&scope), &stored(&cleared))?;
         Ok(Ok((result, snapshot)))
     }
 }
