@@ -99,7 +99,11 @@ impl<C: Command> Authority<C> {
         })
     }
     pub fn projection(&self) -> C::Projection {
-        self.state.lock().unwrap().projection.clone()
+        self.read_projection(Clone::clone)
+    }
+    /// Reads under the authority lock; the callback must not re-enter this authority.
+    pub fn read_projection<T>(&self, read: impl FnOnce(&C::Projection) -> T) -> T {
+        read(&self.state.lock().unwrap().projection)
     }
     pub fn outcome_of(&self, id: &str) -> Result<Option<Record<C::Fact>>, StorageError> {
         self.log.outcome_of(id)

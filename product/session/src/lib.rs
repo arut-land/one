@@ -66,6 +66,10 @@ impl ChatStarted for RegisterChat {
             return;
         };
         let title = title_of(&chat);
+        established
+            .lock()
+            .expect("chat registry poisoned")
+            .insert(chat_id.clone(), chat);
         self.conversations.update(|summaries| {
             if !summaries.iter().any(|summary| summary.id == chat_id) {
                 summaries.insert(
@@ -77,10 +81,6 @@ impl ChatStarted for RegisterChat {
                 );
             }
         });
-        established
-            .lock()
-            .expect("chat registry poisoned")
-            .insert(chat_id, chat);
     }
 }
 
@@ -351,6 +351,42 @@ mod tests {
             .into_iter()
             .map(|summary| summary.title)
             .collect()
+    }
+
+    #[test]
+    fn a_published_summary_already_has_a_selectable_handle() {
+        use std::{
+            future::Future,
+            sync::atomic::{AtomicBool, Ordering},
+            task::{Context, Wake, Waker},
+        };
+        struct Observer {
+            registry: Established,
+            registered: AtomicBool,
+        }
+        impl Wake for Observer {
+            fn wake(self: Arc<Self>) {
+                self.registered
+                    .store(!self.registry.lock().unwrap().is_empty(), Ordering::Relaxed);
+            }
+        }
+        let session = session();
+        let changes = session.conversations_changes();
+        block_on(changes.changed());
+        let observer = Arc::new(Observer {
+            registry: session.chats.established.clone(),
+            registered: AtomicBool::new(false),
+        });
+        let waker = Waker::from(observer.clone());
+        let mut future = std::pin::pin!(changes.changed());
+        assert!(
+            future
+                .as_mut()
+                .poll(&mut Context::from_waker(&waker))
+                .is_pending()
+        );
+        block_on(session.chat().send("published".into()));
+        assert!(observer.registered.load(Ordering::Relaxed));
     }
 
     #[test]
