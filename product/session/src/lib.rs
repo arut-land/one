@@ -22,7 +22,7 @@ use arut_protocol::capability::v1::{
 use arut_protocol::capability_manifest::CapabilityServiceImpl;
 use arut_protocol::chat::composer::v1::{COMPOSER_SERVICE_DESCRIPTOR, ComposerServiceClient};
 use arut_protocol::chat::v1::{CHAT_SERVICE_DESCRIPTOR, ChatServiceClient};
-use arut_rpc::{Request, RpcChannel, ServiceMetadata, ServiceRegistration};
+use arut_rpc::{Cancellation, Request, RpcChannel, ServiceMetadata, ServiceRegistration};
 use arut_watch::{Subscription, Watch};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, Weak};
@@ -118,6 +118,7 @@ impl SessionChats {
             self.pending_scope_id.clone(),
             Some(self.registration()),
             self.ids.clone(),
+            self.workspace.conversation_cancellation(),
         )
     }
     fn established(&self, chat_id: &str) -> Option<ChatClient> {
@@ -171,6 +172,7 @@ impl ProductSession {
                 conversation.id.clone(),
                 conversation.messages,
                 self.chats.ids.clone(),
+                self.chats.workspace.conversation_cancellation(),
             );
             registration.chat_started(conversation.id, client);
         }
@@ -231,6 +233,7 @@ impl ProductSession {
             pending_scope_id.clone(),
             Some(RegisterChat::new(&established, &conversations)),
             ids.clone(),
+            workspace.conversation_cancellation(),
         );
         let chats = Arc::new(SessionChats {
             ids,
@@ -254,6 +257,12 @@ impl ProductSession {
 
     pub fn pending_scope_id(&self) -> &str {
         &self.chats.pending_scope_id
+    }
+
+    /// The node scope every workspace, conversation, and operation hangs from.
+    /// Cancelling it stops the whole session's outstanding work.
+    pub fn cancellation(&self) -> &Cancellation {
+        self.workspace.node.cancellation()
     }
 
     fn with_capability_service(mut self, service: CapabilityServiceClient) -> Self {

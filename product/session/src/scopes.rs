@@ -1,5 +1,11 @@
 //! Parent-owned construction and compile-time service capabilities.
+//!
+//! Each scope owns a [`Cancellation`] whose token is a `child_token()` of its
+//! parent's, so the token tree has exactly the shape of the scope tree:
+//! cancelling or dropping a node stops every workspace, conversation, and
+//! operation under it, and dropping one workspace stops only its own.
 use arut_protocol::chat::{composer::v1::ComposerServiceClient, v1::ChatServiceClient};
+use arut_rpc::Cancellation;
 use std::sync::Arc;
 
 /// The capability bundle chat needs. A node without it has no chat scopes.
@@ -25,13 +31,22 @@ impl ChatRuntime for Services {
 pub struct Node<R> {
     pub runtime: Arc<R>,
     pub id: String,
+    cancellation: Cancellation,
 }
 impl<R> Node<R> {
     pub fn new(id: String, runtime: Arc<R>) -> Arc<Self> {
-        Arc::new(Self { runtime, id })
+        Arc::new(Self {
+            runtime,
+            id,
+            cancellation: Cancellation::root(),
+        })
+    }
+    pub fn cancellation(&self) -> &Cancellation {
+        &self.cancellation
     }
     pub fn workspace(self: &Arc<Self>, id: String) -> Arc<Workspace<R>> {
         Arc::new(Workspace {
+            cancellation: self.cancellation.child(),
             node: Arc::clone(self),
             id,
         })
@@ -41,6 +56,16 @@ impl<R> Node<R> {
 pub struct Workspace<R> {
     pub node: Arc<Node<R>>,
     pub id: String,
+    cancellation: Cancellation,
+}
+impl<R> Workspace<R> {
+    pub fn cancellation(&self) -> &Cancellation {
+        &self.cancellation
+    }
+    /// The cancellation one conversation under this workspace owns.
+    pub fn conversation_cancellation(&self) -> Arc<Cancellation> {
+        Arc::new(self.cancellation.child())
+    }
 }
 impl<R: ChatRuntime> Workspace<R> {
     pub fn chat_service(&self) -> ChatServiceClient {
@@ -64,5 +89,37 @@ mod tests {
         assert!(weak.upgrade().is_some());
         drop(workspace);
         assert!(weak.upgrade().is_none());
+    }
+
+    #[test]
+    fn dropping_a_workspace_cancels_only_what_it_owns() {
+        let node = Node::new("one".into(), Arc::new(()));
+        let workspace = node.workspace("default".into());
+        let sibling = node.workspace("other".into());
+        let conversation = workspace.conversation_cancellation();
+        let (workspace_token, conversation_token, sibling_token) = (
+            workspace.cancellation().token(),
+            conversation.token(),
+            sibling.cancellation().token(),
+        );
+
+        drop(workspace);
+
+        assert!(workspace_token.is_cancelled());
+        assert!(conversation_token.is_cancelled());
+        assert!(!sibling_token.is_cancelled());
+        assert!(!node.cancellation().is_cancelled());
+    }
+
+    #[test]
+    fn cancelling_a_node_reaches_every_scope_beneath_it() {
+        let node = Node::new("one".into(), Arc::new(()));
+        let workspace = node.workspace("default".into());
+        let conversation = workspace.conversation_cancellation();
+
+        node.cancellation().cancel();
+
+        assert!(workspace.cancellation().is_cancelled());
+        assert!(conversation.is_cancelled());
     }
 }

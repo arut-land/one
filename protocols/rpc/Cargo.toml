@@ -8,6 +8,7 @@ license.workspace = true
 futures-core = "0.3.31"
 futures-util = "0.3.31"
 prost = "0.14.1"
+tokio-util = { version = "0.7.19", default-features = false }
 
 [lints]
 workspace = true

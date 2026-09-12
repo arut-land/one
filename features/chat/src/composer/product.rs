@@ -5,7 +5,7 @@ use arut_protocol::chat::composer::v1::{
     ComposerServiceClient, ComposerSnapshot as WireSnapshot, GetComposerRequest,
     ReplaceComposerRequest, WatchComposerRequest, replace_composer_response,
 };
-use arut_rpc::Request;
+use arut_rpc::{Cancellation, Request};
 use arut_watch::{Subscription, Watch};
 use futures_util::lock::Mutex as AsyncMutex;
 use futures_util::{FutureExt, StreamExt};
@@ -38,6 +38,7 @@ pub struct ComposerClient {
     next_command: Arc<AtomicU64>,
     authority_epoch: Arc<AtomicU64>,
     operations: Arc<AsyncMutex<()>>,
+    cancellation: Arc<Cancellation>,
 }
 
 impl ComposerClient {
@@ -45,6 +46,7 @@ impl ComposerClient {
         service: ComposerServiceClient,
         scope: ComposerScope,
         ids: Arc<dyn IdSource>,
+        cancellation: Arc<Cancellation>,
     ) -> Self {
         Self {
             service,
@@ -59,6 +61,7 @@ impl ComposerClient {
             next_command: Arc::new(AtomicU64::new(1)),
             authority_epoch: Arc::new(AtomicU64::new(1)),
             operations: Arc::new(AsyncMutex::new(())),
+            cancellation,
         }
     }
 
@@ -105,7 +108,7 @@ impl ComposerClient {
                 scope: Some(scope_to_wire(&self.scope())),
                 command_id: format!("{}:{sequence}", self.client_id),
                 authority_epoch: self.authority_epoch.load(Ordering::Acquire),
-                base_revision: self.state.get().revision,
+                base_revision: self.state.read(|state| state.revision),
                 text,
             }))
             .await;
@@ -138,15 +141,28 @@ impl ComposerClient {
     }
 
     /// The host polls this future for the lifetime of the visible composer.
+    ///
+    /// It returns as soon as the conversation scope is cancelled, so a surface
+    /// that navigates away drops the scope rather than aborting the future.
     pub async fn follow(&self) {
+        let cancelled = self.cancellation.token();
         loop {
             let scope_changes = self.scope.subscribe();
-            let _ = scope_changes.changed().await;
+            {
+                let rebound = scope_changes.changed().fuse();
+                let stop = cancelled.cancelled().fuse();
+                futures_util::pin_mut!(rebound, stop);
+                futures_util::select! {
+                    () = stop => return,
+                    _ = rebound => {}
+                }
+            }
+            let after_revision = self.state.read(|state| state.revision);
             let response = self
                 .service
                 .watch_composer(Request::new(WatchComposerRequest {
                     scope: Some(scope_to_wire(&self.scope())),
-                    after_revision: self.state.get().revision,
+                    after_revision,
                 }))
                 .await;
             let mut stream = match response {
@@ -159,8 +175,10 @@ impl ComposerClient {
             loop {
                 let next = stream.next().fuse();
                 let rebound = scope_changes.changed().fuse();
-                futures_util::pin_mut!(next, rebound);
+                let stop = cancelled.cancelled().fuse();
+                futures_util::pin_mut!(next, rebound, stop);
                 futures_util::select! {
+                    () = stop => return,
                     _ = rebound => break,
                     item = next => match item {
                         Some(Ok(response)) => { if let Some(snapshot) = response.snapshot {
@@ -239,6 +257,7 @@ mod tests {
             service,
             ComposerScope::pending("account"),
             Arc::new(crate::ports::NativeIds),
+            Arc::new(Cancellation::root()),
         );
         let snapshot = WireSnapshot {
             scope: Some(scope_to_wire(&ComposerScope::chat("other"))),
@@ -249,5 +268,24 @@ mod tests {
 
         assert!(composer.promote("expected", snapshot).is_err());
         assert_eq!(composer.scope(), ComposerScope::pending("account"));
+    }
+
+    #[test]
+    fn following_ends_when_the_conversation_scope_is_cancelled() {
+        let service = ComposerServiceClient::direct(Arc::new(ComposerServiceImpl::new(Arc::new(
+            ComposerAuthority::default(),
+        ))));
+        let cancellation = Arc::new(Cancellation::root());
+        let composer = ComposerClient::new(
+            service,
+            ComposerScope::pending("account"),
+            Arc::new(crate::ports::NativeIds),
+            cancellation.clone(),
+        );
+
+        cancellation.cancel();
+
+        // Without cancellation this future never completes.
+        futures_executor::block_on(composer.follow());
     }
 }

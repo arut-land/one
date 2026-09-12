@@ -6,7 +6,7 @@ use arut_protocol::chat::v1::{
     ChatMessage as WireMessage, ChatRole as WireRole, ChatServiceClient, SendMessageRequest,
     StartChatRequest,
 };
-use arut_rpc::Request;
+use arut_rpc::{Cancellation, Request};
 use arut_watch::{Subscription, Watch};
 use futures_util::lock::Mutex as AsyncMutex;
 use std::sync::Arc;
@@ -65,6 +65,7 @@ pub struct ChatClient {
     send_lock: Arc<AsyncMutex<()>>,
     start: Option<PendingStart>,
     ids: Arc<dyn IdSource>,
+    cancellation: Arc<Cancellation>,
 }
 
 impl ChatClient {
@@ -74,10 +75,16 @@ impl ChatClient {
         id: String,
         messages: Vec<WireMessage>,
         ids: Arc<dyn IdSource>,
+        cancellation: Arc<Cancellation>,
     ) -> Self {
         Self {
             service,
-            composer: ComposerClient::new(composer_service, ComposerScope::chat(&id), ids.clone()),
+            composer: ComposerClient::new(
+                composer_service,
+                ComposerScope::chat(&id),
+                ids.clone(),
+                cancellation.clone(),
+            ),
             state: Arc::new(Watch::new(ChatState {
                 id: Some(id),
                 messages: messages.into_iter().filter_map(from_wire).collect(),
@@ -86,6 +93,7 @@ impl ChatClient {
             send_lock: Arc::new(AsyncMutex::new(())),
             start: None,
             ids,
+            cancellation,
         }
     }
 
@@ -95,6 +103,7 @@ impl ChatClient {
         pending_scope_id: String,
         on_started: Option<Arc<dyn ChatStarted>>,
         ids: Arc<dyn IdSource>,
+        cancellation: Arc<Cancellation>,
     ) -> Self {
         Self {
             service,
@@ -102,6 +111,7 @@ impl ChatClient {
                 composer_service,
                 ComposerScope::pending(&pending_scope_id),
                 ids.clone(),
+                cancellation.clone(),
             ),
             state: Arc::new(Watch::new(ChatState::default())),
             send_lock: Arc::new(AsyncMutex::new(())),
@@ -111,6 +121,7 @@ impl ChatClient {
                 on_started,
             }),
             ids,
+            cancellation,
         }
     }
 
@@ -130,10 +141,18 @@ impl ChatClient {
         self.state.subscribe()
     }
 
+    /// Stops when the conversation scope this chat belongs to is cancelled.
+    pub fn cancellation(&self) -> &Arc<Cancellation> {
+        &self.cancellation
+    }
+
     pub async fn send(&self, text: String) -> ChatState {
         let text = text.trim().to_owned();
         if text.is_empty() {
             return self.state.get();
+        }
+        if self.cancellation.is_cancelled() {
+            return self.fail("conversation scope was cancelled".into());
         }
         let _send = self.send_lock.lock().await;
         let operations = self.composer.operations();

@@ -1,3 +1,15 @@
+//! # RPC
+//!
+//! The transport-neutral vocabulary generated service code and every channel
+//! share: requests, responses, metadata, typed statuses, streams, the
+//! object-safe `RpcChannel`, and the registry that routes procedures to
+//! services. Nothing here knows a wire format or a product rule.
+//!
+//! It also holds the two execution ports a composition root supplies, because
+//! they are what a channel's callers need and no library crate may create an
+//! executor of its own: `Spawner` and `LocalSpawner` run futures, and
+//! `Cancellation` is the per-scope token tree that stops them.
+
 use core::future::Future;
 use core::pin::Pin;
 use futures_core::Stream;
@@ -7,6 +19,8 @@ use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::RwLock;
+pub use tokio_util::sync::CancellationToken;
+use tokio_util::sync::DropGuard;
 
 pub type RpcFuture<T> = Pin<Box<dyn Future<Output = Result<T, Status>> + Send + 'static>>;
 pub type RpcStream<T> = Pin<Box<dyn Stream<Item = Result<T, Status>> + Send + 'static>>;
@@ -367,6 +381,74 @@ where
 /// Runs work on an executor owned by the composition root.
 pub trait Spawner: Send + Sync + 'static {
     fn spawn(&self, future: Pin<Box<dyn Future<Output = ()> + Send + 'static>>);
+}
+
+/// Runs work on an executor the host polls itself, with no thread behind it and
+/// no `Send` bound on the future: the page's event loop reached through
+/// BoltFFI's poll exports, or an Android foreground-service thread.
+pub trait LocalSpawner: 'static {
+    fn spawn_local(&self, future: Pin<Box<dyn Future<Output = ()> + 'static>>);
+}
+
+/// One scope's cancellation, cancelled when the last holder of the scope drops.
+///
+/// A child scope's token is a `child_token()` of its parent's, so cancelling a
+/// workspace cancels every conversation and operation constructed under it and
+/// touches nothing above it. Scopes hold this rather than a bare token so the
+/// tree needs no bookkeeping: the `DropGuard` inside fires with the scope.
+pub struct Cancellation {
+    token: CancellationToken,
+    _guard: DropGuard,
+}
+
+impl Cancellation {
+    /// The root of a token tree, owned by a composition root.
+    pub fn root() -> Self {
+        Self::from(CancellationToken::new())
+    }
+
+    /// A token cancelled by this scope, by its own drop, or by either parent.
+    pub fn child(&self) -> Self {
+        Self::from(self.token.child_token())
+    }
+
+    /// The token to hand to work that must stop with this scope.
+    pub fn token(&self) -> CancellationToken {
+        self.token.clone()
+    }
+
+    pub fn is_cancelled(&self) -> bool {
+        self.token.is_cancelled()
+    }
+
+    /// Cancels this scope and everything under it, before it is dropped.
+    pub fn cancel(&self) {
+        self.token.cancel();
+    }
+}
+
+impl Default for Cancellation {
+    fn default() -> Self {
+        Self::root()
+    }
+}
+
+impl From<CancellationToken> for Cancellation {
+    fn from(token: CancellationToken) -> Self {
+        Self {
+            _guard: token.clone().drop_guard(),
+            token,
+        }
+    }
+}
+
+impl std::fmt::Debug for Cancellation {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("Cancellation")
+            .field("cancelled", &self.token.is_cancelled())
+            .finish()
+    }
 }
 
 #[cfg(test)]
