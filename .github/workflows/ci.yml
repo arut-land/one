@@ -74,6 +74,11 @@ jobs:
             exit 1
           fi
 
+      # ADR 0022: the .ftl files are the source, so a generated resource or
+      # accessor that disagrees with them is a change nobody made on purpose.
+      - name: Check the generated string resources
+        run: cargo run --quiet -p arut-i18n-gen -- --check
+
       - name: buf lint
         run: buf lint
 

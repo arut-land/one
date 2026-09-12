@@ -42,15 +42,11 @@ pub enum Message {
     /// `chat-status-sending`
     ChatStatusSending,
     /// `composer-error-authority-changed`
-    ComposerErrorAuthorityChanged {
-        current_epoch: u64,
-    },
+    ComposerErrorAuthorityChanged { current_epoch: u64 },
     /// `composer-error-outcome-missing`
     ComposerErrorOutcomeMissing,
     /// `composer-error-revision-conflict`
-    ComposerErrorRevisionConflict {
-        current: u64,
-    },
+    ComposerErrorRevisionConflict { current: u64 },
     /// `composer-error-scope-mismatch`
     ComposerErrorScopeMismatch,
     /// `composer-error-scope-missing`

@@ -203,7 +203,9 @@ Bindings are generated per ecosystem from scope handle definitions over BoltFFI 
 
 Rust-owned surfaces (GTK, terminal) read projection types directly with no FFI.
 
-Surfaces own rendering, navigation, disposable state, accessibility, platform permissions, lifecycle observation, and the composition root. They report platform facts (suspend, background expiry, connectivity) to shared policy and never contain authority, routing, or compatibility rules. The core returns typed outcomes; each surface maps them to its own strings (ADR 0016).
+Surfaces own rendering, navigation, disposable state, accessibility, platform permissions, lifecycle observation, and the composition root. They report platform facts (suspend, background expiry, connectivity) to shared policy and never contain authority, routing, or compatibility rules. The core returns typed outcomes and no text (ADR 0016).
+
+Those outcomes become sentences through one source. Every user-facing string lives once in `product/i18n` as Fluent, and a typed variant names its message by convention through `message_key` on the enum itself, with variant fields as Fluent arguments (ADR 0022). Strings never cross the FFI boundary. Rust-owned surfaces and the wasm core read the `.ftl` directly through `arut-i18n`'s `Localizer`; web and editor surfaces read the same files with `@fluent/bundle`; native surfaces read `mise run i18n`'s output — `Localizable.xcstrings`, `values-<lang>/strings.xml`, `Strings/<lang>/Resources.resw` — through their own platform localization API, so each surface keeps its idiom and pays nothing at runtime. Locale selection stays platform-owned: a surface hands over the language list its platform already resolved, and the core never learns the locale. No message id is written by hand anywhere. Beside the resources, `mise run i18n` emits one typed accessor per message for each consumer — a Rust `Message` enum that `Localizer::format` takes, `L10n` in Swift, Kotlin and C#, `t` in TypeScript — with parameter types read off the source, so naming a string that does not exist or passing the wrong argument is a compile error in that language. `#[derive(Localized)]` puts the same convention on the error enums themselves and checks it against the source while the feature crate compiles, so a variant added without a message does not build; it is a proc macro whose expansion names only `&'static str`, which is what lets a `features/` crate use it without depending on anything above it. Every locale must define the same ids, and `mise run check` regenerates everything and fails if any generated file drifted from the source.
 
 ## Capabilities and availability
 
@@ -239,7 +241,9 @@ Sharing a conversation copies explicitly shareable history and grants nothing el
 |-- features/
 |   `-- chat/                       transcript, operations, composer; commands, facts, projections, service
 |-- product/
-|   `-- session/                    scopes, scope handles, availability, connectivity
+|   |-- session/                    scopes, scope handles, availability, connectivity
+|   `-- i18n/                       locales/<lang>/*.ftl, the one source of user-facing strings
+|       `-- macros/                  #[derive(Localized)]: an error variant's message id, checked at compile time
 |-- transports/
 |   |-- ipc/  connect-http/  iroh/     (in-process calls use the RpcRegistry directly; no memory transport)
 |-- runtimes/
@@ -254,7 +258,8 @@ Sharing a conversation copies explicitly shareable history and grants nothing el
 |-- backend/
 |   `-- relay/                      pairing, relay, encrypted store-and-forward
 `-- tools/
-    `-- conformance/                suites every channel and storage impl must pass
+    |-- conformance/                suites every channel and storage impl must pass
+    `-- i18n/                       .ftl -> xcstrings, strings.xml, .resw, served .ftl, and a typed accessor per language
 ```
 
 Directories appear when their first concrete implementation exists. No `shared`, `common`, `utils`, or `services` directories. Crates document themselves in `//!` comments at the top of `lib.rs`; there are no per-directory READMEs. The only prose in the repository is this file, `CONTEXT.md`, `docs/`, and the root README.
@@ -263,9 +268,9 @@ Surfaces outside the current release stay in the tree and stay compiling where t
 
 ## Ecosystems and tools
 
-Languages in the repository: Rust, Protobuf, Swift, Kotlin, C#, TypeScript. Each exists because a surface needs it; none exists for tooling. Tools: mise (toolchains and tasks), cargo, pnpm, buf (proto lint and breaking checks), BoltFFI (all foreign bindings), gradle and xcodegen for their platforms. Protobuf compiles through `protox` in the build script, so no `protoc` binary is installed. Anything else is a dependency, not a project.
+Languages in the repository: Rust, Protobuf, Swift, Kotlin, C#, TypeScript. Each exists because a surface needs it; none exists for tooling. Tools: mise (toolchains and tasks), cargo, pnpm, buf (proto lint and breaking checks), BoltFFI (all foreign bindings), `tools/i18n` (Fluent to native string resources), gradle and xcodegen for their platforms. Protobuf compiles through `protox` in the build script, so no `protoc` binary is installed. Anything else is a dependency, not a project.
 
-The dependencies that carry real weight, and what each replaces: iroh, `iroh-blobs`, `iroh-gossip` (identity, discovery, NAT traversal, relay, transport encryption, blob transfer, ephemeral replication); BoltFFI (every foreign binding); `rig` (model providers); `relm4` (the Linux surface); `keyring` (desktop secrets); `figment` (the config chain); `tracing` with OpenTelemetry and the OpenFeature SDK (telemetry and flags). Rejected with reasons in the ADRs: UniFFI, Diplomat, typeshare, `nami` and the other Rust reactive frameworks, `irpc`, libp2p, CRDT libraries.
+The dependencies that carry real weight, and what each replaces: iroh, `iroh-blobs`, `iroh-gossip` (identity, discovery, NAT traversal, relay, transport encryption, blob transfer, ephemeral replication); BoltFFI (every foreign binding); `rig` (model providers); `relm4` (the Linux surface); `fluent-bundle` and `fluent-syntax` (one string source for every surface); `keyring` (desktop secrets); `figment` (the config chain); `tracing` with OpenTelemetry and the OpenFeature SDK (telemetry and flags). Rejected with reasons in the ADRs: UniFFI, Diplomat, typeshare, `nami` and the other Rust reactive frameworks, `irpc`, libp2p, CRDT libraries.
 
 ## Verification
 
