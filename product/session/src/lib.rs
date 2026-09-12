@@ -222,8 +222,7 @@ impl ProductSession {
             "pending scope ID must not be empty"
         );
         let runtime = Arc::new(scopes::Services { chat, composer });
-        let node = scopes::Node::new("local".into(), runtime, Default::default());
-        let workspace = node.workspace("default".into(), Default::default());
+        let workspace = scopes::Node::new("local".into(), runtime).workspace("default".into());
         let conversations = Arc::new(Watch::new(Vec::new()));
         let established = Established::default();
         let pending = ChatClient::pending(
@@ -257,7 +256,7 @@ impl ProductSession {
         &self.chats.pending_scope_id
     }
 
-    pub fn with_capability_service(mut self, service: CapabilityServiceClient) -> Self {
+    fn with_capability_service(mut self, service: CapabilityServiceClient) -> Self {
         self.capability_service = Some(service);
         self.availability.set(SessionAvailability {
             composer: FeatureAvailability::Unknown,
