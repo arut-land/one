@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import {
   ChatStatus,
   chatReader,
+  followComposer,
   describeChatError,
   describeComposerError,
   observeScope,
@@ -15,9 +16,13 @@ export function useChat(session: ProductSessionHandle) {
   const composer = useMemo(() => chat.composer(), [chat]);
   const transcript = useMemo(() => observeScope({ state: chatReader(chat), changes: cb => chat.chatChanges(cb) }), [chat]);
   const draft = useMemo(() => observeScope({ state: () => composer.state(), changes: cb => composer.composerChanges(cb) }), [composer]);
-  const list = useMemo(() => observeScope({ state: () => session.conversations().state(), changes: cb => session.conversations().listChanges(cb) }), [session]);
-  useEffect(() => { void composer.initialize(); void composer.follow(); return () => { transcript.dispose(); draft.dispose(); }; }, [composer, transcript, draft]);
-  useEffect(() => () => list.dispose(), [list]);
+  const conversations = useMemo(() => session.conversations(), [session]);
+  const list = useMemo(() => observeScope({ state: () => conversations.state(), changes: cb => conversations.listChanges(cb) }), [conversations]);
+  useEffect(() => {
+    const stop = followComposer(composer);
+    return () => { stop(); transcript.dispose(); draft.dispose(); composer.dispose(); chat.dispose(); };
+  }, [chat, composer, transcript, draft]);
+  useEffect(() => () => { list.dispose(); conversations.dispose(); }, [list, conversations]);
   const state = useObservable(transcript);
   const composerState = useObservable(draft);
   const history = useObservable(list);
