@@ -5,6 +5,31 @@
 //! The decoder accepts fragmented envelopes and limits each message to 8 MiB.
 //! Errors preserve status codes and opaque details. The axum router owns framing,
 //! not product dispatch. Request-streaming methods return Unimplemented.
+//!
+//! ADR 0009 names the `connectrpc` crate as a candidate to replace this framing.
+//! It was spiked at 0.9.0 and the framing stays, for reasons measured rather
+//! than guessed. The spike did work: unary and server streaming passed the whole
+//! `tools/conformance` RPC suite over TCP with connectrpc on the server, on the
+//! client, and on both at once. What it could not do is replace this file.
+//!
+//! connectrpc is generic over `buffa::Message`, a protobuf runtime that is not
+//! the `prost` every contract here is built on (ADR 0015), and `RpcChannel` is
+//! byte-erased. Bridging the two costs a hand-written passthrough message
+//! implementing `buffa::Message`, `MessageView` and `HasMessageView` plus an
+//! `OwnedView` newtype, a status-code map in both directions, the `-bin` header
+//! rule in both directions, and a `&'static str` interner because
+//! `Spec::procedure` is `&'static` while `RpcChannel` is handed a `&str`. That
+//! came to more lines than the framing and the router here together, and it put
+//! a second protobuf runtime, hyper, h2 and tower in the graph. It also cannot
+//! serve `transports/ipc`: connectrpc's client is TCP, its Unix-socket path is
+//! HTTP/2-only, and `arutd` speaks HTTP/1.1 on that socket, so the route the
+//! Linux surface actually uses would need a hand-written `ClientTransport` too.
+//!
+//! Two things the spike found are kept: the conformance suite's procedures now
+//! have the `/package.Service/Method` shape the protocol requires, and
+//! `framing::parse_error` accepts the unpadded base64 the Connect specification
+//! actually mandates for error details, which this client used to reject.
+//! Revisit when connectrpc offers a prost path or a byte-level handler.
 
 #![cfg(not(target_arch = "wasm32"))]
 pub mod framing;
