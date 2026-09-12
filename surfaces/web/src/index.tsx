@@ -162,6 +162,9 @@ export function ChatView(props: ChatViewProps) {
               placeholder={t.composerPlaceholder(strings)}
               value={props.draft}
               onChange={(event) => props.setDraft(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" && event.nativeEvent.isComposing) event.preventDefault();
+              }}
             />
             <button aria-label={t.actionSendMessage(strings)} disabled={props.sending || !props.draft.trim()}>
               {props.sending ? <span className="spinner" /> : <SendIcon />}

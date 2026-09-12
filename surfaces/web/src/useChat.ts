@@ -1,47 +1,86 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import {
   ChatStatus,
+  ComposerStatus,
   chatReader,
   followComposer,
   describeChatError,
   describeComposerError,
   observeScope,
+  type ChatHandle,
+  type ChatMessage,
+  type ChatState,
+  type ChatSummary,
+  type ComposerState,
+  type ObservableStore,
   type ProductSessionHandle,
 } from "@arut/bindings-typescript";
 import { useObservable } from "@arut/bindings-typescript/react";
 
-// Navigation is surface state. Every rendered projection has its own observer.
+function constantStore<T>(value: T): ObservableStore<T> {
+  return { getSnapshot: () => value, subscribe: () => () => {}, dispose: () => {} };
+}
+const emptyTranscript = constantStore<ChatState & { messages: ChatMessage[] }>({
+  id: null, lastMessageId: 0n, status: ChatStatus.Idle, error: null, messages: [],
+});
+const emptyDraft = constantStore<ComposerState>({
+  text: "", revision: 0n, status: ComposerStatus.Connecting, error: null,
+});
+const emptyList = constantStore<ChatSummary[]>([]);
+
+function bindChat(chat: ChatHandle) {
+  const composer = chat.composer();
+  const transcript = observeScope({ state: chatReader(chat), changes: cb => chat.chatChanges(cb) });
+  const draft = observeScope({ state: () => composer.state(), changes: cb => composer.composerChanges(cb) });
+  const stop = followComposer(composer);
+  return {
+    chat, composer, transcript, draft,
+    dispose() {
+      stop();
+      transcript.dispose();
+      draft.dispose();
+      composer.dispose();
+      chat.dispose();
+    },
+  };
+}
+
+type Selection = { kind: "current" | "new" } | { kind: "existing"; id: string };
+
 export function useChat(session: ProductSessionHandle) {
-  const [chat, select] = useState(() => session.chat());
-  const composer = useMemo(() => chat.composer(), [chat]);
-  const transcript = useMemo(() => observeScope({ state: chatReader(chat), changes: cb => chat.chatChanges(cb) }), [chat]);
-  const draft = useMemo(() => observeScope({ state: () => composer.state(), changes: cb => composer.composerChanges(cb) }), [composer]);
-  const conversations = useMemo(() => session.conversations(), [session]);
-  const list = useMemo(() => observeScope({ state: () => conversations.state(), changes: cb => conversations.listChanges(cb) }), [conversations]);
+  const [selection, select] = useState<Selection>({ kind: "current" });
+  const [binding, setBinding] = useState<ReturnType<typeof bindChat> | null>(null);
+  const [list, setList] = useState<ObservableStore<ChatSummary[]>>(emptyList);
+
+  // Each effect setup owns fresh handles, including Strict Mode's replay.
   useEffect(() => {
-    const stop = followComposer(composer);
-    return () => { stop(); transcript.dispose(); draft.dispose(); composer.dispose(); chat.dispose(); };
-  }, [chat, composer, transcript, draft]);
-  useEffect(() => () => { list.dispose(); conversations.dispose(); }, [list, conversations]);
-  const state = useObservable(transcript);
-  const composerState = useObservable(draft);
+    const chat = selection.kind === "new" ? session.newChat()
+      : selection.kind === "existing" ? session.selectChat(selection.id) ?? session.chat()
+      : session.chat();
+    const next = bindChat(chat);
+    setBinding(next);
+    return () => next.dispose();
+  }, [session, selection]);
+  useEffect(() => {
+    const conversations = session.conversations();
+    const next = observeScope({ state: () => conversations.state(), changes: cb => conversations.listChanges(cb) });
+    setList(next);
+    return () => { next.dispose(); conversations.dispose(); };
+  }, [session]);
+
+  const state = useObservable(binding?.transcript ?? emptyTranscript);
+  const composerState = useObservable(binding?.draft ?? emptyDraft);
   const history = useObservable(list);
-  // The chat's own error takes precedence; a composer-only failure (a
-  // background resync, say) still needs to reach the person even when the
-  // chat itself is idle.
-  const error = state.error
-    ? describeChatError(state.error)
-    : composerState.error
-      ? describeComposerError(composerState.error)
-      : null;
+  const error = state.error ? describeChatError(state.error)
+    : composerState.error ? describeComposerError(composerState.error) : null;
   return {
     snapshot: { ...state, chatId: state.id, error },
     draft: composerState.text,
     history,
-    sending: state.status === ChatStatus.Sending,
-    setDraft: (text: string) => { void composer.replace(text); },
-    send: () => { void chat.send(composer.state().text); },
-    newChat: () => select(session.newChat()),
-    selectChat: (id: string) => { const next = session.selectChat(id); if (next) select(next); },
+    sending: !binding || state.status === ChatStatus.Sending,
+    setDraft: (text: string) => { void binding?.composer.replace(text); },
+    send: () => { if (binding) void binding.chat.send(binding.composer.state().text); },
+    newChat: () => select({ kind: "new" }),
+    selectChat: (id: string) => select({ kind: "existing", id }),
   };
 }
