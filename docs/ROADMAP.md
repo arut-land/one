@@ -17,7 +17,7 @@ Replace the substrates the current chat slice sits on so that everything after i
 
 Exit: the existing chat behavior runs on Linux, macOS, and Android through the new substrates with no per-language view-model, and the web surface receives updates.
 
-Status on 2026-09-12: all eight steps are implemented and gated. Verified on real runs: Linux GTK against a spawned `arutd` over the Unix socket, the web surface in a browser, wasm invalidation delivery under Node, and every Rust and TypeScript gate. Not yet run: Android and macOS, which need their toolchains; sending through the GTK window. Two cleanup passes on 2026-09-13 encoded facts as protobuf rows, typed availability, added the `BlobStore` suite, added workspace lints, CI, and licensing files. IDs come through an `IdSource` port because the wasm core has no clock or entropy; the browser supplies UUIDv7.
+Status on 2026-09-12: all eight steps are implemented and gated. Verified on real runs: Linux GTK against a spawned `arutd` over the Unix socket, the web surface in a browser, wasm invalidation delivery under Node, and every Rust and TypeScript gate. Not yet run: Android and macOS, which need their toolchains; sending through the GTK window. Two cleanup passes on 2026-09-13 encoded facts as protobuf rows, typed availability, added the `BlobStore` suite, added workspace lints, CI, and licensing files. IDs come through an `IdSource` port because the wasm core has no clock or entropy; the browser supplies UUIDv7. A third pass on 2026-09-13 closed step 2's remaining gap with an `async-executor` host-polled `Spawner` in `runtimes/host-polled` for the wasm and Android hosts, and hung a `CancellationToken` tree off the typed scopes.
 
 ## Phase 1: Daily driver (v1)
 

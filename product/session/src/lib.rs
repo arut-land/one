@@ -91,20 +91,25 @@ impl ChatStarted for RegisterChat {
 }
 
 fn title_of(chat: &ChatClient) -> String {
-    chat.state()
-        .messages
-        .first()
-        .map(|message| {
-            message
-                .text
-                .split_whitespace()
-                .collect::<Vec<_>>()
-                .join(" ")
-                .chars()
-                .take(48)
-                .collect()
-        })
-        .unwrap_or_default()
+    // Reads the first message in place: a title is two words off the front of
+    // a transcript and must not cost a copy of the whole thing, once per
+    // conversation, every time a session lists them.
+    chat.read_state(|state| {
+        state
+            .messages
+            .first()
+            .map(|message| {
+                message
+                    .text
+                    .split_whitespace()
+                    .collect::<Vec<_>>()
+                    .join(" ")
+                    .chars()
+                    .take(48)
+                    .collect()
+            })
+            .unwrap_or_default()
+    })
 }
 
 impl SessionChats {
