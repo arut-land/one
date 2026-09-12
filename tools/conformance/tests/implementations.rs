@@ -1,5 +1,5 @@
 use arut_conformance::*;
-use arut_storage::{Directory, FactLog, MemoryLog, MemoryStore};
+use arut_storage::{BlobStore, Directory, FactLog, MemoryLog, MemoryStore};
 use std::sync::{
     Arc,
     atomic::{AtomicU64, Ordering},
@@ -26,13 +26,16 @@ fn directory_storage_reopens_after_compaction() {
     fact_log(&store.log("suite").unwrap());
     blobs(&store);
     key_value(&store);
+    let blob = store.put_blob(b"kept across restarts").unwrap();
     drop(store);
-    let reopened = Directory::open(&path)
-        .unwrap()
-        .log::<String>("suite")
-        .unwrap();
-    assert_eq!(reopened.read_from(2).unwrap()[0].fact, "third");
-    assert_eq!(reopened.outcome_of("one").unwrap().unwrap().fact, "first");
+    let reopened = Directory::open(&path).unwrap();
+    assert_eq!(
+        reopened.get_blob(&blob).unwrap(),
+        Some(b"kept across restarts".to_vec())
+    );
+    let log = reopened.log::<String>("suite").unwrap();
+    assert_eq!(log.read_from(2).unwrap()[0].fact, "third");
+    assert_eq!(log.outcome_of("one").unwrap().unwrap().fact, "first");
     std::fs::remove_dir_all(path).unwrap();
 }
 #[test]
