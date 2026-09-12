@@ -1,35 +1,25 @@
 #[cfg(unix)]
 pub mod child;
 pub mod hosting;
-use arut_feature_chat::composer::ComposerCheckpoint;
 use arut_feature_chat::composer::authority::ComposerAuthority;
-use arut_feature_chat::composer::service::{
-    ComposerServiceImpl, checkpoint_from_wire, checkpoint_to_wire,
-};
+use arut_feature_chat::composer::service::ComposerServiceImpl;
 use arut_feature_chat::service::ChatServiceImpl;
 use arut_protocol::capability::v1::CapabilityServiceRouter;
 use arut_protocol::capability_manifest::CapabilityServiceImpl;
-use arut_protocol::chat::composer::v1::{
-    ComposerAuthorityCheckpoint as WireCheckpoint, ComposerServiceRouter,
-};
+use arut_protocol::chat::composer::v1::ComposerServiceRouter;
 use arut_protocol::chat::v1::ChatServiceRouter;
 use arut_rpc::{RpcRegistry, RpcService};
 use axum::Router;
-use prost::Message;
-use std::io::Write;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::Arc;
 
 pub fn app(data_path: PathBuf) -> Result<Router, String> {
-    let authority = Arc::new(ComposerAuthority::from_checkpoint(load_checkpoint(
-        &data_path,
-    )?));
-    let persistence_path = Arc::new(data_path);
-    let composer = Arc::new(ComposerServiceImpl::with_persistence(
-        Arc::clone(&authority),
-        move |checkpoint| persist_checkpoint(&persistence_path, checkpoint),
-    ));
-    let chat = Arc::new(ChatServiceImpl::new(authority));
+    let directory = Arc::new(arut_storage::Directory::open(data_path).map_err(|e| e.to_string())?);
+    let authority = Arc::new(ComposerAuthority::with_store(directory.clone()));
+    let composer = Arc::new(ComposerServiceImpl::new(Arc::clone(&authority)));
+    let log = directory.log("chat").map_err(|e| e.to_string())?;
+    let chat =
+        Arc::new(ChatServiceImpl::with_log(authority, Arc::new(log)).map_err(|e| e.to_string())?);
     let composer_router: Arc<dyn RpcService> = Arc::new(ComposerServiceRouter::new(composer));
     let chat_router: Arc<dyn RpcService> = Arc::new(ChatServiceRouter::new(chat));
     let registry = RpcRegistry::default()
@@ -49,45 +39,10 @@ pub fn app(data_path: PathBuf) -> Result<Router, String> {
     Ok(arut_transport_connect_http::router(registry))
 }
 
-fn load_checkpoint(path: &Path) -> Result<ComposerCheckpoint, String> {
-    if !path.exists() {
-        return Ok(ComposerCheckpoint::default());
-    }
-    let bytes = std::fs::read(path).map_err(|error| error.to_string())?;
-    WireCheckpoint::decode(bytes.as_slice())
-        .map(checkpoint_from_wire)
-        .map_err(|error| error.to_string())
-}
-
-fn persist_checkpoint(path: &Path, checkpoint: &ComposerCheckpoint) -> Result<(), String> {
-    let temporary = path.with_extension("tmp");
-    let mut file = std::fs::File::create(&temporary).map_err(|error| error.to_string())?;
-    file.write_all(&checkpoint_to_wire(checkpoint).encode_to_vec())
-        .map_err(|error| error.to_string())?;
-    file.sync_all().map_err(|error| error.to_string())?;
-    std::fs::rename(&temporary, path).map_err(|error| error.to_string())?;
-    sync_parent(path)
-}
-
-#[cfg(unix)]
-fn sync_parent(path: &Path) -> Result<(), String> {
-    let Some(parent) = path.parent() else {
-        return Ok(());
-    };
-    std::fs::File::open(parent)
-        .and_then(|directory| directory.sync_all())
-        .map_err(|error| error.to_string())
-}
-
-#[cfg(not(unix))]
-fn sync_parent(_path: &Path) -> Result<(), String> {
-    Ok(())
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use arut_feature_chat::composer::{ComposerScope, ReplaceComposer, ReplaceOutcome};
+    use arut_feature_chat::composer::ComposerScope;
     use arut_protocol::capability::v1::{CapabilityServiceClient, GetCapabilitiesRequest};
     use arut_protocol::chat::composer::v1::{
         COMPOSER_SERVICE_DESCRIPTOR, ComposerServiceClient, ReplaceComposerRequest,
@@ -105,7 +60,7 @@ mod tests {
     async fn generated_clients_reach_nested_composer_and_chat_over_http() {
         let path =
             std::env::temp_dir().join(format!("arut-composer-http-test-{}.pb", std::process::id()));
-        let _ = std::fs::remove_file(&path);
+        let _ = std::fs::remove_dir_all(&path);
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let address = listener.local_addr().unwrap();
         let server_path = path.clone();
@@ -199,57 +154,6 @@ mod tests {
                 .any(|service| service.package == COMPOSER_SERVICE_DESCRIPTOR.package)
         );
         server.abort();
-        let _ = std::fs::remove_file(path);
-    }
-
-    #[test]
-    fn checkpoint_restores_multiple_chat_scopes_but_not_pending() {
-        let path =
-            std::env::temp_dir().join(format!("arut-composer-restart-{}.pb", std::process::id()));
-        let _ = std::fs::remove_file(&path);
-        let authority = ComposerAuthority::default();
-        for (scope, command, text) in [
-            (ComposerScope::chat("one"), "one", "first"),
-            (ComposerScope::chat("two"), "two", "second"),
-            (ComposerScope::pending("account"), "pending", "ephemeral"),
-        ] {
-            authority
-                .replace_durable(
-                    ReplaceComposer {
-                        scope,
-                        command_id: command.into(),
-                        authority_epoch: 1,
-                        base_revision: 0,
-                        text: text.into(),
-                    },
-                    |checkpoint| persist_checkpoint(&path, checkpoint),
-                )
-                .unwrap();
-        }
-
-        let restored = ComposerAuthority::from_checkpoint(load_checkpoint(&path).unwrap());
-        assert_eq!(restored.snapshot(&ComposerScope::chat("one")).text, "first");
-        assert_eq!(
-            restored.snapshot(&ComposerScope::chat("two")).text,
-            "second"
-        );
-        assert_eq!(
-            restored.snapshot(&ComposerScope::pending("account")).text,
-            ""
-        );
-        assert!(matches!(
-            restored.replace(ReplaceComposer {
-                scope: ComposerScope::chat("one"),
-                command_id: "one".into(),
-                authority_epoch: 1,
-                base_revision: 0,
-                text: "first".into(),
-            }),
-            ReplaceOutcome::Applied {
-                duplicate: true,
-                ..
-            }
-        ));
-        let _ = std::fs::remove_file(path);
+        let _ = std::fs::remove_dir_all(path);
     }
 }

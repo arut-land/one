@@ -1,138 +1,205 @@
 use crate::composer::authority::{ComposerAuthority, PromoteError};
-use crate::domain;
-use arut_protocol::chat::composer::v1::ComposerSnapshot as WireComposerSnapshot;
+use crate::{
+    composer::{ComposerScope, ComposerSnapshot},
+    facts::{ChatFact, ChatProjection},
+};
 use arut_protocol::chat::v1::{
     ChatMessage, ChatRole, ChatService, SendMessageRequest, SendMessageResponse, StartChatRequest,
     StartChatResponse,
 };
 use arut_rpc::{Code, Request, Response, RpcFuture, Status};
-use std::collections::HashMap;
+use arut_storage::{FactLog, MemoryLog, StorageError};
 use std::sync::{Arc, Mutex};
 use uuid::Uuid;
 
-#[derive(Default)]
 pub struct ChatServiceImpl {
     composer: Arc<ComposerAuthority>,
-    chats: Mutex<HashMap<String, ChatRecord>>,
-    starts: Mutex<HashMap<(String, String), StartChatResponse>>,
-    start_lock: Mutex<()>,
+    log: Arc<dyn FactLog<ChatFact>>,
+    state: Mutex<Stored>,
 }
-
-#[derive(Default)]
-struct ChatRecord {
-    messages: Vec<ChatMessage>,
-    next_message_id: u64,
+struct Stored {
+    projection: ChatProjection,
+    sequence: u64,
 }
-
-impl ChatRecord {
-    fn append_exchange(&mut self, text: String) -> Vec<ChatMessage> {
-        let user = ChatMessage {
-            id: self.next_id(),
-            role: ChatRole::User as i32,
-            text: text.clone(),
-        };
-        let assistant = ChatMessage {
-            id: self.next_id(),
-            role: ChatRole::Assistant as i32,
-            text: domain::respond(&text),
-        };
-        self.messages.extend([user.clone(), assistant.clone()]);
-        vec![user, assistant]
-    }
-
-    fn next_id(&mut self) -> u64 {
-        self.next_message_id += 1;
-        self.next_message_id
+impl Default for ChatServiceImpl {
+    fn default() -> Self {
+        Self::new(Arc::new(ComposerAuthority::default()))
     }
 }
-
 impl ChatServiceImpl {
     pub fn new(composer: Arc<ComposerAuthority>) -> Self {
-        Self {
-            composer,
-            chats: Mutex::new(HashMap::new()),
-            starts: Mutex::new(HashMap::new()),
-            start_lock: Mutex::new(()),
-        }
+        Self::with_log(composer, Arc::new(MemoryLog::default())).expect("empty memory log")
     }
-
+    pub fn with_log(
+        composer: Arc<ComposerAuthority>,
+        log: Arc<dyn FactLog<ChatFact>>,
+    ) -> Result<Self, StorageError> {
+        let snapshot = log.snapshot()?;
+        let mut projection: ChatProjection = snapshot
+            .as_ref()
+            .map(|s| serde_json::from_slice(&s.data))
+            .transpose()?
+            .unwrap_or_default();
+        let mut sequence = snapshot.as_ref().map_or(0, |s| s.sequence);
+        for record in log.read_from(sequence)? {
+            projection.apply(&record.fact);
+            sequence = record.sequence;
+        }
+        Ok(Self {
+            composer,
+            log,
+            state: Mutex::new(Stored {
+                projection,
+                sequence,
+            }),
+        })
+    }
     pub fn composer_authority(&self) -> Arc<ComposerAuthority> {
-        Arc::clone(&self.composer)
+        self.composer.clone()
+    }
+    pub fn projection(&self) -> ChatProjection {
+        self.state.lock().unwrap().projection.clone()
+    }
+    fn commit(
+        &self,
+        state: &mut Stored,
+        id: &str,
+        fact: ChatFact,
+    ) -> Result<ChatFact, StorageError> {
+        let record = self.log.append(state.sequence, 1, id, fact)?;
+        if record.sequence > state.sequence {
+            state.projection.apply(&record.fact);
+            state.sequence = record.sequence;
+        }
+        Ok(record.fact)
     }
 }
-
+fn wire(messages: Vec<crate::product::ChatMessage>) -> Vec<ChatMessage> {
+    messages
+        .into_iter()
+        .map(|m| ChatMessage {
+            id: m.id,
+            text: m.text,
+            role: match m.role {
+                crate::product::ChatRole::User => ChatRole::User,
+                crate::product::ChatRole::Assistant => ChatRole::Assistant,
+            } as i32,
+        })
+        .collect()
+}
+fn start_response(fact: ChatFact) -> StartChatResponse {
+    StartChatResponse {
+        composer: Some(ComposerSnapshot::empty(ComposerScope::chat(&fact.chat_id)).into()),
+        chat_id: fact.chat_id,
+        messages: wire(fact.messages),
+    }
+}
+fn storage(error: StorageError) -> Status {
+    Status::new(Code::Internal, error.to_string())
+}
 impl ChatService for ChatServiceImpl {
+    fn list_conversations(
+        &self,
+        _: Request<arut_protocol::chat::v1::ListConversationsRequest>,
+    ) -> RpcFuture<Response<arut_protocol::chat::v1::ListConversationsResponse>> {
+        let conversations = self
+            .projection()
+            .conversations
+            .into_iter()
+            .map(|(id, messages)| arut_protocol::chat::v1::Conversation {
+                id,
+                messages: wire(messages),
+            })
+            .collect();
+        Box::pin(async move {
+            Ok(Response::new(
+                arut_protocol::chat::v1::ListConversationsResponse { conversations },
+            ))
+        })
+    }
+
     fn send_message(
         &self,
         request: Request<SendMessageRequest>,
     ) -> RpcFuture<Response<SendMessageResponse>> {
         let message = request.message;
-        let result = self
-            .chats
-            .lock()
-            .expect("chat authority lock poisoned")
-            .get_mut(&message.chat_id)
-            .map(|chat| chat.append_exchange(message.text));
-        Box::pin(async move {
-            let messages = result.ok_or_else(|| Status::new(Code::NotFound, "chat not found"))?;
-            Ok(Response::new(SendMessageResponse { messages }))
-        })
+        let result = (|| {
+            if Uuid::parse_str(&message.command_id)
+                .ok()
+                .is_none_or(|id| id.get_version_num() != 7)
+            {
+                return Err(Status::invalid_argument(
+                    "send requires a UUIDv7 command ID",
+                ));
+            }
+            let mut state = self.state.lock().unwrap();
+            if let Some(record) = self.log.outcome_of(&message.command_id).map_err(storage)? {
+                return Ok(Response::new(SendMessageResponse {
+                    messages: wire(record.fact.messages),
+                }));
+            }
+            if !state
+                .projection
+                .conversations
+                .contains_key(&message.chat_id)
+            {
+                return Err(Status::new(Code::NotFound, "conversation not found"));
+            }
+            let fact = state.projection.exchange(
+                message.chat_id,
+                None,
+                message.text,
+                message.command_id.clone(),
+            );
+            let fact = self
+                .commit(&mut state, &message.command_id, fact)
+                .map_err(storage)?;
+            Ok(Response::new(SendMessageResponse {
+                messages: wire(fact.messages),
+            }))
+        })();
+        Box::pin(async move { result })
     }
-
     fn start_chat(
         &self,
         request: Request<StartChatRequest>,
     ) -> RpcFuture<Response<StartChatResponse>> {
         let message = request.message;
-        let _start = self.start_lock.lock().expect("start chat lock poisoned");
-        let key = (message.pending_scope_id.clone(), message.command_id.clone());
-        if let Some(response) = self
-            .starts
-            .lock()
-            .expect("start command lock poisoned")
-            .get(&key)
-            .cloned()
-        {
-            return Box::pin(async move { Ok(Response::new(response)) });
-        }
-        let chat_id = Uuid::new_v4().to_string();
-        let text = message.text.clone();
-        let result = self.composer.promote_pending(
-            &message.pending_scope_id,
-            message.expected_revision,
-            &message.text,
-            &chat_id,
-            || {
-                let mut chats = self.chats.lock().expect("chat authority lock poisoned");
-                let mut chat = ChatRecord::default();
-                let messages = chat.append_exchange(text);
-                chats.insert(chat_id.clone(), chat);
-                Ok::<_, core::convert::Infallible>(messages)
-            },
-        );
-        let response = match result.expect("infallible chat commit failed") {
-            Ok((messages, composer)) => {
-                let response = StartChatResponse {
-                    chat_id: chat_id.clone(),
-                    messages,
-                    composer: Some(WireComposerSnapshot::from(composer)),
-                };
-                self.starts
-                    .lock()
-                    .expect("start command lock poisoned")
-                    .insert(key, response.clone());
-                Ok(Response::new(response))
+        let result = (|| {
+            let mut state = self.state.lock().unwrap();
+            if let Some(record) = self.log.outcome_of(&message.command_id).map_err(storage)? {
+                return Ok(Response::new(start_response(record.fact)));
             }
-            Err(PromoteError::RevisionConflict(_)) => Err(Status::new(
-                Code::Aborted,
-                "pending composer revision changed",
-            )),
-            Err(PromoteError::TextMismatch(_)) => Err(Status::new(
-                Code::FailedPrecondition,
-                "pending composer text does not match",
-            )),
-        };
-        Box::pin(async move { response })
+            let chat_id = Uuid::now_v7().to_string();
+            let fact = state.projection.exchange(
+                chat_id.clone(),
+                Some(message.pending_scope_id.clone()),
+                message.text.clone(),
+                message.command_id.clone(),
+            );
+            let result = self
+                .composer
+                .promote_pending(
+                    &message.pending_scope_id,
+                    message.expected_revision,
+                    &message.text,
+                    &chat_id,
+                    || self.commit(&mut state, &message.command_id, fact),
+                )
+                .map_err(storage)?;
+            match result {
+                Ok((fact, _)) => Ok(Response::new(start_response(fact))),
+                Err(PromoteError::RevisionConflict(_)) => Err(Status::new(
+                    Code::Aborted,
+                    "pending composer revision changed",
+                )),
+                Err(PromoteError::TextMismatch(_)) => Err(Status::new(
+                    Code::FailedPrecondition,
+                    "pending composer text changed",
+                )),
+            }
+        })();
+        Box::pin(async move { result })
     }
 }
 

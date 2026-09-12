@@ -20,6 +20,13 @@ mod tests {
     struct Responder;
 
     impl ChatService for Responder {
+        fn list_conversations(
+            &self,
+            _: Request<crate::chat::v1::ListConversationsRequest>,
+        ) -> RpcFuture<Response<crate::chat::v1::ListConversationsResponse>> {
+            unreachable!()
+        }
+
         fn send_message(
             &self,
             request: Request<SendMessageRequest>,
@@ -47,6 +54,7 @@ mod tests {
     fn generated_direct_client_passes_typed_values() {
         let client = ChatServiceClient::direct(Arc::new(Responder));
         let response = block_on(client.send_message(Request::new(SendMessageRequest {
+            command_id: "test".into(),
             chat_id: "chat".into(),
             text: "direct".into(),
         })))
@@ -60,6 +68,7 @@ mod tests {
         let router = Arc::new(ChatServiceRouter::new(Arc::new(Responder)));
         let client = ChatServiceClient::remote(router);
         let response = block_on(client.send_message(Request::new(SendMessageRequest {
+            command_id: "test".into(),
             chat_id: "chat".into(),
             text: "remote".into(),
         })))
