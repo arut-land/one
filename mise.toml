@@ -24,6 +24,8 @@ run = [
   "cargo machete",
   "cargo check -p arut_ffi --target wasm32-unknown-unknown",
   "test -z \"$(cargo tree -i wasm-bindgen --target wasm32-unknown-unknown -p arut_ffi 2>/dev/null)\" || (echo 'wasm-bindgen leaked into the arut_ffi wasm dependency graph; see docs/ECOSYSTEM.md wasm rule' && exit 1)",
+  "cargo check -p arut-i18n --target wasm32-unknown-unknown",
+  "test -z \"$(cargo tree -i wasm-bindgen --target wasm32-unknown-unknown -p arut-i18n 2>/dev/null)\" || (echo 'wasm-bindgen leaked into the arut-i18n wasm dependency graph; see docs/ECOSYSTEM.md wasm rule' && exit 1)",
   "buf lint",
   "pnpm check",
 ]

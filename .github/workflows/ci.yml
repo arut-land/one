@@ -60,6 +60,20 @@ jobs:
             exit 1
           fi
 
+      - name: cargo check (wasm, arut-i18n)
+        run: cargo check -p arut-i18n --target wasm32-unknown-unknown
+
+      # The Fluent string source is read by the wasm core's consumers too, so
+      # it lives under the same rule as arut_ffi.
+      - name: Assert no wasm-bindgen in arut-i18n's wasm graph
+        run: |
+          leaked="$(cargo tree -i wasm-bindgen --target wasm32-unknown-unknown -p arut-i18n 2>/dev/null)"
+          if [ -n "$leaked" ]; then
+            echo "wasm-bindgen leaked into the arut-i18n wasm dependency graph:"
+            echo "$leaked"
+            exit 1
+          fi
+
       - name: buf lint
         run: buf lint
 
