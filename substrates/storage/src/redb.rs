@@ -116,7 +116,7 @@ struct Head {
 
 fn head(write: &WriteTransaction) -> Result<Head> {
     let compacted = watermark(write)?;
-    let snapshot = saved(write)?;
+    let snapshot = saved(&write.open_table(SNAPSHOT)?)?;
     let newest = write
         .open_table(RECORDS)?
         .last()?
@@ -144,23 +144,26 @@ fn watermark(write: &WriteTransaction) -> Result<u64> {
         .map_or(0, |value| value.value()))
 }
 
-fn saved(write: &WriteTransaction) -> Result<Option<Snapshot>> {
-    write
-        .open_table(SNAPSHOT)?
+fn saved(table: &impl ReadableTable<&'static str, &'static [u8]>) -> Result<Option<Snapshot>> {
+    table
         .get(SNAPSHOT_KEY)?
         .map(|value| Ok(StoredSnapshot::decode(value.value())?.into()))
         .transpose()
 }
 
 /// A command's record, whether it is still live or already an outcome.
-fn outcome<F: Fact>(write: &WriteTransaction, id: &str) -> Result<Option<Record<F>>> {
-    if let Some(sequence) = write.open_table(COMMANDS)?.get(id)?
-        && let Some(value) = write.open_table(RECORDS)?.get(sequence.value())?
+fn outcome<F: Fact>(
+    records: &impl ReadableTable<u64, &'static [u8]>,
+    commands: &impl ReadableTable<&'static str, u64>,
+    outcomes: &impl ReadableTable<&'static str, &'static [u8]>,
+    id: &str,
+) -> Result<Option<Record<F>>> {
+    if let Some(sequence) = commands.get(id)?
+        && let Some(value) = records.get(sequence.value())?
     {
         return Ok(Some(StoredRecord::decode(value.value())?.into_record()?));
     }
-    write
-        .open_table(OUTCOMES)?
+    outcomes
         .get(id)?
         .map(|value| StoredRecord::decode(value.value())?.into_record())
         .transpose()
@@ -190,7 +193,12 @@ impl<F: Fact> FactLog<F> for RedbLog<F> {
                 actual: head.sequence,
             });
         }
-        let duplicate = outcome(&write, id)?;
+        let duplicate = outcome(
+            &write.open_table(RECORDS)?,
+            &write.open_table(COMMANDS)?,
+            &write.open_table(OUTCOMES)?,
+            id,
+        )?;
         let records = write.open_table(RECORDS)?;
         let mut unseen = Vec::new();
         if let Some(cursor) = cursor {
@@ -222,9 +230,13 @@ impl<F: Fact> FactLog<F> for RedbLog<F> {
     }
 
     fn outcome_of(&self, id: &str) -> Result<Option<Record<F>>> {
-        // A write transaction, not a read one: `outcome` reads three tables and
-        // must not see a half-finished compaction between them.
-        outcome(&self.database.begin_write()?, id)
+        let read = self.database.begin_read()?;
+        outcome(
+            &read.open_table(RECORDS)?,
+            &read.open_table(COMMANDS)?,
+            &read.open_table(OUTCOMES)?,
+            id,
+        )
     }
 
     fn read_from(&self, cursor: u64) -> Result<Vec<Record<F>>> {
@@ -249,7 +261,8 @@ impl<F: Fact> FactLog<F> for RedbLog<F> {
     }
 
     fn snapshot(&self) -> Result<Option<Snapshot>> {
-        saved(&self.database.begin_write()?)
+        let read = self.database.begin_read()?;
+        saved(&read.open_table(SNAPSHOT)?)
     }
 
     fn save_snapshot(&self, snapshot: Snapshot) -> Result<()> {
@@ -275,7 +288,7 @@ impl<F: Fact> FactLog<F> for RedbLog<F> {
 
     fn compact(&self, through: u64) -> Result<()> {
         let write = self.database.begin_write()?;
-        if saved(&write)?.is_none_or(|snapshot| snapshot.sequence < through) {
+        if saved(&write.open_table(SNAPSHOT)?)?.is_none_or(|snapshot| snapshot.sequence < through) {
             return Err(StorageError::SnapshotRequired);
         }
         let reached = watermark(&write)?.max(through);
