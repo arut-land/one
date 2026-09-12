@@ -27,6 +27,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "arut-conformance"
+version = "0.1.0"
+dependencies = [
+ "arut-rpc",
+ "arut-storage",
+ "arut-transport-connect-http",
+ "arut-transport-ipc",
+ "arut-transport-memory",
+ "axum",
+ "futures-util",
+ "tokio",
+]
+
+[[package]]
 name = "arut-feature-chat"
 version = "0.1.0"
 dependencies = [

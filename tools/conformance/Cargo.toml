@@ -1,0 +1,15 @@
+[package]
+name = "arut-conformance"
+version.workspace = true
+edition.workspace = true
+license = "MIT OR Apache-2.0"
+[dependencies]
+arut-rpc.workspace = true
+arut-storage.workspace = true
+futures-util = "0.3.31"
+[dev-dependencies]
+arut-transport-memory.workspace = true
+arut-transport-connect-http.workspace = true
+arut-transport-ipc.workspace = true
+axum = "0.8.4"
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "net", "time"] }
