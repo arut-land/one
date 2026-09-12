@@ -8,9 +8,8 @@ license.workspace = true
 arut-rpc.workspace = true
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-reqwest = { version = "0.13.2", default-features = false, features = ["rustls", "stream", "json"] }
 axum = "0.8.4"
-futures-util = "0.3.31"
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
 base64 = "0.22"
+futures-util = "0.3.31"
+reqwest = { version = "0.13.2", default-features = false, features = ["rustls", "stream", "json"] }
+serde_json = "1"
