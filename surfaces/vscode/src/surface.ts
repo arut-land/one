@@ -40,12 +40,18 @@ export function registerChat(context: vscode.ExtensionContext, session: ProductS
     let chatChanges = chat.chatChanges(() => { void publish(); });
     let composerChanges = composer.composerChanges(() => { void publish(); });
     const listChanges = list.listChanges(() => { void publish(); });
+    // `follow()` runs for the composer's lifetime, resuming the draft's
+    // remote-edit stream until its scope is cancelled (matching every other
+    // surface); it must be restarted whenever `bind` swaps in a new composer.
+    void composer.initialize();
+    void composer.follow();
     const bind = () => {
       chatChanges.cancel(); composerChanges.cancel(); composer.dispose();
       composer = chat.composer();
       chatChanges = chat.chatChanges(() => { void publish(); });
       composerChanges = composer.composerChanges(() => { void publish(); });
       void composer.initialize();
+      void composer.follow();
       void publish();
     };
     current.webview.onDidReceiveMessage(async (message: { type: string; text: string; chatId: string }) => {
