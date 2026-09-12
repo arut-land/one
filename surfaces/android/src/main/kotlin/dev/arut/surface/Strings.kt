@@ -1,40 +1,55 @@
 package dev.arut.surface
 
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.res.stringResource
 import dev.arut.ffi.ChatError
 import dev.arut.ffi.ComposerError
 import dev.arut.ffi.NodeFailure
 
-// The core returns typed outcomes only (ADR 0016); this surface owns every
-// user-facing string. Sentences are written from the person's side of the
-// screen: what happened to what they were doing, not what the core did.
+// The core returns typed outcomes only (ADR 0016) and every sentence lives once
+// in product/i18n as Fluent (ADR 0022). This file is only the mapping from a
+// variant to its string resource in res/values/strings.xml, which
+// `mise run i18n` generates; the lookup and the locale come from Android's own
+// resource system, so this surface localizes like any other Android app.
+//
+// Resource names match `message_key` on the same enum in
+// `arut_feature_chat::errors`, with `-` replaced by `_`.
 
-fun describe(failure: NodeFailure): String = when (failure) {
-    NodeFailure.UNREACHABLE -> "Arut can't reach your node right now."
-    NodeFailure.TIMED_OUT -> "Your node is taking too long to answer."
-    NodeFailure.CANCELLED -> "That request was cancelled before your node answered."
-    NodeFailure.REFUSED -> "Your node refused that request."
-    NodeFailure.OVERLOADED -> "Your node is too busy right now. Try again shortly."
-    NodeFailure.REJECTED -> "Your node couldn't accept that as it stands."
-    NodeFailure.MISSING -> "Your node says that no longer exists."
-    NodeFailure.CONFLICT -> "Something else changed first. Try again."
-    NodeFailure.UNSUPPORTED -> "Your node doesn't support that yet."
-    NodeFailure.INTERNAL -> "Something went wrong on your node."
+/** The `R.string` id for a failure. */
+fun messageResource(failure: NodeFailure): Int = when (failure) {
+    NodeFailure.UNREACHABLE -> R.string.node_failure_unreachable
+    NodeFailure.TIMED_OUT -> R.string.node_failure_timed_out
+    NodeFailure.CANCELLED -> R.string.node_failure_cancelled
+    NodeFailure.REFUSED -> R.string.node_failure_refused
+    NodeFailure.OVERLOADED -> R.string.node_failure_overloaded
+    NodeFailure.REJECTED -> R.string.node_failure_rejected
+    NodeFailure.MISSING -> R.string.node_failure_missing
+    NodeFailure.CONFLICT -> R.string.node_failure_conflict
+    NodeFailure.UNSUPPORTED -> R.string.node_failure_unsupported
+    NodeFailure.INTERNAL -> R.string.node_failure_internal
 }
 
+@Composable
+fun describe(failure: NodeFailure): String = stringResource(messageResource(failure))
+
+@Composable
 fun describe(error: ComposerError): String = when (error) {
     is ComposerError.Node -> describe(error.field0)
-    is ComposerError.RevisionConflict -> "Someone else edited this draft first, so your edit didn't go through."
-    is ComposerError.AuthorityChanged -> "This conversation moved to a new authority, so your edit didn't go through. Try again."
-    is ComposerError.SnapshotMissing -> "Your node didn't send back the draft, so it may be out of sync."
-    is ComposerError.OutcomeMissing -> "Your node didn't say what happened to your edit."
-    is ComposerError.ScopeMissing -> "Your node didn't say which draft it meant."
-    is ComposerError.ScopeMismatch -> "Your node answered about a different draft."
+    is ComposerError.RevisionConflict ->
+        stringResource(R.string.composer_error_revision_conflict, error.current)
+    is ComposerError.AuthorityChanged ->
+        stringResource(R.string.composer_error_authority_changed, error.currentEpoch)
+    is ComposerError.SnapshotMissing -> stringResource(R.string.composer_error_snapshot_missing)
+    is ComposerError.OutcomeMissing -> stringResource(R.string.composer_error_outcome_missing)
+    is ComposerError.ScopeMissing -> stringResource(R.string.composer_error_scope_missing)
+    is ComposerError.ScopeMismatch -> stringResource(R.string.composer_error_scope_mismatch)
 }
 
+@Composable
 fun describe(error: ChatError): String = when (error) {
     is ChatError.Node -> describe(error.field0)
-    is ChatError.NoConversation -> "There's no conversation to send this to yet."
-    is ChatError.Cancelled -> "This conversation closed before your message could send."
+    is ChatError.NoConversation -> stringResource(R.string.chat_error_no_conversation)
+    is ChatError.Cancelled -> stringResource(R.string.chat_error_cancelled)
     is ChatError.Draft -> describe(error.field0)
-    is ChatError.ChatIdMissing -> "Your node started a conversation but didn't tell us its name."
+    is ChatError.ChatIdMissing -> stringResource(R.string.chat_error_chat_id_missing)
 }
