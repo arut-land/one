@@ -15,6 +15,7 @@ members = [
     "substrates/watch",
     "surfaces/linux-gtk",
     "tools/conformance",
+    "tools/i18n",
     "transports/connect-http",
     "transports/ipc",
 ]

@@ -75,6 +75,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "arut-i18n-gen"
+version = "0.1.0"
+dependencies = [
+ "arut-i18n",
+ "fluent-syntax",
+ "serde_json",
+]
+
+[[package]]
 name = "arut-linux-gtk"
 version = "0.1.0"
 dependencies = [
