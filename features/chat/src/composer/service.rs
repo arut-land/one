@@ -64,9 +64,17 @@ impl ComposerService for ComposerServiceImpl {
         &self,
         request: Request<WatchComposerRequest>,
     ) -> RpcFuture<Response<RpcStream<WatchComposerResponse>>> {
+        let after_revision = request.message.after_revision;
         let Some(scope) = request.message.scope.and_then(scope_from_wire) else {
             return Box::pin(async { Err(invalid_scope()) });
         };
+        // The scope ID is a draft's address and can carry a person's own words,
+        // so the span names the stream and the cursor and nothing else.
+        tracing::debug!(
+            stream = "composer",
+            after_revision,
+            "serving a composer stream from a cursor"
+        );
         let authority = self.authority.clone();
         let changes = authority.changes(&scope);
         Box::pin(async move {

@@ -42,6 +42,7 @@ impl<F: Fact> FactLog<F> for MemoryLog<F> {
             fact,
         };
         state.records.push(record.clone());
+        tracing::debug!(sequence = record.sequence, epoch, "fact appended");
         Ok(record)
     }
     fn outcome_of(&self, id: &str) -> Result<Option<Record<F>>> {
