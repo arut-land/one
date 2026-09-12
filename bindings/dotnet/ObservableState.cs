@@ -16,12 +16,11 @@ public sealed class ObservableState<T> : IDisposable
     private T value;
 
     public ObservableState(
-        T initial,
         Func<T> read,
         Func<Action<ulong>, IDisposable> subscribe)
     {
-        value = initial;
         this.read = read;
+        value = read();
         subscription = subscribe(Invalidate);
     }
 
@@ -30,7 +29,6 @@ public sealed class ObservableState<T> : IDisposable
     public event Action? Changed;
 
     public void Observe(
-        T initial,
         Func<T> read,
         Func<Action<ulong>, IDisposable> subscribe)
     {
@@ -38,7 +36,7 @@ public sealed class ObservableState<T> : IDisposable
         Interlocked.Increment(ref generation);
         subscription.Dispose();
         this.read = read;
-        Set(initial);
+        Set(read());
         var observedGeneration = Volatile.Read(ref generation);
         subscription = subscribe(revision => Invalidate(observedGeneration, revision));
     }

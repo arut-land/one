@@ -15,24 +15,22 @@ export class ObservableState<T> implements ObservableStore<T> {
   private value: T;
 
   constructor(
-    initial: T,
     read: () => T,
     subscribe: (invalidate: () => void) => StreamCancellable<bigint>,
   ) {
-    this.value = initial;
     this.read = read;
+    this.value = read();
     this.stream = subscribe(this.invalidate);
   }
 
   observe(
-    initial: T,
     read: () => T,
     subscribe: (invalidate: () => void) => StreamCancellable<bigint>,
   ): void {
     if (this.disposed) throw new Error("observable state is disposed");
     this.stream.cancel();
-    this.value = initial;
     this.read = read;
+    this.value = read();
     this.stream = subscribe(this.invalidate);
     [...this.listeners].forEach((listener) => listener());
   }
@@ -67,5 +65,5 @@ export function observeScope<T>(handle: {
   state(): T;
   changes(listener: () => void): StreamCancellable<bigint>;
 }): ObservableState<T> {
-  return new ObservableState(handle.state(), () => handle.state(), listener => handle.changes(listener));
+  return new ObservableState(() => handle.state(), listener => handle.changes(listener));
 }

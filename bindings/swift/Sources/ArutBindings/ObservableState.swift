@@ -3,7 +3,11 @@ import Combine
 @MainActor
 public class ObservableState<Value>: ObservableObject {
     @Published public private(set) var state: Value
-    private var cancel: (() -> Void)?
+    // `deinit` is always nonisolated, even on a @MainActor class, so it
+    // cannot touch actor-isolated storage under Swift 6 strict concurrency.
+    // `cancel` only ever unsubscribes a closure and is never read concurrently
+    // with the isolated methods below, so it is safe to exempt from isolation.
+    nonisolated(unsafe) private var cancel: (() -> Void)?
     private var observing = false
     private var refreshPending = false
     private var generation: UInt64 = 0
