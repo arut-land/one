@@ -30,6 +30,10 @@ run = [
   "pnpm build",
 ]
 
+[tasks."protocol:breaking"]
+description = "Check protobuf changes for breakage against master"
+run = "buf breaking --against '.git#branch=master'"
+
 [tasks."ffi:wasm"]
 description = "Generate and package the wasm bindings"
 dir = "{{config_root}}/bindings/ffi"
