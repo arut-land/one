@@ -136,7 +136,9 @@ impl ChatService for ChatServiceImpl {
         &self,
         _: Request<ListConversationsRequest>,
     ) -> RpcFuture<Response<ListConversationsResponse>> {
-        let conversations = self.projection().conversations;
+        let conversations = self
+            .authority
+            .read_projection(|projection| projection.conversations.clone());
         Box::pin(async move { Ok(Response::new(ListConversationsResponse { conversations })) })
     }
 
