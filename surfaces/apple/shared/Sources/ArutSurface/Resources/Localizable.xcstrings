@@ -172,7 +172,7 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "This conversation moved to a new authority (epoch %1$lld), so your edit didn't go through. Try again."
+            "value": "This conversation moved to a new authority (epoch %1$@), so your edit didn't go through. Try again."
           }
         }
       }
@@ -194,7 +194,7 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Someone else edited this draft first, so your edit didn't go through; it is now at revision %1$lld."
+            "value": "Someone else edited this draft first, so your edit didn't go through; it is now at revision %1$@."
           }
         }
       }

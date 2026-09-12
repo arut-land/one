@@ -7,8 +7,8 @@
 # `arut_feature_chat::errors::*::message_key` is the other half of that
 # convention, and `tests/error_keys.rs` fails if the two ever disagree.
 #
-# Numbers are wrapped in NUMBER() so the generator knows to emit an integer
-# placeholder (`%lld`, `%1$d`) rather than a string one on native surfaces.
+# Revisions and epochs are exact decimal identifiers, passed as text so every
+# platform can display the full unsigned 64-bit range.
 
 ## NodeFailure -- why a call to the node produced no usable answer.
 
@@ -25,8 +25,8 @@ node-failure-internal = Something went wrong on your node.
 
 ## ComposerError -- why the draft in one composer scope is not what the node holds.
 
-composer-error-revision-conflict = Someone else edited this draft first, so your edit didn't go through; it is now at revision { NUMBER($current) }.
-composer-error-authority-changed = This conversation moved to a new authority (epoch { NUMBER($currentEpoch) }), so your edit didn't go through. Try again.
+composer-error-revision-conflict = Someone else edited this draft first, so your edit didn't go through; it is now at revision { $current }.
+composer-error-authority-changed = This conversation moved to a new authority (epoch { $currentEpoch }), so your edit didn't go through. Try again.
 composer-error-snapshot-missing = Your node didn't send back the draft, so it may be out of sync.
 composer-error-outcome-missing = Your node didn't say what happened to your edit.
 composer-error-scope-missing = Your node didn't say which draft it meant.

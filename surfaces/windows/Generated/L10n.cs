@@ -58,13 +58,13 @@ internal static class L10n
     public static string ChatStatusSending() => Resources.GetString("chat_status_sending");
 
     /// <summary><c>composer-error-authority-changed</c></summary>
-    public static string ComposerErrorAuthorityChanged(long currentEpoch) => string.Format(Resources.GetString("composer_error_authority_changed"), currentEpoch);
+    public static string ComposerErrorAuthorityChanged(string currentEpoch) => string.Format(Resources.GetString("composer_error_authority_changed"), currentEpoch);
 
     /// <summary><c>composer-error-outcome-missing</c></summary>
     public static string ComposerErrorOutcomeMissing() => Resources.GetString("composer_error_outcome_missing");
 
     /// <summary><c>composer-error-revision-conflict</c></summary>
-    public static string ComposerErrorRevisionConflict(long current) => string.Format(Resources.GetString("composer_error_revision_conflict"), current);
+    public static string ComposerErrorRevisionConflict(string current) => string.Format(Resources.GetString("composer_error_revision_conflict"), current);
 
     /// <summary><c>composer-error-scope-mismatch</c></summary>
     public static string ComposerErrorScopeMismatch() => Resources.GetString("composer_error_scope_mismatch");

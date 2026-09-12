@@ -149,12 +149,12 @@ object L10n {
         stringResource(R.string.chat_status_sending)
 
     /** `composer-error-authority-changed` */
-    fun composerErrorAuthorityChanged(context: Context, currentEpoch: Long): String =
+    fun composerErrorAuthorityChanged(context: Context, currentEpoch: String): String =
         context.getString(R.string.composer_error_authority_changed, currentEpoch)
 
     /** `composer-error-authority-changed` */
     @Composable
-    fun composerErrorAuthorityChanged(currentEpoch: Long): String =
+    fun composerErrorAuthorityChanged(currentEpoch: String): String =
         stringResource(R.string.composer_error_authority_changed, currentEpoch)
 
     /** `composer-error-outcome-missing` */
@@ -167,12 +167,12 @@ object L10n {
         stringResource(R.string.composer_error_outcome_missing)
 
     /** `composer-error-revision-conflict` */
-    fun composerErrorRevisionConflict(context: Context, current: Long): String =
+    fun composerErrorRevisionConflict(context: Context, current: String): String =
         context.getString(R.string.composer_error_revision_conflict, current)
 
     /** `composer-error-revision-conflict` */
     @Composable
-    fun composerErrorRevisionConflict(current: Long): String =
+    fun composerErrorRevisionConflict(current: String): String =
         stringResource(R.string.composer_error_revision_conflict, current)
 
     /** `composer-error-scope-mismatch` */

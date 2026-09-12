@@ -117,9 +117,9 @@ export function describeComposerError(error: ComposerError): string {
     case "Node":
       return describeNodeFailure(error.value0);
     case "RevisionConflict":
-      return t.composerErrorRevisionConflict(strings, { current: Number(error.current) });
+      return t.composerErrorRevisionConflict(strings, { current: error.current.toString() });
     case "AuthorityChanged":
-      return t.composerErrorAuthorityChanged(strings, { currentEpoch: Number(error.currentEpoch) });
+      return t.composerErrorAuthorityChanged(strings, { currentEpoch: error.currentEpoch.toString() });
     case "SnapshotMissing":
       return t.composerErrorSnapshotMissing(strings);
     case "OutcomeMissing":

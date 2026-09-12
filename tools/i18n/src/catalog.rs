@@ -142,11 +142,8 @@ impl fmt::Display for Refusal {
 }
 
 impl Message {
-    /// Every argument the message uses, in first-appearance order.
-    ///
-    /// The order is the placeholder index on Apple, Android and Windows alike,
-    /// the parameter order of every generated accessor, and it is shared across
-    /// a plural's variants so `%1$d` means the same thing in every one of them.
+    /// Arguments sorted by name, so translations share accessor positions even
+    /// when they reorder text or plural variants.
     #[must_use]
     pub fn arguments(&self) -> Vec<Argument> {
         let mut order: Vec<Argument> = Vec::new();
@@ -164,6 +161,7 @@ impl Message {
                 }
             }
         }
+        order.sort_by(|left, right| left.name.cmp(&right.name));
         order
     }
 

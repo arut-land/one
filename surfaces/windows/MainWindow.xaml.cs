@@ -9,7 +9,7 @@ public sealed partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
-        var session = ArutFfi.CreateProductSession("local-demo");
+        var session = Arut_ffi.CreateProductSession("local-demo");
         Content = new ChatView(session);
         Closed += (_, _) => session.Dispose();
     }

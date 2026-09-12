@@ -279,7 +279,7 @@ mod tests {
     #[test]
     fn apple_gets_positional_specifiers_typed_by_number() {
         let out = xcstrings("en", &[locale("k = { $who } sent { NUMBER($n) }\n")]);
-        assert!(out.contains("%1$@ sent %2$lld"), "{out}");
+        assert!(out.contains("%2$@ sent %1$lld"), "{out}");
         assert!(out.contains("\"sourceLanguage\": \"en\""), "{out}");
     }
 
@@ -295,7 +295,7 @@ mod tests {
     fn android_names_are_identifiers_and_placeholders_are_positional() {
         let out = strings_xml(&locale("chat-error-x = { $who } sent { NUMBER($n) }\n"));
         assert!(
-            out.contains("<string name=\"chat_error_x\">%1$s sent %2$d</string>"),
+            out.contains("<string name=\"chat_error_x\">%2$s sent %1$d</string>"),
             "{out}"
         );
     }
@@ -319,21 +319,25 @@ mod tests {
     #[test]
     fn windows_gets_brace_placeholders_and_one_entry_per_plural_category() {
         let simple = resw(&locale("k = { $who } sent { NUMBER($n) }\n"));
-        assert!(simple.contains("<value>{0} sent {1}</value>"), "{simple}");
+        assert!(simple.contains("<value>{1} sent {0}</value>"), "{simple}");
         let plural = resw(&locale(PLURAL));
         assert!(plural.contains("name=\"unread_one\""), "{plural}");
         assert!(plural.contains("name=\"unread_other\""), "{plural}");
     }
 
     #[test]
-    fn every_emitter_is_a_function_of_its_input_alone() {
-        let source = "k = { $who } sent { NUMBER($n) } & more\n";
+    fn reordered_translations_keep_the_same_native_argument_positions() {
+        let english = crate::catalog::tests::locale("en", "k = { $who } sent { NUMBER($n) }\n");
+        let french = crate::catalog::tests::locale("fr", "k = { NUMBER($n) } de { $who }\n");
         assert_eq!(
-            xcstrings("en", &[locale(source)]),
-            xcstrings("en", &[locale(source)])
+            english.messages["k"].arguments(),
+            french.messages["k"].arguments()
         );
-        assert_eq!(strings_xml(&locale(source)), strings_xml(&locale(source)));
-        assert_eq!(resw(&locale(source)), resw(&locale(source)));
+        assert!(strings_xml(&french).contains("%1$d de %2$s"));
+        assert!(resw(&french).contains("{0} de {1}"));
+        let apple = xcstrings("en", &[english, french]);
+        assert!(apple.contains("%2$@ sent %1$lld"));
+        assert!(apple.contains("%1$lld de %2$@"));
     }
 
     #[test]

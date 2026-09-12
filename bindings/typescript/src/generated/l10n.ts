@@ -93,12 +93,12 @@ export const t = {
   /** `chat-status-sending` */
   chatStatusSending: (bundle: L10nBundle): string => bundle.format(keys.chatStatusSending),
   /** `composer-error-authority-changed` */
-  composerErrorAuthorityChanged: (bundle: L10nBundle, args: { currentEpoch: number }): string =>
+  composerErrorAuthorityChanged: (bundle: L10nBundle, args: { currentEpoch: string }): string =>
     bundle.format(keys.composerErrorAuthorityChanged, { currentEpoch: args.currentEpoch }),
   /** `composer-error-outcome-missing` */
   composerErrorOutcomeMissing: (bundle: L10nBundle): string => bundle.format(keys.composerErrorOutcomeMissing),
   /** `composer-error-revision-conflict` */
-  composerErrorRevisionConflict: (bundle: L10nBundle, args: { current: number }): string =>
+  composerErrorRevisionConflict: (bundle: L10nBundle, args: { current: string }): string =>
     bundle.format(keys.composerErrorRevisionConflict, { current: args.current }),
   /** `composer-error-scope-mismatch` */
   composerErrorScopeMismatch: (bundle: L10nBundle): string => bundle.format(keys.composerErrorScopeMismatch),

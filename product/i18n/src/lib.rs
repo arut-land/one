@@ -244,7 +244,9 @@ mod tests {
     fn a_number_argument_reaches_the_sentence() {
         let localizer = Localizer::default();
         assert_eq!(
-            localizer.format(&Message::ComposerErrorRevisionConflict { current: 7 }),
+            localizer.format(&Message::ComposerErrorRevisionConflict {
+                current: "7".into()
+            }),
             "Someone else edited this draft first, so your edit didn't go through; it is now at revision 7."
         );
     }
