@@ -1,4 +1,4 @@
-import { createSession } from "@arut/runtime-browser";
+import { createSession } from "@arut/bindings-typescript";
 import { registerChat } from "./surface";
 import type { ExtensionContext } from "vscode";
 export async function activate(context: ExtensionContext): Promise<void> {

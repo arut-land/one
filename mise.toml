@@ -3,12 +3,10 @@ rust = { version = "1.98.0", components = ["rustfmt", "clippy"], targets = ["was
 node = "26.8.2"
 pnpm = "12.3.4"
 buf = "1.72.0"
-protoc = "36.1"
 "cargo:boltffi_cli" = "0.30.1"
-"npm:typescript" = "5.9.3"
 
 [tasks.install]
-description = "Install JavaScript workspace dependencies"
+description = "Generate the wasm bindings and install the JavaScript workspace"
 depends = ["ffi:wasm"]
 run = "pnpm install"
 
@@ -19,64 +17,45 @@ run = [
   "cargo fmt --all --check",
   "cargo clippy --workspace --all-targets -- -D warnings",
   "cargo test --workspace",
+  "cargo check -p arut_ffi --target wasm32-unknown-unknown",
   "buf lint",
   "pnpm check",
 ]
 
 [tasks.build]
-description = "Build locally supported surfaces"
+description = "Build the surfaces this machine can build"
 depends = ["install"]
 run = [
-  "cargo build -p arut-linux-gtk",
+  "cargo build -p arut-linux-gtk -p arut-runtime-local",
   "pnpm build",
 ]
 
 [tasks."ffi:wasm"]
-description = "Generate and package the WASM bindings"
+description = "Generate and package the wasm bindings"
 dir = "{{config_root}}/bindings/ffi"
-run = [
-  "node -e \"require('node:fs').rmSync('../generated/wasm',{recursive:true,force:true})\"",
-  "boltffi pack wasm --deny-skipped",
-]
+run = "rm -rf ../generated/wasm && boltffi pack wasm --deny-skipped"
 
 [tasks."ffi:apple"]
 description = "Generate and package the Apple bindings"
 dir = "{{config_root}}/bindings/ffi"
-run = [
-  "node -e \"require('node:fs').rmSync('../generated/apple',{recursive:true,force:true})\"",
-  "boltffi pack apple --deny-skipped",
-]
+run = "rm -rf ../generated/apple && boltffi pack apple --deny-skipped"
 
 [tasks."ffi:android"]
 description = "Generate and package the Android bindings"
 dir = "{{config_root}}/bindings/ffi"
-run = [
-  "node -e \"require('node:fs').rmSync('../generated/android',{recursive:true,force:true})\"",
-  "boltffi pack android --deny-skipped",
-]
+run = "rm -rf ../generated/android && boltffi pack android --deny-skipped"
 
 [tasks."ffi:csharp"]
 description = "Generate and package the .NET bindings"
 dir = "{{config_root}}/bindings/ffi"
-run = [
-  "node -e \"require('node:fs').rmSync('../generated/csharp',{recursive:true,force:true})\"",
-  "boltffi pack csharp --deny-skipped",
-]
+run = "rm -rf ../generated/csharp && boltffi pack csharp --deny-skipped"
 
 [tasks."ffi:csharp".tools]
 dotnet = "10"
 
-[tasks."protocol:lint"]
-description = "Lint Protobuf contracts"
-run = "buf lint"
-
 [tasks."surface:linux"]
 description = "Run the Linux GTK4 surface"
 run = "cargo run -p arut-linux-gtk"
-
-[tasks."node:local"]
-description = "Run the local node daemon"
-run = "cargo run -p arut-runtime-local --bin arutd"
 
 [tasks."surface:web"]
 description = "Run the web surface"
@@ -94,7 +73,12 @@ gradle = "8.9"
 
 [tasks."surface:apple-project"]
 description = "Generate the Apple Xcode project"
+depends = ["ffi:apple"]
 run = "xcodegen generate --spec surfaces/apple/project.yml"
 
 [tasks."surface:apple-project".tools]
 xcodegen = "2.46.0"
+
+[tasks."node:local"]
+description = "Run the local node daemon"
+run = "cargo run -p arut-runtime-local --bin arutd"

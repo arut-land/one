@@ -17,6 +17,8 @@ Replace the substrates the current chat slice sits on so that everything after i
 
 Exit: the existing chat behavior runs on Linux, macOS, and Android through the new substrates with no per-language view-model, and the web surface receives updates.
 
+Status on 2026-09-12: all eight steps are implemented and gated. Verified on real runs: Linux GTK against a spawned `arutd` over the Unix socket, the web surface in a browser, wasm invalidation delivery under Node, and every Rust and TypeScript gate. Not yet run: Android and macOS, which need their toolchains; a `BlobStore` conformance suite; sending through the GTK window. IDs come through an `IdSource` port because the wasm core has no clock or entropy; the browser supplies UUIDv7.
+
 ## Phase 1: Daily driver (v1)
 
 The scope in `docs/PRD.md`.

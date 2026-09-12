@@ -145,22 +145,6 @@ importers:
         specifier: 0.30.1
         version: 0.30.1
 
-  bindings/react:
-    dependencies:
-      '@arut/bindings-typescript':
-        specifier: workspace:*
-        version: link:../typescript
-      react:
-        specifier: 'catalog:'
-        version: 19.3.0
-    devDependencies:
-      '@types/react':
-        specifier: 'catalog:'
-        version: 19.3.0
-      typescript:
-        specifier: 'catalog:'
-        version: 5.9.3
-
   bindings/typescript:
     dependencies:
       '@arut/ffi':
@@ -170,21 +154,21 @@ importers:
         specifier: 0.30.1
         version: 0.30.1
     devDependencies:
+      '@types/react':
+        specifier: 'catalog:'
+        version: 19.3.0
+      react:
+        specifier: 'catalog:'
+        version: 19.3.0
       typescript:
         specifier: 'catalog:'
         version: 5.9.3
 
-  runtimes/browser:
+  surfaces/chromium:
     dependencies:
-      '@arut/ffi':
+      '@arut/bindings-typescript':
         specifier: workspace:*
-        version: link:../../bindings/generated/wasm/pkg
-
-  surfaces/browser-extension/chromium:
-    dependencies:
-      '@arut/bindings-react':
-        specifier: workspace:*
-        version: link:../../../bindings/react
+        version: link:../../bindings/typescript
       react:
         specifier: 'catalog:'
         version: 19.3.0
@@ -216,9 +200,6 @@ importers:
       '@arut/bindings-typescript':
         specifier: workspace:*
         version: link:../../bindings/typescript
-      '@arut/runtime-browser':
-        specifier: workspace:*
-        version: link:../../runtimes/browser
     devDependencies:
       '@types/node':
         specifier: ^22.13.1
@@ -235,12 +216,9 @@ importers:
 
   surfaces/web:
     dependencies:
-      '@arut/bindings-react':
+      '@arut/bindings-typescript':
         specifier: workspace:*
-        version: link:../../bindings/react
-      '@arut/runtime-browser':
-        specifier: workspace:*
-        version: link:../../runtimes/browser
+        version: link:../../bindings/typescript
       react:
         specifier: 'catalog:'
         version: 19.3.0

@@ -4,6 +4,7 @@ pub use arut_feature_chat::product::{ChatMessage, ChatRole, ChatState, ChatStatu
 use arut_feature_chat::{composer::product::ComposerClient, product::ChatClient};
 use arut_product_session::ProductSession;
 pub use arut_product_session::{ChatSummary, FeatureAvailability, SessionAvailability};
+mod observation;
 use arut_watch::Subscription;
 use boltffi::{EventSubscription, export};
 use std::sync::Arc;
@@ -132,7 +133,7 @@ pub fn create_product_session(pending_scope_id: String) -> ProductSessionHandle 
 fn ffi_subscription(source: Arc<Subscription<u64>>) -> Arc<EventSubscription<u64>> {
     let target = Arc::new(EventSubscription::new(1));
     let weak = Arc::downgrade(&target);
-    arut_observation::observe(source, move |revision| {
+    observation::observe(source, move |revision| {
         let Some(target) = weak.upgrade() else {
             return false;
         };

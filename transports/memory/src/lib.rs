@@ -1,3 +1,8 @@
+//! # Memory
+//!
+//! A byte-channel adapter for in-process services. It preserves metadata, errors,
+//! and all streaming shapes without spawning or encoding an extra time.
+
 use arut_rpc::{Request, Response, RpcChannel, RpcFuture, RpcStream};
 pub struct MemoryChannel(std::sync::Arc<dyn RpcChannel>);
 impl MemoryChannel {

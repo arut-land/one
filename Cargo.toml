@@ -6,7 +6,6 @@ members = [
     "substrates/storage",
     "transports/memory",
     "transports/ipc",
-    "bindings/observation",
     "bindings/ffi",
     "runtimes/local",
     "features/chat",
@@ -32,7 +31,6 @@ arut-rpc = { path = "protocols/rpc" }
 arut-watch = { path = "substrates/watch" }
 arut-transport-connect-http = { path = "transports/connect-http" }
 
-arut-observation = { path = "bindings/observation" }
 
 arut-transport-memory = { path = "transports/memory" }
 arut-transport-ipc = { path = "transports/ipc" }

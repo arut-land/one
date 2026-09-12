@@ -247,17 +247,24 @@ Sharing a conversation copies explicitly shareable history and grants nothing el
 |   |-- local/                      Tokio host, arutd daemon, LAN discovery
 |   |-- android/  apple/  browser/   port implementations and drivers
 |-- bindings/
-|   |-- ffi/                        BoltFFI wrapper substrate + exports
-|   |-- swift/  kotlin/  typescript/ generated observation adapters
-|-- surfaces/
-|   |-- linux-gtk/  apple/  android/  windows/  web/  vscode/  jetbrains/  terminal/  browser-extension/
+|   |-- ffi/                        BoltFFI exports, watch-to-event bridge, re-exported projection types
+|   |-- swift/  kotlin/  dotnet/     one observation adapter each, nothing else
+|   `-- typescript/                 observation adapter, wasm session bootstrap, ./react hook
+|-- surfaces/                       one flat directory per surface, each its own composition root
+|   |-- linux-gtk/  apple/  android/  windows/  web/  chromium/  vscode/
 |-- backend/
 |   `-- relay/                      pairing, relay, encrypted store-and-forward
 `-- tools/
     `-- conformance/                suites every channel and storage impl must pass
 ```
 
-Directories appear when their first concrete implementation exists. No `shared`, `common`, `utils`, or `services` directories.
+Directories appear when their first concrete implementation exists. No `shared`, `common`, `utils`, or `services` directories. Crates document themselves in `//!` comments at the top of `lib.rs`; there are no per-directory READMEs. The only prose in the repository is this file, `CONTEXT.md`, `docs/`, and the root README.
+
+Surfaces outside the current release stay in the tree and stay compiling where this machine can compile them, but they are not on the release's bar. Nothing in the build assumes every surface is present.
+
+## Ecosystems and tools
+
+Languages in the repository: Rust, Protobuf, Swift, Kotlin, C#, TypeScript. Each exists because a surface needs it; none exists for tooling. Tools: mise (toolchains and tasks), cargo, pnpm, buf (proto lint and breaking checks), BoltFFI (all foreign bindings), gradle and xcodegen for their platforms. Protobuf compiles through `protox` in the build script, so no `protoc` binary is installed. Anything else is a dependency, not a project.
 
 ## Verification
 
