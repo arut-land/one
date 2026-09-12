@@ -44,6 +44,8 @@ Exit: every v1 scenario passes on real devices; the author uses it daily.
 3. First external harness through an open agent protocol; tools through MCP.
 4. Automatic failover policy for cloud-coordinated conversations. Local-only failover stays explicit.
 
+Candidate for the tool execution plane: iii (iii-hq/iii), a Rust orchestration engine with workers in Node, Python, Rust, and Go, triggers, queues, an exec worker, and built-in tracing. It does not belong in the node core (server daemon, JSON over WebSocket, no mobile or wasm), but it may host tools behind the harness port with MCP as the open protocol. Spike criteria before adopting: tools callable from the harness port through a typed adapter with streaming output; the engine runs beside the cloud node and optionally beside a desktop daemon with no change to surfaces; traces flow into our OpenTelemetry pipeline; the Elastic License 2.0 engine is compatible with on-premises packaging.
+
 Exit: the eleven-step mock-tool slice from the original architecture runs over memory, IPC, and relay routes.
 
 ## Phase 3: Backend accounts
@@ -52,6 +54,7 @@ Exit: the eleven-step mock-tool slice from the original architecture runs over m
 2. Root key escrow under the account for recovery.
 3. Push notifications through APNs and FCM.
 4. Cloud node: the daemon deployed as a paired device on managed infrastructure; provider key broker so keys never reach a phone.
+5. Evaluate iii for the pairing service, cron, queues, and the backend-hosted surfaces of Phase 4 (Slack, GitHub, email), where its HTTP triggers make each surface a small worker.
 
 Exit: a new device recovers everything from an account with no other device present.
 
