@@ -9,7 +9,7 @@ export default defineConfig({
       formats: ["es"],
     },
     rollupOptions: {
-      external: ["vscode"],
+      external: ["vscode", "node:crypto"],
       output: {
         entryFileNames: "extension.js",
         format: "es",
