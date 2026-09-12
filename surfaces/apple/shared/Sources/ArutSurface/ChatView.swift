@@ -50,9 +50,22 @@ private struct ConversationView: View {
             return { subscription.cancel() }
         }))
     }
+    // The chat's own error takes precedence; a composer-only failure (a
+    // background resync, say) still needs to reach the person even when the
+    // chat itself is idle.
+    private var errorMessage: String? {
+        if let error = transcript.state.error { return describe(error) }
+        if let error = draft.state.error { return describe(error) }
+        return nil
+    }
     var body: some View {
         VStack {
             List(transcript.state.messages, id: \.id) { Text($0.text) }
+            if let errorMessage {
+                Label(errorMessage, systemImage: "exclamationmark.triangle")
+                    .foregroundStyle(.red)
+                    .font(.footnote)
+            }
             HStack {
                 TextField("Message Arut", text: Binding(get: { draft.state.text }, set: { text in Task { _ = await composer.replace(text: text) } }))
                 Button("Send") { Task { _ = await chat.send(text: composer.state().text) } }
