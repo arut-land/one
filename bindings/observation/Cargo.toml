@@ -1,0 +1,9 @@
+[package]
+name = "arut-observation"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+arut-watch.workspace = true
+futures-util = "0.3.31"

@@ -42,6 +42,7 @@ name = "arut-bindings-qt"
 version = "0.1.0"
 dependencies = [
  "arut-feature-chat",
+ "arut-observation",
  "arut-product-session",
  "arut-watch",
  "cxx",
@@ -71,6 +72,14 @@ dependencies = [
  "arut-product-session",
  "cxx-qt-build",
  "cxx-qt-lib",
+]
+
+[[package]]
+name = "arut-observation"
+version = "0.1.0"
+dependencies = [
+ "arut-watch",
+ "futures-util",
 ]
 
 [[package]]
@@ -123,6 +132,8 @@ dependencies = [
 name = "arut-watch"
 version = "0.1.0"
 dependencies = [
+ "futures-executor",
+ "futures-util",
  "tokio",
 ]
 
@@ -131,6 +142,7 @@ name = "arut_ffi"
 version = "0.1.0"
 dependencies = [
  "arut-feature-chat",
+ "arut-observation",
  "arut-product-session",
  "arut-rpc",
  "arut-transport-http",

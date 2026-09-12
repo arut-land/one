@@ -27,7 +27,7 @@ impl ObservableState {
         let active = Arc::clone(&self.active);
         let pending = Arc::new(AtomicBool::new(false));
         let refresh = Arc::new(refresh);
-        self.changes.observe(move |_| {
+        arut_observation::observe(Arc::clone(&self.changes), move |_| {
             if !active.load(Ordering::Acquire) {
                 return false;
             }

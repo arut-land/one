@@ -8,6 +8,7 @@ license.workspace = true
 crate-type = ["rlib", "staticlib", "cdylib"]
 
 [dependencies]
+arut-observation.workspace = true
 arut-feature-chat.workspace = true
 arut-product-session.workspace = true
 arut-rpc.workspace = true
