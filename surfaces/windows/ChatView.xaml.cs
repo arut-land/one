@@ -25,8 +25,22 @@ public sealed partial class ChatView : UserControl
     {
         chatSubscription?.Dispose(); composerSubscription?.Dispose();
         chat = next; composer = chat.Composer();
-        chatSubscription = chat.ChatChanges(_ => DispatcherQueue.TryEnqueue(() => Transcript.ItemsSource = chat.State().Messages));
-        composerSubscription = composer.ComposerChanges(_ => DispatcherQueue.TryEnqueue(() => { if (Composer.Text != composer.State().Text) Composer.Text = composer.State().Text; }));
+        chatSubscription = chat.ChatChanges(_ => DispatcherQueue.TryEnqueue(() => { Transcript.ItemsSource = chat.State().Messages; UpdateError(); }));
+        composerSubscription = composer.ComposerChanges(_ => DispatcherQueue.TryEnqueue(() => { if (Composer.Text != composer.State().Text) Composer.Text = composer.State().Text; UpdateError(); }));
+        UpdateError();
+    }
+    // The chat's own error takes precedence; a composer-only failure (a
+    // background resync, say) still needs to reach the person even when the
+    // chat itself is idle.
+    private void UpdateError()
+    {
+        var message = chat.State().Error is { } chatError
+            ? Strings.Describe(chatError)
+            : composer.State().Error is { } composerError
+                ? Strings.Describe(composerError)
+                : null;
+        ErrorText.Text = message ?? string.Empty;
+        ErrorText.Visibility = message is null ? Visibility.Collapsed : Visibility.Visible;
     }
     private async void Send(object sender, RoutedEventArgs args) => await chat.Send(composer.State().Text);
     private async void ReplaceDraft(object sender, TextChangedEventArgs args) { if (Composer.Text != composer.State().Text) await composer.Replace(Composer.Text); }

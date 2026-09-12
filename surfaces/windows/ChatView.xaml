@@ -4,6 +4,7 @@
         <ListView x:Name="History" DisplayMemberPath="Title" SelectionChanged="SelectChat" />
         <ListView x:Name="Transcript" DisplayMemberPath="Text" />
         <TextBox x:Name="Composer" TextChanged="ReplaceDraft" />
+        <TextBlock x:Name="ErrorText" Foreground="Red" TextWrapping="Wrap" Visibility="Collapsed" />
         <Button Content="Send" Click="Send" />
     </StackPanel>
 </UserControl>
