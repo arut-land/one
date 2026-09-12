@@ -19,8 +19,6 @@ android {
 
 dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.10.1")
-    // Provides the Dispatchers.Main implementation on Android; ObservableState
-    // falls back to Dispatchers.Default when this module is absent (e.g. a
-    // plain JVM consumer).
+    // Supplies Dispatchers.Main for the Android observer.
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.1")
 }

@@ -1,7 +1,6 @@
 package dev.arut.bindings
 
 import java.util.concurrent.atomic.AtomicBoolean
-import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -12,19 +11,6 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
-
-/**
- * `Dispatchers.Main` needs a Main dispatcher module (kotlinx-coroutines-android
- * on Android) on the classpath; accessing it without one throws. State is
- * rendered by Compose on Android, so the immediate Main dispatcher avoids an
- * extra hop there, with `Dispatchers.Default` as the fallback on a plain JVM.
- */
-private val refreshDispatcher: CoroutineDispatcher =
-    try {
-        Dispatchers.Main.immediate
-    } catch (unavailable: IllegalStateException) {
-        Dispatchers.Default
-    }
 
 class ObservableState<T>(initial: T) : AutoCloseable {
     private val closed = AtomicBoolean()
@@ -53,7 +39,7 @@ class ObservableState<T>(initial: T) : AutoCloseable {
         subscription?.close()
         refresh?.cancel()
         val invalidations = Channel<Unit>(Channel.CONFLATED)
-        val scope = CoroutineScope(SupervisorJob() + refreshDispatcher)
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
         refresh = scope.launch {
             for (ignored in invalidations) receive(read())
         }
