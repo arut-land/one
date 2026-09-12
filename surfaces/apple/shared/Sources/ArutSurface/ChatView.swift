@@ -7,8 +7,9 @@ public struct ChatView: View {
     @State private var selected: ChatHandle
     @StateObject private var conversations: ObservableState<[ChatSummary]>
 
-    public init() {
-        let session = createProductSession(pendingScopeId: "local-demo")
+    // The session is constructed by the composition root and handed to this
+    // view (ADR 0007); it is never created here.
+    public init(session: ProductSessionHandle) {
         self.session = session
         _selected = State(initialValue: session.chat())
         let list = session.conversations()

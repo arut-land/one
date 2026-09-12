@@ -28,4 +28,6 @@ dependencies {
     implementation("androidx.compose.foundation:foundation")
     implementation("androidx.compose.material:material-icons-extended")
     implementation("androidx.compose.material3:material3")
+    // ADR 0011: the session lives in a ViewModel so it survives configuration changes.
+    implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.7")
 }
