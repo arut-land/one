@@ -1,6 +1,7 @@
 [workspace]
 resolver = "3"
 members = [
+    "bindings/observation",
     "bindings/ffi",
     "bindings/qt",
     "backend/composer",
@@ -27,3 +28,5 @@ arut-product-session = { path = "product/session" }
 arut-rpc = { path = "protocols/rpc" }
 arut-watch = { path = "substrates/watch" }
 arut-transport-http = { path = "transports/http" }
+
+arut-observation = { path = "bindings/observation" }

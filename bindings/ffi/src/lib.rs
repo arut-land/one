@@ -9,6 +9,7 @@ use arut_product_session::{
     ChatSummary as ProductChatSummary, FeatureAvailability as ProductFeatureAvailability,
     ProductSession, SessionAvailability as ProductSessionAvailability,
 };
+#[cfg(not(target_arch = "wasm32"))]
 use arut_rpc::RpcChannel;
 use arut_watch::Subscription;
 use boltffi::{EventSubscription, data, export};
@@ -233,7 +234,7 @@ fn remote_product_session(_backend_url: &str, _pending_scope_id: String) -> Prod
 fn ffi_subscription(source: Arc<Subscription<u64>>) -> Arc<EventSubscription<u64>> {
     let target = Arc::new(EventSubscription::new(64));
     let weak_target = Arc::downgrade(&target);
-    source.observe(move |revision| {
+    arut_observation::observe(source, move |revision| {
         let Some(target) = weak_target.upgrade() else {
             return false;
         };

@@ -6,6 +6,7 @@ license.workspace = true
 links = "arut_bindings_qt"
 
 [dependencies]
+arut-observation.workspace = true
 arut-feature-chat.workspace = true
 arut-product-session.workspace = true
 arut-watch.workspace = true

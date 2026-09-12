@@ -441,6 +441,7 @@ mod tests {
         let deadline = Instant::now() + Duration::from_secs(1);
         while !model.transcript().to_string().contains("You said: hello")
             || !model.draft().is_empty()
+            || model.history_titles().len() != 1
         {
             app.as_ref().unwrap().process_events();
             assert!(Instant::now() < deadline, "Qt observer did not refresh");
@@ -452,7 +453,9 @@ mod tests {
         model.pin_mut().replace_draft(&QString::from("second"));
         model.pin_mut().send(&QString::from("second"));
         let deadline = Instant::now() + Duration::from_secs(1);
-        while !model.transcript().to_string().contains("You said: second") {
+        while !model.transcript().to_string().contains("You said: second")
+            || model.history_titles().len() != 2
+        {
             app.as_ref().unwrap().process_events();
             assert!(Instant::now() < deadline, "Qt observer did not refresh");
             std::thread::yield_now();

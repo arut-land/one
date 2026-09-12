@@ -1,141 +1,83 @@
-//! Coalesced state observation, with no executor or observer threads.
-use std::sync::{Arc, Mutex};
+//! A versioned cell over Tokio watch. No executor, queues, or callback registry.
+use futures_util::{StreamExt, stream::BoxStream};
+use std::sync::Arc;
 use tokio::sync::watch;
 
-type Callback = Box<dyn Fn(u64) -> bool + Send + Sync>;
-
-struct Notifications {
-    revision: watch::Sender<u64>,
-    callbacks: Mutex<Vec<Callback>>,
+#[derive(Clone)]
+struct Versioned<T> {
+    revision: u64,
+    value: T,
 }
 
-/// A subscription starts with the current revision. Intermediate revisions coalesce.
-pub struct Subscription<T> {
-    receiver: Mutex<watch::Receiver<T>>,
-    notifications: Arc<Notifications>,
-}
+pub struct Watch<T>(watch::Sender<Versioned<T>>);
 
-impl Subscription<u64> {
-    pub fn try_recv(&self) -> Option<u64> {
-        let mut receiver = self.receiver.lock().expect("watch receiver poisoned");
-        if receiver.has_changed().unwrap_or(false) {
-            Some(*receiver.borrow_and_update())
-        } else {
-            None
-        }
+pub struct Subscription<T>(futures_util::lock::Mutex<BoxStream<'static, T>>);
+
+impl<T: Send + 'static> Subscription<T> {
+    pub async fn changed(&self) -> Option<T> {
+        self.0.lock().await.next().await
     }
 
-    /// Register a scheduler notification. Return false to detach.
-    /// Callbacks must schedule work rather than mutate the watched value.
-    pub fn observe(&self, callback: impl Fn(u64) -> bool + Send + Sync + 'static) {
-        let mut callbacks = self
-            .notifications
-            .callbacks
-            .lock()
-            .expect("watch callbacks poisoned");
-        if callback(*self.notifications.revision.borrow()) {
-            callbacks.push(Box::new(callback));
-        }
-    }
-
-    /// Wait on the caller's executor, including a single-threaded wasm executor.
-    pub async fn changed(&self) -> Option<u64> {
-        let mut receiver = self
-            .receiver
-            .lock()
-            .expect("watch receiver poisoned")
-            .clone();
-        receiver.changed().await.ok()?;
-        let revision = *receiver.borrow_and_update();
-        *self.receiver.lock().expect("watch receiver poisoned") = receiver;
-        Some(revision)
+    pub fn try_recv(&self) -> Option<T> {
+        use futures_util::FutureExt;
+        self.0.try_lock()?.next().now_or_never().flatten()
     }
 }
 
-pub struct Watch<T> {
-    value: watch::Sender<T>,
-    notifications: Arc<Notifications>,
-    writer: Mutex<()>,
-}
-
-impl<T: Clone> Watch<T> {
+impl<T: Clone + Send + Sync + 'static> Watch<T> {
     pub fn new(value: T) -> Self {
-        Self {
-            value: watch::channel(value).0,
-            notifications: Arc::new(Notifications {
-                revision: watch::channel(0).0,
-                callbacks: Mutex::new(Vec::new()),
-            }),
-            writer: Mutex::new(()),
-        }
+        Self(watch::channel(Versioned { revision: 0, value }).0)
     }
 
     pub fn get(&self) -> T {
-        self.value.borrow().clone()
+        self.0.borrow().value.clone()
     }
 
     pub fn update(&self, update: impl FnOnce(&mut T)) -> T {
-        let _writer = self.writer.lock().expect("watch writer poisoned");
-        self.value.send_modify(update);
-        let snapshot = self.get();
-        self.notifications.revision.send_modify(|revision| {
-            *revision = revision.checked_add(1).expect("watch revision overflow");
+        let mut result = None;
+        self.0.send_modify(|state| {
+            update(&mut state.value);
+            state.revision = state
+                .revision
+                .checked_add(1)
+                .expect("watch revision overflow");
+            result = Some(state.value.clone());
         });
-        let revision = *self.notifications.revision.borrow();
-        self.notifications
-            .callbacks
-            .lock()
-            .expect("watch callbacks poisoned")
-            .retain(|callback| callback(revision));
-        snapshot
+        result.expect("watch modification runs synchronously")
     }
 
-    pub fn set(&self, value: T) -> T {
-        self.update(|current| *current = value)
+    pub fn set(&self, next: T) -> T {
+        self.update(|value| *value = next)
     }
 
     pub fn subscribe(&self) -> Arc<Subscription<u64>> {
-        let mut receiver = self.notifications.revision.subscribe();
+        let mut receiver = self.0.subscribe();
         receiver.mark_changed();
-        Arc::new(Subscription {
-            receiver: Mutex::new(receiver),
-            notifications: Arc::clone(&self.notifications),
-        })
+        let stream = futures_util::stream::unfold(receiver, |mut receiver| async move {
+            receiver.changed().await.ok()?;
+            let revision = receiver.borrow_and_update().revision;
+            Some((revision, receiver))
+        });
+        Arc::new(Subscription(futures_util::lock::Mutex::new(Box::pin(
+            stream,
+        ))))
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::atomic::{AtomicU64, Ordering};
-
     #[test]
-    fn initial_revision_and_coalesced_updates() {
-        let state = Watch::new(0);
-        let changes = state.subscribe();
+    fn coalesces_and_closes_after_the_writer_is_dropped() {
+        let watch = Watch::new(0);
+        let changes = watch.subscribe();
         assert_eq!(changes.try_recv(), Some(0));
-        assert_eq!(changes.try_recv(), None);
-        for value in 1..=100 {
-            state.set(value);
+        for n in 1..=100 {
+            watch.set(n);
         }
         assert_eq!(changes.try_recv(), Some(100));
         assert_eq!(changes.try_recv(), None);
-        assert_eq!(state.get(), 100);
-    }
-
-    #[test]
-    fn callbacks_receive_invalidations_without_threads() {
-        let state = Watch::new(0);
-        let observed = Arc::new(AtomicU64::new(0));
-        let target = Arc::clone(&observed);
-        state.subscribe().observe(move |revision| {
-            target.store(revision, Ordering::Relaxed);
-            revision < 2
-        });
-        state.set(1);
-        assert_eq!(observed.load(Ordering::Relaxed), 1);
-        state.set(2);
-        state.set(3);
-        assert_eq!(observed.load(Ordering::Relaxed), 2);
+        drop(watch);
+        assert_eq!(futures_executor::block_on(changes.changed()), None);
     }
 }
