@@ -1,0 +1,12 @@
+/target/
+/bindings/generated/
+/.idea/
+/.vscode-test/
+/.DS_Store
+node_modules/
+dist/
+.gradle/
+build/
+DerivedData/
+bin/
+obj/

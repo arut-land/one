@@ -1,0 +1,9 @@
+{
+  "name": "arut",
+  "private": true,
+  "scripts": {
+    "build": "pnpm --recursive --if-present build",
+    "check": "pnpm --recursive --if-present check"
+  },
+  "packageManager": "pnpm@12.3.4"
+}

@@ -1,0 +1,10 @@
+[package]
+name = "arut-rpc"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+futures-core = "0.3.31"
+futures-util = "0.3.31"
+prost = "0.14.1"

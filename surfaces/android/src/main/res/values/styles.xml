@@ -1,0 +1,7 @@
+<resources>
+    <style name="Theme.Arut" parent="android:style/Theme.Material.Light.NoActionBar">
+        <item name="android:fontFamily">sans</item>
+        <item name="android:colorAccent">#111111</item>
+        <item name="android:windowLightStatusBar">true</item>
+    </style>
+</resources>

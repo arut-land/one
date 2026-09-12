@@ -1,0 +1,64 @@
+import type { StreamCancellable } from "@boltffi/runtime";
+
+export interface ObservableStore<T> {
+  getSnapshot(): T;
+  subscribe(listener: () => void): () => void;
+  dispose(): void;
+}
+
+export class ObservableState<T> implements ObservableStore<T> {
+  private readonly listeners = new Set<() => void>();
+  private read: () => T;
+  private stream: StreamCancellable<bigint>;
+  private disposed = false;
+  private refreshPending = false;
+  private value: T;
+
+  constructor(
+    initial: T,
+    read: () => T,
+    subscribe: (invalidate: () => void) => StreamCancellable<bigint>,
+  ) {
+    this.value = initial;
+    this.read = read;
+    this.stream = subscribe(this.invalidate);
+  }
+
+  observe(
+    initial: T,
+    read: () => T,
+    subscribe: (invalidate: () => void) => StreamCancellable<bigint>,
+  ): void {
+    if (this.disposed) throw new Error("observable state is disposed");
+    this.stream.cancel();
+    this.value = initial;
+    this.read = read;
+    this.stream = subscribe(this.invalidate);
+    [...this.listeners].forEach((listener) => listener());
+  }
+
+  getSnapshot = (): T => this.value;
+
+  subscribe = (listener: () => void): (() => void) => {
+    this.listeners.add(listener);
+    return () => this.listeners.delete(listener);
+  };
+
+  dispose(): void {
+    if (this.disposed) return;
+    this.disposed = true;
+    this.listeners.clear();
+    this.stream.cancel();
+  }
+
+  private invalidate = (): void => {
+    if (this.disposed || this.refreshPending) return;
+    this.refreshPending = true;
+    queueMicrotask(() => {
+      this.refreshPending = false;
+      if (this.disposed) return;
+      this.value = this.read();
+      [...this.listeners].forEach((listener) => listener());
+    });
+  };
+}

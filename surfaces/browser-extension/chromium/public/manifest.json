@@ -1,0 +1,8 @@
+{
+  "manifest_version": 3,
+  "name": "arut",
+  "version": "0.1.0",
+  "action": {
+    "default_popup": "index.html"
+  }
+}

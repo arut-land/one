@@ -1,0 +1,100 @@
+[tools]
+rust = { version = "1.98.0", components = ["rustfmt", "clippy"], targets = ["wasm32-unknown-unknown"] }
+node = "26.8.2"
+pnpm = "12.3.4"
+buf = "1.72.0"
+protoc = "36.1"
+"cargo:boltffi_cli" = "0.30.1"
+"npm:typescript" = "5.9.3"
+
+[tasks.install]
+description = "Install JavaScript workspace dependencies"
+depends = ["ffi:wasm"]
+run = "pnpm install"
+
+[tasks.check]
+description = "Check Rust, protocols, and TypeScript"
+depends = ["install"]
+run = [
+  "cargo fmt --all --check",
+  "cargo clippy --workspace --all-targets -- -D warnings",
+  "cargo test --workspace",
+  "buf lint",
+  "pnpm check",
+]
+
+[tasks.build]
+description = "Build locally supported surfaces"
+depends = ["install"]
+run = [
+  "cargo build -p arut-linux",
+  "pnpm build",
+]
+
+[tasks."ffi:wasm"]
+description = "Generate and package the WASM bindings"
+dir = "{{config_root}}/bindings/ffi"
+run = [
+  "node -e \"require('node:fs').rmSync('../generated/wasm',{recursive:true,force:true})\"",
+  "boltffi pack wasm --deny-skipped",
+]
+
+[tasks."ffi:apple"]
+description = "Generate and package the Apple bindings"
+dir = "{{config_root}}/bindings/ffi"
+run = [
+  "node -e \"require('node:fs').rmSync('../generated/apple',{recursive:true,force:true})\"",
+  "boltffi pack apple --deny-skipped",
+]
+
+[tasks."ffi:android"]
+description = "Generate and package the Android bindings"
+dir = "{{config_root}}/bindings/ffi"
+run = [
+  "node -e \"require('node:fs').rmSync('../generated/android',{recursive:true,force:true})\"",
+  "boltffi pack android --deny-skipped",
+]
+
+[tasks."ffi:csharp"]
+description = "Generate and package the .NET bindings"
+dir = "{{config_root}}/bindings/ffi"
+run = [
+  "node -e \"require('node:fs').rmSync('../generated/csharp',{recursive:true,force:true})\"",
+  "boltffi pack csharp --deny-skipped",
+]
+
+[tasks."ffi:csharp".tools]
+dotnet = "10"
+
+[tasks."protocol:lint"]
+description = "Lint Protobuf contracts"
+run = "buf lint"
+
+[tasks."surface:linux"]
+description = "Run the Linux Qt/QML surface"
+run = "cargo run -p arut-linux"
+
+[tasks."backend:composer"]
+description = "Run the standalone Chat Composer synchronization backend"
+run = "cargo run -p arut-backend-composer"
+
+[tasks."surface:web"]
+description = "Run the web surface"
+depends = ["install"]
+run = "pnpm --filter @arut/surface-web dev"
+
+[tasks."surface:android"]
+description = "Build the Android surface"
+depends = ["ffi:android"]
+run = "gradle -p surfaces/android assembleDebug"
+
+[tasks."surface:android".tools]
+java = "21"
+gradle = "8.9"
+
+[tasks."surface:apple-project"]
+description = "Generate the Apple Xcode project"
+run = "xcodegen generate --spec surfaces/apple/project.yml"
+
+[tasks."surface:apple-project".tools]
+xcodegen = "2.46.0"

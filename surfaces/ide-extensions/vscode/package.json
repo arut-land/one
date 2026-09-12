@@ -1,0 +1,36 @@
+{
+  "name": "arut-vscode",
+  "displayName": "arut",
+  "description": "The arut VS Code surface",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "vscode": "^1.96.0"
+  },
+  "main": "./dist/extension.js",
+  "activationEvents": [
+    "onCommand:arut.chat"
+  ],
+  "contributes": {
+    "commands": [
+      {
+        "command": "arut.chat",
+        "title": "Arut: Open Chat"
+      }
+    ]
+  },
+  "scripts": {
+    "build": "vite build",
+    "check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@arut/bindings-typescript": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.1",
+    "@types/vscode": "^1.96.0",
+    "typescript": "catalog:",
+    "vite": "catalog:"
+  }
+}
