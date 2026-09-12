@@ -13,6 +13,7 @@ arut-watch.workspace = true
 boltffi = "=0.30.1"
 futures-util = "0.3.31"
 prost = "0.14.1"
+thiserror = "2.0.20"
 uuid = { version = "1.18.1", default-features = false, features = ["std"] }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]

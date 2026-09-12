@@ -51,6 +51,7 @@ dependencies = [
  "futures-executor",
  "futures-util",
  "prost",
+ "thiserror",
  "uuid",
 ]
 
