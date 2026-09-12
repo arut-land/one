@@ -1,4 +1,5 @@
 use crate::{observe::Tasks, strings};
+use arut_i18n::Message;
 use arut_product_session::{FeatureAvailability, ProductSession};
 use gtk::prelude::*;
 use relm4::{ComponentParts, ComponentSender, SimpleComponent};
@@ -22,7 +23,7 @@ impl SimpleComponent for Availability {
             set_label: &strings::availability(model.value),
             set_wrap: true,
             set_xalign: 0.0,
-            update_property: &[gtk::accessible::Property::Label("Node availability")],
+            update_property: &[gtk::accessible::Property::Label(&strings::show(&Message::LabelNodeAvailability))],
         }
     }
     fn init(

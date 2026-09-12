@@ -8,9 +8,37 @@
 import Foundation
 
 enum L10n {
+    /// `action-close-history`
+    static func actionCloseHistory() -> String {
+        String(localized: "action-close-history", table: "Localizable", bundle: .module)
+    }
+    /// `action-collapse-sidebar`
+    static func actionCollapseSidebar() -> String {
+        String(localized: "action-collapse-sidebar", table: "Localizable", bundle: .module)
+    }
+    /// `action-expand-sidebar`
+    static func actionExpandSidebar() -> String {
+        String(localized: "action-expand-sidebar", table: "Localizable", bundle: .module)
+    }
+    /// `action-new-chat`
+    static func actionNewChat() -> String {
+        String(localized: "action-new-chat", table: "Localizable", bundle: .module)
+    }
+    /// `action-new-chat-shortcut`
+    static func actionNewChatShortcut(shortcut: String) -> String {
+        String(format: String(localized: "action-new-chat-shortcut", table: "Localizable", bundle: .module), shortcut)
+    }
     /// `action-new-conversation`
     static func actionNewConversation() -> String {
         String(localized: "action-new-conversation", table: "Localizable", bundle: .module)
+    }
+    /// `action-new-conversation-shortcut`
+    static func actionNewConversationShortcut(shortcut: String) -> String {
+        String(format: String(localized: "action-new-conversation-shortcut", table: "Localizable", bundle: .module), shortcut)
+    }
+    /// `action-open-history`
+    static func actionOpenHistory() -> String {
+        String(localized: "action-open-history", table: "Localizable", bundle: .module)
     }
     /// `action-send`
     static func actionSend() -> String {
@@ -19,6 +47,26 @@ enum L10n {
     /// `action-send-message`
     static func actionSendMessage() -> String {
         String(localized: "action-send-message", table: "Localizable", bundle: .module)
+    }
+    /// `action-toggle-history`
+    static func actionToggleHistory() -> String {
+        String(localized: "action-toggle-history", table: "Localizable", bundle: .module)
+    }
+    /// `action-toggle-history-shortcut`
+    static func actionToggleHistoryShortcut(shortcut: String) -> String {
+        String(format: String(localized: "action-toggle-history-shortcut", table: "Localizable", bundle: .module), shortcut)
+    }
+    /// `action-toggle-sidebar`
+    static func actionToggleSidebar() -> String {
+        String(localized: "action-toggle-sidebar", table: "Localizable", bundle: .module)
+    }
+    /// `action-toggle-sidebar-shortcut`
+    static func actionToggleSidebarShortcut(shortcut: String) -> String {
+        String(format: String(localized: "action-toggle-sidebar-shortcut", table: "Localizable", bundle: .module), shortcut)
+    }
+    /// `app-name`
+    static func appName() -> String {
+        String(localized: "app-name", table: "Localizable", bundle: .module)
     }
     /// `availability-available`
     static func availabilityAvailable() -> String {
@@ -40,6 +88,22 @@ enum L10n {
     static func availabilityUnknown() -> String {
         String(localized: "availability-unknown", table: "Localizable", bundle: .module)
     }
+    /// `chat-draft-synced`
+    static func chatDraftSynced() -> String {
+        String(localized: "chat-draft-synced", table: "Localizable", bundle: .module)
+    }
+    /// `chat-empty-hint`
+    static func chatEmptyHint() -> String {
+        String(localized: "chat-empty-hint", table: "Localizable", bundle: .module)
+    }
+    /// `chat-empty-start`
+    static func chatEmptyStart() -> String {
+        String(localized: "chat-empty-start", table: "Localizable", bundle: .module)
+    }
+    /// `chat-empty-title`
+    static func chatEmptyTitle() -> String {
+        String(localized: "chat-empty-title", table: "Localizable", bundle: .module)
+    }
     /// `chat-error-cancelled`
     static func chatErrorCancelled() -> String {
         String(localized: "chat-error-cancelled", table: "Localizable", bundle: .module)
@@ -52,6 +116,14 @@ enum L10n {
     static func chatErrorNoConversation() -> String {
         String(localized: "chat-error-no-conversation", table: "Localizable", bundle: .module)
     }
+    /// `chat-history-empty`
+    static func chatHistoryEmpty() -> String {
+        String(localized: "chat-history-empty", table: "Localizable", bundle: .module)
+    }
+    /// `chat-local-session`
+    static func chatLocalSession() -> String {
+        String(localized: "chat-local-session", table: "Localizable", bundle: .module)
+    }
     /// `chat-role-assistant`
     static func chatRoleAssistant() -> String {
         String(localized: "chat-role-assistant", table: "Localizable", bundle: .module)
@@ -60,6 +132,10 @@ enum L10n {
     static func chatRoleYou() -> String {
         String(localized: "chat-role-you", table: "Localizable", bundle: .module)
     }
+    /// `chat-session-saved`
+    static func chatSessionSaved() -> String {
+        String(localized: "chat-session-saved", table: "Localizable", bundle: .module)
+    }
     /// `chat-status-failed`
     static func chatStatusFailed() -> String {
         String(localized: "chat-status-failed", table: "Localizable", bundle: .module)
@@ -67,6 +143,10 @@ enum L10n {
     /// `chat-status-sending`
     static func chatStatusSending() -> String {
         String(localized: "chat-status-sending", table: "Localizable", bundle: .module)
+    }
+    /// `chat-status-thinking`
+    static func chatStatusThinking() -> String {
+        String(localized: "chat-status-thinking", table: "Localizable", bundle: .module)
     }
     /// `composer-error-authority-changed`
     static func composerErrorAuthorityChanged(currentEpoch: String) -> String {
@@ -92,6 +172,14 @@ enum L10n {
     static func composerErrorSnapshotMissing() -> String {
         String(localized: "composer-error-snapshot-missing", table: "Localizable", bundle: .module)
     }
+    /// `composer-hint-enter`
+    static func composerHintEnter() -> String {
+        String(localized: "composer-hint-enter", table: "Localizable", bundle: .module)
+    }
+    /// `composer-hint-multiline`
+    static func composerHintMultiline() -> String {
+        String(localized: "composer-hint-multiline", table: "Localizable", bundle: .module)
+    }
     /// `composer-placeholder`
     static func composerPlaceholder() -> String {
         String(localized: "composer-placeholder", table: "Localizable", bundle: .module)
@@ -103,6 +191,38 @@ enum L10n {
     /// `composer-status-failed`
     static func composerStatusFailed() -> String {
         String(localized: "composer-status-failed", table: "Localizable", bundle: .module)
+    }
+    /// `label-chat-history`
+    static func labelChatHistory() -> String {
+        String(localized: "label-chat-history", table: "Localizable", bundle: .module)
+    }
+    /// `label-conversations`
+    static func labelConversations() -> String {
+        String(localized: "label-conversations", table: "Localizable", bundle: .module)
+    }
+    /// `label-draft`
+    static func labelDraft() -> String {
+        String(localized: "label-draft", table: "Localizable", bundle: .module)
+    }
+    /// `label-draft-sync`
+    static func labelDraftSync() -> String {
+        String(localized: "label-draft-sync", table: "Localizable", bundle: .module)
+    }
+    /// `label-message-status`
+    static func labelMessageStatus() -> String {
+        String(localized: "label-message-status", table: "Localizable", bundle: .module)
+    }
+    /// `label-node-availability`
+    static func labelNodeAvailability() -> String {
+        String(localized: "label-node-availability", table: "Localizable", bundle: .module)
+    }
+    /// `label-recent`
+    static func labelRecent() -> String {
+        String(localized: "label-recent", table: "Localizable", bundle: .module)
+    }
+    /// `label-transcript`
+    static func labelTranscript() -> String {
+        String(localized: "label-transcript", table: "Localizable", bundle: .module)
     }
     /// `node-failure-cancelled`
     static func nodeFailureCancelled() -> String {

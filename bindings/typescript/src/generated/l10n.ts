@@ -11,30 +11,60 @@ export interface L10nBundle {
 
 /** Every message id, for the rare caller that needs the id itself. */
 export const keys = {
+  actionCloseHistory: "action-close-history",
+  actionCollapseSidebar: "action-collapse-sidebar",
+  actionExpandSidebar: "action-expand-sidebar",
+  actionNewChat: "action-new-chat",
+  actionNewChatShortcut: "action-new-chat-shortcut",
   actionNewConversation: "action-new-conversation",
+  actionNewConversationShortcut: "action-new-conversation-shortcut",
+  actionOpenHistory: "action-open-history",
   actionSend: "action-send",
   actionSendMessage: "action-send-message",
+  actionToggleHistory: "action-toggle-history",
+  actionToggleHistoryShortcut: "action-toggle-history-shortcut",
+  actionToggleSidebar: "action-toggle-sidebar",
+  actionToggleSidebarShortcut: "action-toggle-sidebar-shortcut",
+  appName: "app-name",
   availabilityAvailable: "availability-available",
   availabilityManifestUnreachable: "availability-manifest-unreachable",
   availabilityNotAdvertised: "availability-not-advertised",
   availabilityReportedUnavailable: "availability-reported-unavailable",
   availabilityUnknown: "availability-unknown",
+  chatDraftSynced: "chat-draft-synced",
+  chatEmptyHint: "chat-empty-hint",
+  chatEmptyStart: "chat-empty-start",
+  chatEmptyTitle: "chat-empty-title",
   chatErrorCancelled: "chat-error-cancelled",
   chatErrorChatIdMissing: "chat-error-chat-id-missing",
   chatErrorNoConversation: "chat-error-no-conversation",
+  chatHistoryEmpty: "chat-history-empty",
+  chatLocalSession: "chat-local-session",
   chatRoleAssistant: "chat-role-assistant",
   chatRoleYou: "chat-role-you",
+  chatSessionSaved: "chat-session-saved",
   chatStatusFailed: "chat-status-failed",
   chatStatusSending: "chat-status-sending",
+  chatStatusThinking: "chat-status-thinking",
   composerErrorAuthorityChanged: "composer-error-authority-changed",
   composerErrorOutcomeMissing: "composer-error-outcome-missing",
   composerErrorRevisionConflict: "composer-error-revision-conflict",
   composerErrorScopeMismatch: "composer-error-scope-mismatch",
   composerErrorScopeMissing: "composer-error-scope-missing",
   composerErrorSnapshotMissing: "composer-error-snapshot-missing",
+  composerHintEnter: "composer-hint-enter",
+  composerHintMultiline: "composer-hint-multiline",
   composerPlaceholder: "composer-placeholder",
   composerStatusConnecting: "composer-status-connecting",
   composerStatusFailed: "composer-status-failed",
+  labelChatHistory: "label-chat-history",
+  labelConversations: "label-conversations",
+  labelDraft: "label-draft",
+  labelDraftSync: "label-draft-sync",
+  labelMessageStatus: "label-message-status",
+  labelNodeAvailability: "label-node-availability",
+  labelRecent: "label-recent",
+  labelTranscript: "label-transcript",
   nodeFailureCancelled: "node-failure-cancelled",
   nodeFailureConflict: "node-failure-conflict",
   nodeFailureInternal: "node-failure-internal",
@@ -62,12 +92,40 @@ export type MessageKey = (typeof keys)[keyof typeof keys];
 
 /** One typed accessor per message. */
 export const t = {
+  /** `action-close-history` */
+  actionCloseHistory: (bundle: L10nBundle): string => bundle.format(keys.actionCloseHistory),
+  /** `action-collapse-sidebar` */
+  actionCollapseSidebar: (bundle: L10nBundle): string => bundle.format(keys.actionCollapseSidebar),
+  /** `action-expand-sidebar` */
+  actionExpandSidebar: (bundle: L10nBundle): string => bundle.format(keys.actionExpandSidebar),
+  /** `action-new-chat` */
+  actionNewChat: (bundle: L10nBundle): string => bundle.format(keys.actionNewChat),
+  /** `action-new-chat-shortcut` */
+  actionNewChatShortcut: (bundle: L10nBundle, args: { shortcut: string }): string =>
+    bundle.format(keys.actionNewChatShortcut, { shortcut: args.shortcut }),
   /** `action-new-conversation` */
   actionNewConversation: (bundle: L10nBundle): string => bundle.format(keys.actionNewConversation),
+  /** `action-new-conversation-shortcut` */
+  actionNewConversationShortcut: (bundle: L10nBundle, args: { shortcut: string }): string =>
+    bundle.format(keys.actionNewConversationShortcut, { shortcut: args.shortcut }),
+  /** `action-open-history` */
+  actionOpenHistory: (bundle: L10nBundle): string => bundle.format(keys.actionOpenHistory),
   /** `action-send` */
   actionSend: (bundle: L10nBundle): string => bundle.format(keys.actionSend),
   /** `action-send-message` */
   actionSendMessage: (bundle: L10nBundle): string => bundle.format(keys.actionSendMessage),
+  /** `action-toggle-history` */
+  actionToggleHistory: (bundle: L10nBundle): string => bundle.format(keys.actionToggleHistory),
+  /** `action-toggle-history-shortcut` */
+  actionToggleHistoryShortcut: (bundle: L10nBundle, args: { shortcut: string }): string =>
+    bundle.format(keys.actionToggleHistoryShortcut, { shortcut: args.shortcut }),
+  /** `action-toggle-sidebar` */
+  actionToggleSidebar: (bundle: L10nBundle): string => bundle.format(keys.actionToggleSidebar),
+  /** `action-toggle-sidebar-shortcut` */
+  actionToggleSidebarShortcut: (bundle: L10nBundle, args: { shortcut: string }): string =>
+    bundle.format(keys.actionToggleSidebarShortcut, { shortcut: args.shortcut }),
+  /** `app-name` */
+  appName: (bundle: L10nBundle): string => bundle.format(keys.appName),
   /** `availability-available` */
   availabilityAvailable: (bundle: L10nBundle): string => bundle.format(keys.availabilityAvailable),
   /** `availability-manifest-unreachable` */
@@ -78,20 +136,36 @@ export const t = {
   availabilityReportedUnavailable: (bundle: L10nBundle): string => bundle.format(keys.availabilityReportedUnavailable),
   /** `availability-unknown` */
   availabilityUnknown: (bundle: L10nBundle): string => bundle.format(keys.availabilityUnknown),
+  /** `chat-draft-synced` */
+  chatDraftSynced: (bundle: L10nBundle): string => bundle.format(keys.chatDraftSynced),
+  /** `chat-empty-hint` */
+  chatEmptyHint: (bundle: L10nBundle): string => bundle.format(keys.chatEmptyHint),
+  /** `chat-empty-start` */
+  chatEmptyStart: (bundle: L10nBundle): string => bundle.format(keys.chatEmptyStart),
+  /** `chat-empty-title` */
+  chatEmptyTitle: (bundle: L10nBundle): string => bundle.format(keys.chatEmptyTitle),
   /** `chat-error-cancelled` */
   chatErrorCancelled: (bundle: L10nBundle): string => bundle.format(keys.chatErrorCancelled),
   /** `chat-error-chat-id-missing` */
   chatErrorChatIdMissing: (bundle: L10nBundle): string => bundle.format(keys.chatErrorChatIdMissing),
   /** `chat-error-no-conversation` */
   chatErrorNoConversation: (bundle: L10nBundle): string => bundle.format(keys.chatErrorNoConversation),
+  /** `chat-history-empty` */
+  chatHistoryEmpty: (bundle: L10nBundle): string => bundle.format(keys.chatHistoryEmpty),
+  /** `chat-local-session` */
+  chatLocalSession: (bundle: L10nBundle): string => bundle.format(keys.chatLocalSession),
   /** `chat-role-assistant` */
   chatRoleAssistant: (bundle: L10nBundle): string => bundle.format(keys.chatRoleAssistant),
   /** `chat-role-you` */
   chatRoleYou: (bundle: L10nBundle): string => bundle.format(keys.chatRoleYou),
+  /** `chat-session-saved` */
+  chatSessionSaved: (bundle: L10nBundle): string => bundle.format(keys.chatSessionSaved),
   /** `chat-status-failed` */
   chatStatusFailed: (bundle: L10nBundle): string => bundle.format(keys.chatStatusFailed),
   /** `chat-status-sending` */
   chatStatusSending: (bundle: L10nBundle): string => bundle.format(keys.chatStatusSending),
+  /** `chat-status-thinking` */
+  chatStatusThinking: (bundle: L10nBundle): string => bundle.format(keys.chatStatusThinking),
   /** `composer-error-authority-changed` */
   composerErrorAuthorityChanged: (bundle: L10nBundle, args: { currentEpoch: string }): string =>
     bundle.format(keys.composerErrorAuthorityChanged, { currentEpoch: args.currentEpoch }),
@@ -106,12 +180,32 @@ export const t = {
   composerErrorScopeMissing: (bundle: L10nBundle): string => bundle.format(keys.composerErrorScopeMissing),
   /** `composer-error-snapshot-missing` */
   composerErrorSnapshotMissing: (bundle: L10nBundle): string => bundle.format(keys.composerErrorSnapshotMissing),
+  /** `composer-hint-enter` */
+  composerHintEnter: (bundle: L10nBundle): string => bundle.format(keys.composerHintEnter),
+  /** `composer-hint-multiline` */
+  composerHintMultiline: (bundle: L10nBundle): string => bundle.format(keys.composerHintMultiline),
   /** `composer-placeholder` */
   composerPlaceholder: (bundle: L10nBundle): string => bundle.format(keys.composerPlaceholder),
   /** `composer-status-connecting` */
   composerStatusConnecting: (bundle: L10nBundle): string => bundle.format(keys.composerStatusConnecting),
   /** `composer-status-failed` */
   composerStatusFailed: (bundle: L10nBundle): string => bundle.format(keys.composerStatusFailed),
+  /** `label-chat-history` */
+  labelChatHistory: (bundle: L10nBundle): string => bundle.format(keys.labelChatHistory),
+  /** `label-conversations` */
+  labelConversations: (bundle: L10nBundle): string => bundle.format(keys.labelConversations),
+  /** `label-draft` */
+  labelDraft: (bundle: L10nBundle): string => bundle.format(keys.labelDraft),
+  /** `label-draft-sync` */
+  labelDraftSync: (bundle: L10nBundle): string => bundle.format(keys.labelDraftSync),
+  /** `label-message-status` */
+  labelMessageStatus: (bundle: L10nBundle): string => bundle.format(keys.labelMessageStatus),
+  /** `label-node-availability` */
+  labelNodeAvailability: (bundle: L10nBundle): string => bundle.format(keys.labelNodeAvailability),
+  /** `label-recent` */
+  labelRecent: (bundle: L10nBundle): string => bundle.format(keys.labelRecent),
+  /** `label-transcript` */
+  labelTranscript: (bundle: L10nBundle): string => bundle.format(keys.labelTranscript),
   /** `node-failure-cancelled` */
   nodeFailureCancelled: (bundle: L10nBundle): string => bundle.format(keys.nodeFailureCancelled),
   /** `node-failure-conflict` */

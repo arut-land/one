@@ -1,6 +1,61 @@
 {
   "sourceLanguage": "en",
   "strings": {
+    "action-close-history": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Close chat history"
+          }
+        }
+      }
+    },
+    "action-collapse-sidebar": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Collapse sidebar"
+          }
+        }
+      }
+    },
+    "action-expand-sidebar": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Expand sidebar"
+          }
+        }
+      }
+    },
+    "action-new-chat": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "New chat"
+          }
+        }
+      }
+    },
+    "action-new-chat-shortcut": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "New chat (%1$@)"
+          }
+        }
+      }
+    },
     "action-new-conversation": {
       "extractionState": "manual",
       "localizations": {
@@ -8,6 +63,28 @@
           "stringUnit": {
             "state": "translated",
             "value": "New conversation"
+          }
+        }
+      }
+    },
+    "action-new-conversation-shortcut": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "New conversation (%1$@)"
+          }
+        }
+      }
+    },
+    "action-open-history": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Open chat history"
           }
         }
       }
@@ -30,6 +107,61 @@
           "stringUnit": {
             "state": "translated",
             "value": "Send message"
+          }
+        }
+      }
+    },
+    "action-toggle-history": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Toggle chat history"
+          }
+        }
+      }
+    },
+    "action-toggle-history-shortcut": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Toggle chat history (%1$@)"
+          }
+        }
+      }
+    },
+    "action-toggle-sidebar": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Toggle sidebar"
+          }
+        }
+      }
+    },
+    "action-toggle-sidebar-shortcut": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Toggle sidebar (%1$@)"
+          }
+        }
+      }
+    },
+    "app-name": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Arut"
           }
         }
       }
@@ -89,6 +221,50 @@
         }
       }
     },
+    "chat-draft-synced": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Draft synced across this session"
+          }
+        }
+      }
+    },
+    "chat-empty-hint": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Write a message below. Your draft stays with this conversation."
+          }
+        }
+      }
+    },
+    "chat-empty-start": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Start a conversation."
+          }
+        }
+      }
+    },
+    "chat-empty-title": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "What are we working on?"
+          }
+        }
+      }
+    },
     "chat-error-cancelled": {
       "extractionState": "manual",
       "localizations": {
@@ -122,6 +298,28 @@
         }
       }
     },
+    "chat-history-empty": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Your chats will appear here."
+          }
+        }
+      }
+    },
+    "chat-local-session": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Local session"
+          }
+        }
+      }
+    },
     "chat-role-assistant": {
       "extractionState": "manual",
       "localizations": {
@@ -144,6 +342,17 @@
         }
       }
     },
+    "chat-session-saved": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Saved in this session"
+          }
+        }
+      }
+    },
     "chat-status-failed": {
       "extractionState": "manual",
       "localizations": {
@@ -162,6 +371,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Sending…"
+          }
+        }
+      }
+    },
+    "chat-status-thinking": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Thinking"
           }
         }
       }
@@ -232,6 +452,28 @@
         }
       }
     },
+    "composer-hint-enter": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Enter to send"
+          }
+        }
+      }
+    },
+    "composer-hint-multiline": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Enter to send, Shift+Enter for a new line"
+          }
+        }
+      }
+    },
     "composer-placeholder": {
       "extractionState": "manual",
       "localizations": {
@@ -261,6 +503,94 @@
           "stringUnit": {
             "state": "translated",
             "value": "Could not synchronize the draft. Check the node connection."
+          }
+        }
+      }
+    },
+    "label-chat-history": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Chat history"
+          }
+        }
+      }
+    },
+    "label-conversations": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conversations"
+          }
+        }
+      }
+    },
+    "label-draft": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Message draft"
+          }
+        }
+      }
+    },
+    "label-draft-sync": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Draft synchronization"
+          }
+        }
+      }
+    },
+    "label-message-status": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Message status"
+          }
+        }
+      }
+    },
+    "label-node-availability": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Node availability"
+          }
+        }
+      }
+    },
+    "label-recent": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Recent"
+          }
+        }
+      }
+    },
+    "label-transcript": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conversation transcript"
           }
         }
       }

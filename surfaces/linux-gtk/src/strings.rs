@@ -37,7 +37,7 @@ fn localizer() -> &'static Localizer {
     })
 }
 
-fn show(message: &Message) -> String {
+pub fn show(message: &Message) -> String {
     localizer().format(message)
 }
 

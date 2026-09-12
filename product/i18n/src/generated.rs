@@ -11,12 +11,36 @@ use crate::{FluentArgs, FluentValue};
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum Message {
+    /// `action-close-history`
+    ActionCloseHistory,
+    /// `action-collapse-sidebar`
+    ActionCollapseSidebar,
+    /// `action-expand-sidebar`
+    ActionExpandSidebar,
+    /// `action-new-chat`
+    ActionNewChat,
+    /// `action-new-chat-shortcut`
+    ActionNewChatShortcut { shortcut: String },
     /// `action-new-conversation`
     ActionNewConversation,
+    /// `action-new-conversation-shortcut`
+    ActionNewConversationShortcut { shortcut: String },
+    /// `action-open-history`
+    ActionOpenHistory,
     /// `action-send`
     ActionSend,
     /// `action-send-message`
     ActionSendMessage,
+    /// `action-toggle-history`
+    ActionToggleHistory,
+    /// `action-toggle-history-shortcut`
+    ActionToggleHistoryShortcut { shortcut: String },
+    /// `action-toggle-sidebar`
+    ActionToggleSidebar,
+    /// `action-toggle-sidebar-shortcut`
+    ActionToggleSidebarShortcut { shortcut: String },
+    /// `app-name`
+    AppName,
     /// `availability-available`
     AvailabilityAvailable,
     /// `availability-manifest-unreachable`
@@ -27,20 +51,36 @@ pub enum Message {
     AvailabilityReportedUnavailable,
     /// `availability-unknown`
     AvailabilityUnknown,
+    /// `chat-draft-synced`
+    ChatDraftSynced,
+    /// `chat-empty-hint`
+    ChatEmptyHint,
+    /// `chat-empty-start`
+    ChatEmptyStart,
+    /// `chat-empty-title`
+    ChatEmptyTitle,
     /// `chat-error-cancelled`
     ChatErrorCancelled,
     /// `chat-error-chat-id-missing`
     ChatErrorChatIdMissing,
     /// `chat-error-no-conversation`
     ChatErrorNoConversation,
+    /// `chat-history-empty`
+    ChatHistoryEmpty,
+    /// `chat-local-session`
+    ChatLocalSession,
     /// `chat-role-assistant`
     ChatRoleAssistant,
     /// `chat-role-you`
     ChatRoleYou,
+    /// `chat-session-saved`
+    ChatSessionSaved,
     /// `chat-status-failed`
     ChatStatusFailed,
     /// `chat-status-sending`
     ChatStatusSending,
+    /// `chat-status-thinking`
+    ChatStatusThinking,
     /// `composer-error-authority-changed`
     ComposerErrorAuthorityChanged { current_epoch: String },
     /// `composer-error-outcome-missing`
@@ -53,12 +93,32 @@ pub enum Message {
     ComposerErrorScopeMissing,
     /// `composer-error-snapshot-missing`
     ComposerErrorSnapshotMissing,
+    /// `composer-hint-enter`
+    ComposerHintEnter,
+    /// `composer-hint-multiline`
+    ComposerHintMultiline,
     /// `composer-placeholder`
     ComposerPlaceholder,
     /// `composer-status-connecting`
     ComposerStatusConnecting,
     /// `composer-status-failed`
     ComposerStatusFailed,
+    /// `label-chat-history`
+    LabelChatHistory,
+    /// `label-conversations`
+    LabelConversations,
+    /// `label-draft`
+    LabelDraft,
+    /// `label-draft-sync`
+    LabelDraftSync,
+    /// `label-message-status`
+    LabelMessageStatus,
+    /// `label-node-availability`
+    LabelNodeAvailability,
+    /// `label-recent`
+    LabelRecent,
+    /// `label-transcript`
+    LabelTranscript,
     /// `node-failure-cancelled`
     NodeFailureCancelled,
     /// `node-failure-conflict`
@@ -108,30 +168,60 @@ impl Message {
     #[must_use]
     pub const fn key(&self) -> &'static str {
         match self {
+            Self::ActionCloseHistory => "action-close-history",
+            Self::ActionCollapseSidebar => "action-collapse-sidebar",
+            Self::ActionExpandSidebar => "action-expand-sidebar",
+            Self::ActionNewChat => "action-new-chat",
+            Self::ActionNewChatShortcut { .. } => "action-new-chat-shortcut",
             Self::ActionNewConversation => "action-new-conversation",
+            Self::ActionNewConversationShortcut { .. } => "action-new-conversation-shortcut",
+            Self::ActionOpenHistory => "action-open-history",
             Self::ActionSend => "action-send",
             Self::ActionSendMessage => "action-send-message",
+            Self::ActionToggleHistory => "action-toggle-history",
+            Self::ActionToggleHistoryShortcut { .. } => "action-toggle-history-shortcut",
+            Self::ActionToggleSidebar => "action-toggle-sidebar",
+            Self::ActionToggleSidebarShortcut { .. } => "action-toggle-sidebar-shortcut",
+            Self::AppName => "app-name",
             Self::AvailabilityAvailable => "availability-available",
             Self::AvailabilityManifestUnreachable => "availability-manifest-unreachable",
             Self::AvailabilityNotAdvertised => "availability-not-advertised",
             Self::AvailabilityReportedUnavailable => "availability-reported-unavailable",
             Self::AvailabilityUnknown => "availability-unknown",
+            Self::ChatDraftSynced => "chat-draft-synced",
+            Self::ChatEmptyHint => "chat-empty-hint",
+            Self::ChatEmptyStart => "chat-empty-start",
+            Self::ChatEmptyTitle => "chat-empty-title",
             Self::ChatErrorCancelled => "chat-error-cancelled",
             Self::ChatErrorChatIdMissing => "chat-error-chat-id-missing",
             Self::ChatErrorNoConversation => "chat-error-no-conversation",
+            Self::ChatHistoryEmpty => "chat-history-empty",
+            Self::ChatLocalSession => "chat-local-session",
             Self::ChatRoleAssistant => "chat-role-assistant",
             Self::ChatRoleYou => "chat-role-you",
+            Self::ChatSessionSaved => "chat-session-saved",
             Self::ChatStatusFailed => "chat-status-failed",
             Self::ChatStatusSending => "chat-status-sending",
+            Self::ChatStatusThinking => "chat-status-thinking",
             Self::ComposerErrorAuthorityChanged { .. } => "composer-error-authority-changed",
             Self::ComposerErrorOutcomeMissing => "composer-error-outcome-missing",
             Self::ComposerErrorRevisionConflict { .. } => "composer-error-revision-conflict",
             Self::ComposerErrorScopeMismatch => "composer-error-scope-mismatch",
             Self::ComposerErrorScopeMissing => "composer-error-scope-missing",
             Self::ComposerErrorSnapshotMissing => "composer-error-snapshot-missing",
+            Self::ComposerHintEnter => "composer-hint-enter",
+            Self::ComposerHintMultiline => "composer-hint-multiline",
             Self::ComposerPlaceholder => "composer-placeholder",
             Self::ComposerStatusConnecting => "composer-status-connecting",
             Self::ComposerStatusFailed => "composer-status-failed",
+            Self::LabelChatHistory => "label-chat-history",
+            Self::LabelConversations => "label-conversations",
+            Self::LabelDraft => "label-draft",
+            Self::LabelDraftSync => "label-draft-sync",
+            Self::LabelMessageStatus => "label-message-status",
+            Self::LabelNodeAvailability => "label-node-availability",
+            Self::LabelRecent => "label-recent",
+            Self::LabelTranscript => "label-transcript",
             Self::NodeFailureCancelled => "node-failure-cancelled",
             Self::NodeFailureConflict => "node-failure-conflict",
             Self::NodeFailureInternal => "node-failure-internal",
@@ -161,11 +251,17 @@ impl Message {
     pub fn args(&self) -> FluentArgs<'_> {
         let mut args = FluentArgs::new();
         match self {
+            Self::ComposerErrorRevisionConflict { current } => {
+                args.set("current", FluentValue::from(current.as_str()));
+            }
             Self::ComposerErrorAuthorityChanged { current_epoch } => {
                 args.set("currentEpoch", FluentValue::from(current_epoch.as_str()));
             }
-            Self::ComposerErrorRevisionConflict { current } => {
-                args.set("current", FluentValue::from(current.as_str()));
+            Self::ActionNewChatShortcut { shortcut }
+            | Self::ActionNewConversationShortcut { shortcut }
+            | Self::ActionToggleHistoryShortcut { shortcut }
+            | Self::ActionToggleSidebarShortcut { shortcut } => {
+                args.set("shortcut", FluentValue::from(shortcut.as_str()));
             }
             _ => {}
         }

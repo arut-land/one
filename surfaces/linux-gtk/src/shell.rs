@@ -8,6 +8,7 @@ use crate::{
     transcript::Transcript,
 };
 use arut_feature_chat::product::ChatClient;
+use arut_i18n::Message;
 use arut_product_session::{FeatureAvailability, ProductSession};
 use gtk::{glib, prelude::*};
 use relm4::{Component, ComponentController, ComponentParts, ComponentSender, Controller};
@@ -48,7 +49,7 @@ impl Component for Shell {
     view! {
         #[name = "window"]
         gtk::ApplicationWindow {
-            set_title: Some("Arut"),
+            set_title: Some(&strings::show(&Message::AppName)),
             add_css_class: "arut-window",
             set_default_size: (900, 600),
             gtk::Box {
@@ -58,14 +59,14 @@ impl Component for Shell {
                     set_spacing: 6,
                     gtk::Button {
                         set_icon_name: "sidebar-show-symbolic",
-                        set_tooltip_text: Some("Toggle sidebar (Ctrl+B)"),
-                        update_property: &[gtk::accessible::Property::Label("Toggle sidebar")],
+                        set_tooltip_text: Some(&strings::show(&Message::ActionToggleSidebarShortcut { shortcut: "Ctrl+B".into() })),
+                        update_property: &[gtk::accessible::Property::Label(&strings::show(&Message::ActionToggleSidebar))],
                         connect_clicked => Msg::ToggleSidebar,
                     },
                     gtk::Button {
                         set_icon_name: "list-add-symbolic",
-                        set_tooltip_text: Some("New conversation (Ctrl+N)"),
-                        update_property: &[gtk::accessible::Property::Label("New conversation")],
+                        set_tooltip_text: Some(&strings::show(&Message::ActionNewConversationShortcut { shortcut: "Ctrl+N".into() })),
+                        update_property: &[gtk::accessible::Property::Label(&strings::show(&Message::ActionNewConversation))],
                         connect_clicked => Msg::New,
                     },
                     #[local_ref]

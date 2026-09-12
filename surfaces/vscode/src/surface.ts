@@ -10,7 +10,7 @@ export function registerChat(context: vscode.ExtensionContext, session: ProductS
   let panel: vscode.WebviewPanel | undefined;
   context.subscriptions.push(vscode.commands.registerCommand("arut.chat", () => {
     if (panel) { panel.reveal(vscode.ViewColumn.Beside); return; }
-    panel = vscode.window.createWebviewPanel("arut.chat", "Arut", vscode.ViewColumn.Beside, {
+    panel = vscode.window.createWebviewPanel("arut.chat", t.appName(strings), vscode.ViewColumn.Beside, {
       enableScripts: true,
       // The core keeps running host-side; retaining the webview's DOM avoids
       // re-running composer.initialize()/follow() every time the panel is hidden.
@@ -23,27 +23,47 @@ export function registerChat(context: vscode.ExtensionContext, session: ProductS
     let lastPostedId = 0n;
     let generation = 0;
     const list = session.conversations();
-    // Errors carry bigint payloads (a revision, an epoch) that the webview's
-    // JSON postMessage channel cannot serialize, so the extension host
-    // resolves each typed error to its sentence before it crosses the wire.
+    let history = list.state();
+    let historyVersion = 0;
+    let postedHistoryVersion = -1;
+    let disposed = false;
+    let publishing = false;
+    let pending = false;
     const publish = () => {
-      const chatState = chat.state();
-      const added = chat.messagesAfter(lastPostedId);
-      lastPostedId = added.at(-1)?.id ?? lastPostedId;
-      const composerState = composer.state();
-      const error = chatState.error
-        ? describeChatError(chatState.error)
-        : composerState.error
-          ? describeComposerError(composerState.error)
-          : null;
-      current.webview.postMessage({ type: "state", state: {
-        generation, status: chatState.status, chatId: chatState.id, draft: composerState.text, history: list.state(), error,
-        messages: added.map(message => ({ ...message, id: message.id.toString() })),
-      } });
+      pending = true;
+      if (publishing || disposed) return;
+      publishing = true;
+      queueMicrotask(async () => {
+        try {
+          while (pending && !disposed) {
+            pending = false;
+            const postingGeneration = generation;
+            const postingHistoryVersion = historyVersion;
+            const chatState = chat.state();
+            const added = chat.messagesAfter(lastPostedId);
+            const composerState = composer.state();
+            const error = chatState.error ? describeChatError(chatState.error)
+              : composerState.error ? describeComposerError(composerState.error) : null;
+            const delivered = await current.webview.postMessage({ type: "state", state: {
+              generation, status: chatState.status, chatId: chatState.id, draft: composerState.text, error,
+              history: postedHistoryVersion === historyVersion ? undefined : history,
+              messages: added.map(message => ({ ...message, id: message.id.toString() })),
+            } });
+            if (delivered && postingGeneration === generation) {
+              lastPostedId = added.at(-1)?.id ?? lastPostedId;
+              postedHistoryVersion = postingHistoryVersion;
+            }
+          }
+        } catch (error) {
+          if (!disposed) console.error(error);
+        } finally {
+          publishing = false;
+        }
+      });
     };
-    let chatChanges = chat.chatChanges(() => { void publish(); });
-    let composerChanges = composer.composerChanges(() => { void publish(); });
-    const listChanges = list.listChanges(() => { void publish(); });
+    let chatChanges = chat.chatChanges(publish);
+    let composerChanges = composer.composerChanges(publish);
+    const listChanges = list.listChanges(() => { history = list.state(); historyVersion++; publish(); });
     let stopFollowing = followComposer(composer);
     const bind = (next: ChatHandle) => {
       chatChanges.cancel(); composerChanges.cancel(); stopFollowing();
@@ -51,6 +71,7 @@ export function registerChat(context: vscode.ExtensionContext, session: ProductS
       chat = next;
       composer = chat.composer();
       lastPostedId = 0n;
+      postedHistoryVersion = -1;
       generation++;
       chatChanges = chat.chatChanges(() => { void publish(); });
       composerChanges = composer.composerChanges(() => { void publish(); });
@@ -58,13 +79,13 @@ export function registerChat(context: vscode.ExtensionContext, session: ProductS
       void publish();
     };
     current.webview.onDidReceiveMessage(async (message: { type: string; text: string; chatId: string }) => {
-      if (message.type === "ready") { lastPostedId = 0n; generation++; publish(); }
+      if (message.type === "ready") { lastPostedId = 0n; postedHistoryVersion = -1; generation++; publish(); }
       else if (message.type === "newChat") { bind(session.newChat()); }
       else if (message.type === "selectChat") { const next = session.selectChat(message.chatId); if (next) { bind(next); } }
       else if (message.type === "draft") { await composer.replace(message.text); }
       else if (message.type === "send") { await chat.send(message.text); }
     }, undefined, context.subscriptions);
-    current.onDidDispose(() => { chatChanges.cancel(); composerChanges.cancel(); listChanges.cancel(); stopFollowing(); composer.dispose(); chat.dispose(); list.dispose(); panel = undefined; });
+    current.onDidDispose(() => { disposed = true; chatChanges.cancel(); composerChanges.cancel(); listChanges.cancel(); stopFollowing(); composer.dispose(); chat.dispose(); list.dispose(); panel = undefined; });
     void publish();
   }));
 }
@@ -77,6 +98,13 @@ function markup(): string {
     send: t.actionSend(strings),
     you: t.chatRoleYou(strings),
     assistant: t.chatRoleAssistant(strings),
+    newChat: t.actionNewChat(strings),
+    newChatShortcut: t.actionNewChatShortcut(strings, { shortcut: "Alt+N" }),
+    toggleHistory: t.actionToggleHistory(strings),
+    toggleHistoryShortcut: t.actionToggleHistoryShortcut(strings, { shortcut: "Alt+S" }),
+    closeHistory: t.actionCloseHistory(strings),
+    recent: t.labelRecent(strings),
+    empty: t.chatEmptyStart(strings),
   }).replace(/</g, "\\u003c");
   return `<!doctype html>
 <html lang="en">
@@ -126,10 +154,10 @@ function markup(): string {
   </style>
 </head>
 <body>
-  <header><button id="toggle-history" type="button" title="Toggle chat history (Alt+S)" aria-label="Toggle chat history"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 5.5h16v13H4zM9 5.5v13" /></svg></button><strong id="title"></strong><button id="new-chat" type="button" title="New chat (Alt+N)"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" /></svg> New chat</button></header>
-  <button id="scrim" type="button" aria-label="Close chat history"></button>
-  <aside id="history"><span>Recent</span></aside>
-  <main id="messages"><p class="empty">Start a conversation.</p></main>
+  <header><button id="toggle-history" type="button" ><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 5.5h16v13H4zM9 5.5v13" /></svg></button><strong id="title"></strong><button id="new-chat" type="button" ><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" /></svg><span></span></button></header>
+  <button id="scrim" type="button" ></button>
+  <aside id="history"><span></span></aside>
+  <main id="messages"><p class="empty"></p></main>
   <p id="error" hidden></p>
   <form><input autofocus><button></button></form>
   <script nonce="${scriptNonce}">
@@ -144,6 +172,14 @@ function markup(): string {
     const scrim = document.querySelector('#scrim');
     const title = document.querySelector('#title');
     const error = document.querySelector('#error');
+    toggle.title = labels.toggleHistoryShortcut;
+    toggle.setAttribute('aria-label', labels.toggleHistory);
+    scrim.setAttribute('aria-label', labels.closeHistory);
+    const newChat = document.querySelector('#new-chat');
+    newChat.title = labels.newChatShortcut;
+    newChat.querySelector('span').textContent = labels.newChat;
+    history.querySelector('span').textContent = labels.recent;
+    messages.querySelector('.empty').textContent = labels.empty;
     title.textContent = labels.newConversation;
     input.placeholder = labels.placeholder;
     input.setAttribute('aria-label', labels.placeholder);
@@ -167,6 +203,7 @@ function markup(): string {
       send.disabled = true;
       vscode.postMessage({ type: 'send', text });
     });
+    input.addEventListener('keydown', event => { if (event.key === 'Enter' && event.isComposing) event.preventDefault(); });
     input.addEventListener('input', () => vscode.postMessage({ type: 'draft', text: input.value }));
     document.querySelector('#new-chat').addEventListener('click', () => {
       vscode.postMessage({ type: 'newChat' });
@@ -179,34 +216,46 @@ function markup(): string {
       if (event.key === '/' && document.activeElement !== input) { event.preventDefault(); input.focus(); }
     });
     let generation = -1;
+    let historyItems = [];
+    let activeChatId = null;
     window.addEventListener('message', ({ data }) => {
       if (data.type !== 'state') return;
       if (generation !== data.state.generation) {
         generation = data.state.generation;
         messages.replaceChildren();
       }
-      history.replaceChildren();
-      const historyLabel = document.createElement('span');
-      historyLabel.textContent = 'Recent';
-      history.append(historyLabel);
-      for (const chat of data.state.history) {
-        const item = document.createElement('button');
-        item.type = 'button';
-        item.textContent = chat.title;
-        item.title = chat.title;
-        item.className = data.state.chatId === chat.id ? 'active' : '';
-        item.addEventListener('click', () => {
-          vscode.postMessage({ type: 'selectChat', chatId: chat.id });
-          if (window.innerWidth <= 560) setSidebar(false);
-        });
-        history.append(item);
+      const historyChanged = Array.isArray(data.state.history);
+      if (historyChanged) {
+        historyItems = data.state.history;
+        history.replaceChildren();
+        const historyLabel = document.createElement('span');
+        historyLabel.textContent = labels.recent;
+        history.append(historyLabel);
+        for (const chat of historyItems) {
+          const item = document.createElement('button');
+          item.type = 'button';
+          item.dataset.chatId = chat.id;
+          item.textContent = chat.title;
+          item.title = chat.title;
+          item.addEventListener('click', () => {
+            vscode.postMessage({ type: 'selectChat', chatId: chat.id });
+            if (window.innerWidth <= 560) setSidebar(false);
+          });
+          history.append(item);
+        }
       }
-      title.textContent = data.state.history.find(chat => chat.id === data.state.chatId)?.title || labels.newConversation;
+      if (historyChanged || activeChatId !== data.state.chatId) {
+        activeChatId = data.state.chatId;
+        for (const item of history.querySelectorAll('button')) {
+          item.classList.toggle('active', item.dataset.chatId === activeChatId);
+        }
+        title.textContent = historyItems.find(chat => chat.id === activeChatId)?.title || labels.newConversation;
+      }
       if (data.state.messages.length > 0) messages.querySelector('.empty')?.remove();
       if (!messages.firstChild && data.state.messages.length === 0) {
         const empty = document.createElement('p');
         empty.className = 'empty';
-        empty.textContent = 'Start a conversation.';
+        empty.textContent = labels.empty;
         messages.append(empty);
       }
       for (const message of data.state.messages) {
@@ -223,7 +272,7 @@ function markup(): string {
       error.hidden = !data.state.error;
       error.textContent = data.state.error || '';
       if (input.value !== data.state.draft) input.value = data.state.draft;
-      messages.scrollTop = messages.scrollHeight;
+      if (data.state.messages.length > 0) messages.scrollTop = messages.scrollHeight;
     });
     vscode.postMessage({ type: 'ready' });
   </script>

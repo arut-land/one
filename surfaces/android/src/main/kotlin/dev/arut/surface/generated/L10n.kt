@@ -13,6 +13,51 @@ import androidx.compose.ui.res.stringResource
 import dev.arut.surface.R
 
 object L10n {
+    /** `action-close-history` */
+    fun actionCloseHistory(context: Context): String =
+        context.getString(R.string.action_close_history)
+
+    /** `action-close-history` */
+    @Composable
+    fun actionCloseHistory(): String =
+        stringResource(R.string.action_close_history)
+
+    /** `action-collapse-sidebar` */
+    fun actionCollapseSidebar(context: Context): String =
+        context.getString(R.string.action_collapse_sidebar)
+
+    /** `action-collapse-sidebar` */
+    @Composable
+    fun actionCollapseSidebar(): String =
+        stringResource(R.string.action_collapse_sidebar)
+
+    /** `action-expand-sidebar` */
+    fun actionExpandSidebar(context: Context): String =
+        context.getString(R.string.action_expand_sidebar)
+
+    /** `action-expand-sidebar` */
+    @Composable
+    fun actionExpandSidebar(): String =
+        stringResource(R.string.action_expand_sidebar)
+
+    /** `action-new-chat` */
+    fun actionNewChat(context: Context): String =
+        context.getString(R.string.action_new_chat)
+
+    /** `action-new-chat` */
+    @Composable
+    fun actionNewChat(): String =
+        stringResource(R.string.action_new_chat)
+
+    /** `action-new-chat-shortcut` */
+    fun actionNewChatShortcut(context: Context, shortcut: String): String =
+        context.getString(R.string.action_new_chat_shortcut, shortcut)
+
+    /** `action-new-chat-shortcut` */
+    @Composable
+    fun actionNewChatShortcut(shortcut: String): String =
+        stringResource(R.string.action_new_chat_shortcut, shortcut)
+
     /** `action-new-conversation` */
     fun actionNewConversation(context: Context): String =
         context.getString(R.string.action_new_conversation)
@@ -21,6 +66,24 @@ object L10n {
     @Composable
     fun actionNewConversation(): String =
         stringResource(R.string.action_new_conversation)
+
+    /** `action-new-conversation-shortcut` */
+    fun actionNewConversationShortcut(context: Context, shortcut: String): String =
+        context.getString(R.string.action_new_conversation_shortcut, shortcut)
+
+    /** `action-new-conversation-shortcut` */
+    @Composable
+    fun actionNewConversationShortcut(shortcut: String): String =
+        stringResource(R.string.action_new_conversation_shortcut, shortcut)
+
+    /** `action-open-history` */
+    fun actionOpenHistory(context: Context): String =
+        context.getString(R.string.action_open_history)
+
+    /** `action-open-history` */
+    @Composable
+    fun actionOpenHistory(): String =
+        stringResource(R.string.action_open_history)
 
     /** `action-send` */
     fun actionSend(context: Context): String =
@@ -39,6 +102,51 @@ object L10n {
     @Composable
     fun actionSendMessage(): String =
         stringResource(R.string.action_send_message)
+
+    /** `action-toggle-history` */
+    fun actionToggleHistory(context: Context): String =
+        context.getString(R.string.action_toggle_history)
+
+    /** `action-toggle-history` */
+    @Composable
+    fun actionToggleHistory(): String =
+        stringResource(R.string.action_toggle_history)
+
+    /** `action-toggle-history-shortcut` */
+    fun actionToggleHistoryShortcut(context: Context, shortcut: String): String =
+        context.getString(R.string.action_toggle_history_shortcut, shortcut)
+
+    /** `action-toggle-history-shortcut` */
+    @Composable
+    fun actionToggleHistoryShortcut(shortcut: String): String =
+        stringResource(R.string.action_toggle_history_shortcut, shortcut)
+
+    /** `action-toggle-sidebar` */
+    fun actionToggleSidebar(context: Context): String =
+        context.getString(R.string.action_toggle_sidebar)
+
+    /** `action-toggle-sidebar` */
+    @Composable
+    fun actionToggleSidebar(): String =
+        stringResource(R.string.action_toggle_sidebar)
+
+    /** `action-toggle-sidebar-shortcut` */
+    fun actionToggleSidebarShortcut(context: Context, shortcut: String): String =
+        context.getString(R.string.action_toggle_sidebar_shortcut, shortcut)
+
+    /** `action-toggle-sidebar-shortcut` */
+    @Composable
+    fun actionToggleSidebarShortcut(shortcut: String): String =
+        stringResource(R.string.action_toggle_sidebar_shortcut, shortcut)
+
+    /** `app-name` */
+    fun appName(context: Context): String =
+        context.getString(R.string.app_name)
+
+    /** `app-name` */
+    @Composable
+    fun appName(): String =
+        stringResource(R.string.app_name)
 
     /** `availability-available` */
     fun availabilityAvailable(context: Context): String =
@@ -85,6 +193,42 @@ object L10n {
     fun availabilityUnknown(): String =
         stringResource(R.string.availability_unknown)
 
+    /** `chat-draft-synced` */
+    fun chatDraftSynced(context: Context): String =
+        context.getString(R.string.chat_draft_synced)
+
+    /** `chat-draft-synced` */
+    @Composable
+    fun chatDraftSynced(): String =
+        stringResource(R.string.chat_draft_synced)
+
+    /** `chat-empty-hint` */
+    fun chatEmptyHint(context: Context): String =
+        context.getString(R.string.chat_empty_hint)
+
+    /** `chat-empty-hint` */
+    @Composable
+    fun chatEmptyHint(): String =
+        stringResource(R.string.chat_empty_hint)
+
+    /** `chat-empty-start` */
+    fun chatEmptyStart(context: Context): String =
+        context.getString(R.string.chat_empty_start)
+
+    /** `chat-empty-start` */
+    @Composable
+    fun chatEmptyStart(): String =
+        stringResource(R.string.chat_empty_start)
+
+    /** `chat-empty-title` */
+    fun chatEmptyTitle(context: Context): String =
+        context.getString(R.string.chat_empty_title)
+
+    /** `chat-empty-title` */
+    @Composable
+    fun chatEmptyTitle(): String =
+        stringResource(R.string.chat_empty_title)
+
     /** `chat-error-cancelled` */
     fun chatErrorCancelled(context: Context): String =
         context.getString(R.string.chat_error_cancelled)
@@ -112,6 +256,24 @@ object L10n {
     fun chatErrorNoConversation(): String =
         stringResource(R.string.chat_error_no_conversation)
 
+    /** `chat-history-empty` */
+    fun chatHistoryEmpty(context: Context): String =
+        context.getString(R.string.chat_history_empty)
+
+    /** `chat-history-empty` */
+    @Composable
+    fun chatHistoryEmpty(): String =
+        stringResource(R.string.chat_history_empty)
+
+    /** `chat-local-session` */
+    fun chatLocalSession(context: Context): String =
+        context.getString(R.string.chat_local_session)
+
+    /** `chat-local-session` */
+    @Composable
+    fun chatLocalSession(): String =
+        stringResource(R.string.chat_local_session)
+
     /** `chat-role-assistant` */
     fun chatRoleAssistant(context: Context): String =
         context.getString(R.string.chat_role_assistant)
@@ -130,6 +292,15 @@ object L10n {
     fun chatRoleYou(): String =
         stringResource(R.string.chat_role_you)
 
+    /** `chat-session-saved` */
+    fun chatSessionSaved(context: Context): String =
+        context.getString(R.string.chat_session_saved)
+
+    /** `chat-session-saved` */
+    @Composable
+    fun chatSessionSaved(): String =
+        stringResource(R.string.chat_session_saved)
+
     /** `chat-status-failed` */
     fun chatStatusFailed(context: Context): String =
         context.getString(R.string.chat_status_failed)
@@ -147,6 +318,15 @@ object L10n {
     @Composable
     fun chatStatusSending(): String =
         stringResource(R.string.chat_status_sending)
+
+    /** `chat-status-thinking` */
+    fun chatStatusThinking(context: Context): String =
+        context.getString(R.string.chat_status_thinking)
+
+    /** `chat-status-thinking` */
+    @Composable
+    fun chatStatusThinking(): String =
+        stringResource(R.string.chat_status_thinking)
 
     /** `composer-error-authority-changed` */
     fun composerErrorAuthorityChanged(context: Context, currentEpoch: String): String =
@@ -202,6 +382,24 @@ object L10n {
     fun composerErrorSnapshotMissing(): String =
         stringResource(R.string.composer_error_snapshot_missing)
 
+    /** `composer-hint-enter` */
+    fun composerHintEnter(context: Context): String =
+        context.getString(R.string.composer_hint_enter)
+
+    /** `composer-hint-enter` */
+    @Composable
+    fun composerHintEnter(): String =
+        stringResource(R.string.composer_hint_enter)
+
+    /** `composer-hint-multiline` */
+    fun composerHintMultiline(context: Context): String =
+        context.getString(R.string.composer_hint_multiline)
+
+    /** `composer-hint-multiline` */
+    @Composable
+    fun composerHintMultiline(): String =
+        stringResource(R.string.composer_hint_multiline)
+
     /** `composer-placeholder` */
     fun composerPlaceholder(context: Context): String =
         context.getString(R.string.composer_placeholder)
@@ -228,6 +426,78 @@ object L10n {
     @Composable
     fun composerStatusFailed(): String =
         stringResource(R.string.composer_status_failed)
+
+    /** `label-chat-history` */
+    fun labelChatHistory(context: Context): String =
+        context.getString(R.string.label_chat_history)
+
+    /** `label-chat-history` */
+    @Composable
+    fun labelChatHistory(): String =
+        stringResource(R.string.label_chat_history)
+
+    /** `label-conversations` */
+    fun labelConversations(context: Context): String =
+        context.getString(R.string.label_conversations)
+
+    /** `label-conversations` */
+    @Composable
+    fun labelConversations(): String =
+        stringResource(R.string.label_conversations)
+
+    /** `label-draft` */
+    fun labelDraft(context: Context): String =
+        context.getString(R.string.label_draft)
+
+    /** `label-draft` */
+    @Composable
+    fun labelDraft(): String =
+        stringResource(R.string.label_draft)
+
+    /** `label-draft-sync` */
+    fun labelDraftSync(context: Context): String =
+        context.getString(R.string.label_draft_sync)
+
+    /** `label-draft-sync` */
+    @Composable
+    fun labelDraftSync(): String =
+        stringResource(R.string.label_draft_sync)
+
+    /** `label-message-status` */
+    fun labelMessageStatus(context: Context): String =
+        context.getString(R.string.label_message_status)
+
+    /** `label-message-status` */
+    @Composable
+    fun labelMessageStatus(): String =
+        stringResource(R.string.label_message_status)
+
+    /** `label-node-availability` */
+    fun labelNodeAvailability(context: Context): String =
+        context.getString(R.string.label_node_availability)
+
+    /** `label-node-availability` */
+    @Composable
+    fun labelNodeAvailability(): String =
+        stringResource(R.string.label_node_availability)
+
+    /** `label-recent` */
+    fun labelRecent(context: Context): String =
+        context.getString(R.string.label_recent)
+
+    /** `label-recent` */
+    @Composable
+    fun labelRecent(): String =
+        stringResource(R.string.label_recent)
+
+    /** `label-transcript` */
+    fun labelTranscript(context: Context): String =
+        context.getString(R.string.label_transcript)
+
+    /** `label-transcript` */
+    @Composable
+    fun labelTranscript(): String =
+        stringResource(R.string.label_transcript)
 
     /** `node-failure-cancelled` */
     fun nodeFailureCancelled(context: Context): String =

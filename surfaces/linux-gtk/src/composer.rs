@@ -4,6 +4,7 @@ use arut_feature_chat::{
     errors::ComposerError,
     product::ChatClient,
 };
+use arut_i18n::Message;
 use gtk::{glib, prelude::*};
 use relm4::{Component, ComponentParts, ComponentSender};
 use std::{cell::Cell, rc::Rc};
@@ -49,23 +50,23 @@ impl Component for Composer {
                     set_accepts_tab: false,
                     #[watch]
                     set_sensitive: model.enabled,
-                    update_property: &[gtk::accessible::Property::Label("Message draft")],
-                    set_tooltip_text: Some("Enter to send, Shift+Enter for a new line"),
+                    update_property: &[gtk::accessible::Property::Label(&strings::show(&Message::LabelDraft))],
+                    set_tooltip_text: Some(&strings::show(&Message::ComposerHintMultiline)),
                 },
             },
             gtk::Button {
-                set_label: "Send",
+                set_label: &strings::show(&Message::ActionSend),
                 set_halign: gtk::Align::End,
                 #[watch]
                 set_sensitive: model.enabled,
-                update_property: &[gtk::accessible::Property::Label("Send message")],
+                update_property: &[gtk::accessible::Property::Label(&strings::show(&Message::ActionSendMessage))],
                 connect_clicked => Msg::Send,
             },
             gtk::Label {
                 #[watch]
                 set_label: &strings::composer(model.status, model.error),
                 set_wrap: true,
-                update_property: &[gtk::accessible::Property::Label("Draft synchronization")],
+                update_property: &[gtk::accessible::Property::Label(&strings::show(&Message::LabelDraftSync))],
             },
         }
     }

@@ -1,4 +1,5 @@
-use crate::observe::Tasks;
+use crate::{observe::Tasks, strings};
+use arut_i18n::Message;
 use arut_product_session::{ChatSummary, ProductSession};
 use gtk::prelude::*;
 use relm4::{
@@ -64,7 +65,7 @@ impl SimpleComponent for Conversations {
             add_css_class: "arut-conversations",
             set_min_content_width: 220,
             set_hscrollbar_policy: gtk::PolicyType::Never,
-            update_property: &[gtk::accessible::Property::Label("Conversations")],
+            update_property: &[gtk::accessible::Property::Label(&strings::show(&Message::LabelConversations))],
             #[local_ref]
             rows -> gtk::Box { set_orientation: gtk::Orientation::Vertical, set_spacing: 4 },
         }

@@ -13,14 +13,50 @@
   <resheader name="writer">
     <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
   </resheader>
+  <data name="action_close_history" xml:space="preserve">
+    <value>Close chat history</value>
+  </data>
+  <data name="action_collapse_sidebar" xml:space="preserve">
+    <value>Collapse sidebar</value>
+  </data>
+  <data name="action_expand_sidebar" xml:space="preserve">
+    <value>Expand sidebar</value>
+  </data>
+  <data name="action_new_chat" xml:space="preserve">
+    <value>New chat</value>
+  </data>
+  <data name="action_new_chat_shortcut" xml:space="preserve">
+    <value>New chat ({0})</value>
+  </data>
   <data name="action_new_conversation" xml:space="preserve">
     <value>New conversation</value>
+  </data>
+  <data name="action_new_conversation_shortcut" xml:space="preserve">
+    <value>New conversation ({0})</value>
+  </data>
+  <data name="action_open_history" xml:space="preserve">
+    <value>Open chat history</value>
   </data>
   <data name="action_send" xml:space="preserve">
     <value>Send</value>
   </data>
   <data name="action_send_message" xml:space="preserve">
     <value>Send message</value>
+  </data>
+  <data name="action_toggle_history" xml:space="preserve">
+    <value>Toggle chat history</value>
+  </data>
+  <data name="action_toggle_history_shortcut" xml:space="preserve">
+    <value>Toggle chat history ({0})</value>
+  </data>
+  <data name="action_toggle_sidebar" xml:space="preserve">
+    <value>Toggle sidebar</value>
+  </data>
+  <data name="action_toggle_sidebar_shortcut" xml:space="preserve">
+    <value>Toggle sidebar ({0})</value>
+  </data>
+  <data name="app_name" xml:space="preserve">
+    <value>Arut</value>
   </data>
   <data name="availability_available" xml:space="preserve">
     <value>Ready</value>
@@ -37,6 +73,18 @@
   <data name="availability_unknown" xml:space="preserve">
     <value>Checking node availability…</value>
   </data>
+  <data name="chat_draft_synced" xml:space="preserve">
+    <value>Draft synced across this session</value>
+  </data>
+  <data name="chat_empty_hint" xml:space="preserve">
+    <value>Write a message below. Your draft stays with this conversation.</value>
+  </data>
+  <data name="chat_empty_start" xml:space="preserve">
+    <value>Start a conversation.</value>
+  </data>
+  <data name="chat_empty_title" xml:space="preserve">
+    <value>What are we working on?</value>
+  </data>
   <data name="chat_error_cancelled" xml:space="preserve">
     <value>This conversation closed before your message could send.</value>
   </data>
@@ -46,17 +94,29 @@
   <data name="chat_error_no_conversation" xml:space="preserve">
     <value>There's no conversation to send this to yet.</value>
   </data>
+  <data name="chat_history_empty" xml:space="preserve">
+    <value>Your chats will appear here.</value>
+  </data>
+  <data name="chat_local_session" xml:space="preserve">
+    <value>Local session</value>
+  </data>
   <data name="chat_role_assistant" xml:space="preserve">
     <value>Arut</value>
   </data>
   <data name="chat_role_you" xml:space="preserve">
     <value>You</value>
   </data>
+  <data name="chat_session_saved" xml:space="preserve">
+    <value>Saved in this session</value>
+  </data>
   <data name="chat_status_failed" xml:space="preserve">
     <value>Could not send the message. Try again.</value>
   </data>
   <data name="chat_status_sending" xml:space="preserve">
     <value>Sending…</value>
+  </data>
+  <data name="chat_status_thinking" xml:space="preserve">
+    <value>Thinking</value>
   </data>
   <data name="composer_error_authority_changed" xml:space="preserve">
     <value>This conversation moved to a new authority (epoch {0}), so your edit didn't go through. Try again.</value>
@@ -76,6 +136,12 @@
   <data name="composer_error_snapshot_missing" xml:space="preserve">
     <value>Your node didn't send back the draft, so it may be out of sync.</value>
   </data>
+  <data name="composer_hint_enter" xml:space="preserve">
+    <value>Enter to send</value>
+  </data>
+  <data name="composer_hint_multiline" xml:space="preserve">
+    <value>Enter to send, Shift+Enter for a new line</value>
+  </data>
   <data name="composer_placeholder" xml:space="preserve">
     <value>Message Arut</value>
   </data>
@@ -84,6 +150,30 @@
   </data>
   <data name="composer_status_failed" xml:space="preserve">
     <value>Could not synchronize the draft. Check the node connection.</value>
+  </data>
+  <data name="label_chat_history" xml:space="preserve">
+    <value>Chat history</value>
+  </data>
+  <data name="label_conversations" xml:space="preserve">
+    <value>Conversations</value>
+  </data>
+  <data name="label_draft" xml:space="preserve">
+    <value>Message draft</value>
+  </data>
+  <data name="label_draft_sync" xml:space="preserve">
+    <value>Draft synchronization</value>
+  </data>
+  <data name="label_message_status" xml:space="preserve">
+    <value>Message status</value>
+  </data>
+  <data name="label_node_availability" xml:space="preserve">
+    <value>Node availability</value>
+  </data>
+  <data name="label_recent" xml:space="preserve">
+    <value>Recent</value>
+  </data>
+  <data name="label_transcript" xml:space="preserve">
+    <value>Conversation transcript</value>
   </data>
   <data name="node_failure_cancelled" xml:space="preserve">
     <value>That request was cancelled before your node answered.</value>
