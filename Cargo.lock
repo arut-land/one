@@ -33,7 +33,6 @@ dependencies = [
  "arut-storage",
  "arut-transport-connect-http",
  "arut-transport-ipc",
- "arut-transport-memory",
  "axum",
  "futures-util",
  "tokio",
@@ -151,13 +150,6 @@ dependencies = [
  "arut-rpc",
  "arut-transport-connect-http",
  "reqwest",
-]
-
-[[package]]
-name = "arut-transport-memory"
-version = "0.1.0"
-dependencies = [
- "arut-rpc",
 ]
 
 [[package]]

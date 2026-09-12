@@ -9,7 +9,10 @@
 //! writers, reopening compacted logs, and fragmented/malformed Connect envelopes.
 
 //! Shared behavioral suites. An implementation must pass without changing them.
-use arut_rpc::{Code, Metadata, Request, Response, RpcChannel, RpcFuture, RpcStream, Status};
+use arut_rpc::{
+    Code, Metadata, MethodDescriptor, Request, Response, RpcChannel, RpcFuture, RpcService,
+    RpcStream, ServiceDescriptor, Status, StreamingKind,
+};
 use arut_storage::{BlobStore, FactLog, KeyValue, Snapshot, StorageError};
 use futures_util::StreamExt;
 
@@ -116,7 +119,38 @@ pub fn key_value(store: &dyn KeyValue) {
     assert_eq!(store.get("second").unwrap(), Some(b"independent".to_vec()));
 }
 
+/// The service every channel implementation is measured against.
 pub struct Echo;
+static ECHO_METHODS: &[MethodDescriptor] = &[
+    method("Echo", "/echo", StreamingKind::Unary),
+    method("Error", "/error", StreamingKind::Unary),
+    method("Stream", "/stream", StreamingKind::Server),
+    method("StreamError", "/stream-error", StreamingKind::Server),
+];
+pub static ECHO_DESCRIPTOR: ServiceDescriptor = ServiceDescriptor {
+    name: "Echo",
+    package: "arut.conformance.v1",
+    version: "v1",
+    methods: ECHO_METHODS,
+};
+const fn method(
+    name: &'static str,
+    procedure: &'static str,
+    streaming: StreamingKind,
+) -> MethodDescriptor {
+    MethodDescriptor {
+        name,
+        procedure,
+        input: "arut.conformance.v1.Bytes",
+        output: "arut.conformance.v1.Bytes",
+        streaming,
+    }
+}
+impl RpcService for Echo {
+    fn descriptor(&self) -> &'static ServiceDescriptor {
+        &ECHO_DESCRIPTOR
+    }
+}
 fn error() -> Status {
     let mut error = Status::new(Code::FailedPrecondition, "typed failure");
     error.details = vec![7, 8, 9];
