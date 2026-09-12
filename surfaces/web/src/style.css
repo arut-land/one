@@ -114,7 +114,7 @@ button { -webkit-tap-highlight-color: transparent; }
 .sidebar-foot span, .status > span { width: 7px; height: 7px; flex: 0 0 auto; border-radius: 50%; background: #58805c; box-shadow: 0 0 0 3px #58805c20; }
 
 .sidebar-closed .sidebar-brand { grid-template-columns: 36px; padding-inline: 18px; }
-.sidebar-closed .sidebar-brand strong, .sidebar-closed .sidebar-toggle,
+.sidebar-closed .sidebar-brand strong, .sidebar-closed .sidebar-brand .brand-mark,
 .sidebar-closed .new-chat b, .sidebar-closed .history, .sidebar-closed .sidebar-foot { display: none; }
 .sidebar-closed .new-chat { justify-content: center; width: 44px; margin-inline: 14px; padding: 0; }
 
@@ -163,7 +163,7 @@ button { -webkit-tap-highlight-color: transparent; }
   .sidebar { position: fixed; inset: 0 auto 0 0; width: min(82vw, 300px); box-shadow: 16px 0 50px #2d271f28; transition: transform 180ms ease; }
   .sidebar-closed .sidebar { transform: translateX(-105%); }
   .sidebar-closed .sidebar-brand { grid-template-columns: 36px minmax(0, 1fr) 32px; padding: 0 16px 0 18px; }
-  .sidebar-closed .sidebar-brand strong, .sidebar-closed .sidebar-toggle,
+  .sidebar-closed .sidebar-brand strong, .sidebar-closed .sidebar-brand .brand-mark,
   .sidebar-closed .new-chat b, .sidebar-closed .history, .sidebar-closed .sidebar-foot { display: flex; }
   .sidebar-closed .new-chat { justify-content: flex-start; width: auto; margin-inline: 12px; padding: 0 13px; }
   .sidebar-open .sidebar-scrim { position: fixed; z-index: 2; inset: 0; display: block; width: 100%; border: 0; background: #2d271f66; backdrop-filter: blur(2px); }
