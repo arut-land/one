@@ -194,13 +194,15 @@ mod tests {
     #[test]
     fn first_send_atomically_promotes_pending_composer() {
         let composer = Arc::new(ComposerAuthority::default());
-        composer.replace(ReplaceComposer {
-            scope: ComposerScope::pending("pending"),
-            command_id: "draft".into(),
-            authority_epoch: 1,
-            base_revision: 0,
-            text: "hello".into(),
-        });
+        composer
+            .replace(ReplaceComposer {
+                scope: ComposerScope::pending("pending"),
+                command_id: "draft".into(),
+                authority_epoch: 1,
+                base_revision: 0,
+                text: "hello".into(),
+            })
+            .unwrap();
         let client = ChatServiceClient::direct(Arc::new(service(Arc::clone(&composer))));
 
         let response = block_on(client.start_chat(Request::new(StartChatRequest {
@@ -217,12 +219,14 @@ mod tests {
         assert_eq!(
             composer
                 .snapshot(&ComposerScope::pending("pending"))
+                .unwrap()
                 .revision,
             0
         );
         assert_eq!(
             composer
                 .snapshot(&ComposerScope::chat(response.chat_id))
+                .unwrap()
                 .revision,
             0
         );
@@ -231,13 +235,15 @@ mod tests {
     #[test]
     fn retrying_a_start_command_returns_the_original_chat_and_messages() {
         let composer = Arc::new(ComposerAuthority::default());
-        composer.replace(ReplaceComposer {
-            scope: ComposerScope::pending("pending"),
-            command_id: "draft".into(),
-            authority_epoch: 1,
-            base_revision: 0,
-            text: "hello".into(),
-        });
+        composer
+            .replace(ReplaceComposer {
+                scope: ComposerScope::pending("pending"),
+                command_id: "draft".into(),
+                authority_epoch: 1,
+                base_revision: 0,
+                text: "hello".into(),
+            })
+            .unwrap();
         let client = ChatServiceClient::direct(Arc::new(service(composer)));
         let request = StartChatRequest {
             pending_scope_id: "pending".into(),

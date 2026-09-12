@@ -29,7 +29,7 @@ impl ComposerService for ComposerServiceImpl {
             .and_then(scope_from_wire)
             .map(|scope| self.authority.snapshot(&scope));
         Box::pin(async move {
-            let snapshot = snapshot.ok_or_else(invalid_scope)?;
+            let snapshot = snapshot.ok_or_else(invalid_scope)?.map_err(storage)?;
             Ok(Response::new(GetComposerResponse {
                 snapshot: Some(snapshot.into()),
             }))
@@ -44,7 +44,7 @@ impl ComposerService for ComposerServiceImpl {
         let Some(scope) = message.scope.and_then(scope_from_wire) else {
             return Box::pin(async { Err(invalid_scope()) });
         };
-        let outcome = self.authority.try_replace(ReplaceComposer {
+        let outcome = self.authority.replace(ReplaceComposer {
             scope,
             command_id: message.command_id,
             authority_epoch: message.authority_epoch,
@@ -75,27 +75,27 @@ impl ComposerService for ComposerServiceImpl {
             after_revision,
             "serving a composer stream from a cursor"
         );
-        let authority = self.authority.clone();
-        let changes = authority.changes(&scope);
+        let changes = self.authority.changes(&scope);
         Box::pin(async move {
-            let stream = futures_util::stream::unfold(
-                (authority, changes, scope),
-                |(authority, changes, scope)| async move {
-                    changes.changed().await?;
-                    let snapshot = authority.snapshot(&scope);
-                    Some((
-                        Ok(WatchComposerResponse {
-                            snapshot: Some(snapshot.into()),
-                        }),
-                        (authority, changes, scope),
-                    ))
-                },
-            );
+            let changes = changes.map_err(storage)?;
+            let stream = futures_util::stream::unfold(changes, |changes| async move {
+                let snapshot = changes.changed().await?;
+                Some((
+                    Ok(WatchComposerResponse {
+                        snapshot: Some(snapshot.into()),
+                    }),
+                    changes,
+                ))
+            });
             Ok(Response::new(
                 Box::pin(stream) as RpcStream<WatchComposerResponse>
             ))
         })
     }
+}
+
+fn storage(_: arut_storage::StorageError) -> Status {
+    Status::new(Code::Internal, "failed to read composer state")
 }
 
 fn invalid_scope() -> Status {
