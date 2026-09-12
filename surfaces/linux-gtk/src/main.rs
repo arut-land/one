@@ -8,6 +8,10 @@ fn main() -> glib::ExitCode {
         .build();
     app.connect_activate(|app| {
         let session = Rc::new(ProductSession::local());
+        let initialize = session.clone();
+        glib::spawn_future_local(async move {
+            let _ = initialize.initialize().await;
+        });
         let root = gtk::Box::new(gtk::Orientation::Horizontal, 12);
         let sidebar = gtk::Box::new(gtk::Orientation::Vertical, 6);
         let history = gtk::Box::new(gtk::Orientation::Vertical, 6);

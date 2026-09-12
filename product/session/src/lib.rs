@@ -118,6 +118,33 @@ pub enum FeatureAvailability {
 }
 
 impl ProductSession {
+    pub async fn initialize(&self) -> Result<(), arut_rpc::Status> {
+        let response = self
+            .chats
+            .chat_service
+            .list_conversations(Request::new(
+                arut_protocol::chat::v1::ListConversationsRequest {},
+            ))
+            .await?;
+        for conversation in response.message.conversations {
+            if self.established_chat(&conversation.id).is_some() {
+                continue;
+            }
+            let client = ChatClient::established(
+                self.chats.chat_service.clone(),
+                self.chats.composer_service.clone(),
+                conversation.id.clone(),
+                conversation.messages,
+            );
+            RegisterChat(
+                Arc::downgrade(&self.chats.state),
+                self.conversations.clone(),
+            )
+            .chat_started(conversation.id, client);
+        }
+        Ok(())
+    }
+
     pub fn local() -> Self {
         Self::local_with_pending_scope("local-demo")
     }

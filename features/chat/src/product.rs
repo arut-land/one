@@ -12,14 +12,14 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 #[boltffi::data]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum ChatRole {
     User,
     Assistant,
 }
 
 #[boltffi::data]
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ChatMessage {
     pub id: u64,
     pub role: ChatRole,
@@ -61,6 +61,22 @@ pub struct ChatClient {
 }
 
 impl ChatClient {
+    pub fn established(
+        service: ChatServiceClient,
+        composer_service: ComposerServiceClient,
+        id: String,
+        messages: Vec<WireMessage>,
+    ) -> Self {
+        let mut client = Self::pending(service, composer_service.clone(), "unused".into(), None);
+        client.composer = ComposerClient::new(composer_service, ComposerScope::chat(&id));
+        client.state.set(ChatState {
+            id: Some(id),
+            messages: messages.into_iter().filter_map(from_wire).collect(),
+            ..Default::default()
+        });
+        client
+    }
+
     #[doc(hidden)]
     pub fn pending(
         service: ChatServiceClient,
@@ -78,7 +94,7 @@ impl ChatClient {
             send_lock: Arc::new(AsyncMutex::new(())),
             pending_scope_id: Some(pending_scope_id),
             on_started,
-            start_command_id: Uuid::new_v4().to_string(),
+            start_command_id: Uuid::now_v7().to_string(),
         }
     }
 
@@ -172,7 +188,11 @@ impl ChatClient {
     async fn send_established(&self, chat_id: String, text: String) -> ChatState {
         match self
             .service
-            .send_message(Request::new(SendMessageRequest { chat_id, text }))
+            .send_message(Request::new(SendMessageRequest {
+                chat_id,
+                text,
+                command_id: Uuid::now_v7().to_string(),
+            }))
             .await
         {
             Ok(response) => {

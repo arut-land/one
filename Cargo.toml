@@ -1,6 +1,7 @@
 [workspace]
 resolver = "3"
 members = [
+    "substrates/storage",
     "transports/memory",
     "transports/ipc",
     "bindings/observation",
@@ -33,3 +34,5 @@ arut-observation = { path = "bindings/observation" }
 
 arut-transport-memory = { path = "transports/memory" }
 arut-transport-ipc = { path = "transports/ipc" }
+
+arut-storage = { path = "substrates/storage" }

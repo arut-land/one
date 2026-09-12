@@ -47,7 +47,6 @@ message ReplaceComposerResponse {
 }
 
 message ComposerCommitApplied {
-  DraftReplaced fact = 1;
   ComposerSnapshot snapshot = 2;
   bool duplicate = 3;
 }
@@ -60,35 +59,12 @@ message ComposerAuthorityMismatch {
   uint64 current_epoch = 1;
 }
 
-message DraftReplaced {
-  ComposerScope scope = 1;
-  string command_id = 2;
-  uint64 authority_epoch = 3;
-  uint64 revision = 4;
-  string text = 5;
-}
-
 message WatchComposerRequest {
   ComposerScope scope = 1;
   uint64 after_revision = 2;
 }
 
 message WatchComposerResponse {
-  repeated DraftReplaced facts = 1;
   ComposerSnapshot snapshot = 2;
 }
 
-message ComposerAuthorityCheckpoint {
-  repeated ComposerScopeCheckpoint chat_scopes = 1;
-}
-
-message ComposerScopeCheckpoint {
-  ComposerSnapshot snapshot = 1;
-  repeated AppliedComposerCommand commands = 2;
-  repeated DraftReplaced facts = 3;
-}
-
-message AppliedComposerCommand {
-  ReplaceComposerRequest command = 1;
-  DraftReplaced fact = 2;
-}

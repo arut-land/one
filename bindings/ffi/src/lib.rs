@@ -33,6 +33,9 @@ impl ProductSessionHandle {
 }
 #[export]
 impl ProductSessionHandle {
+    pub async fn initialize(&self) -> bool {
+        self.session.initialize().await.is_ok()
+    }
     pub fn chat(&self) -> ChatHandle {
         ChatHandle {
             client: self.session.chat(),

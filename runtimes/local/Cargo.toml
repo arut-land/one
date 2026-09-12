@@ -5,6 +5,7 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
+arut-storage.workspace = true
 arut-transport-ipc.workspace = true
 arut-transport-connect-http.workspace = true
 arut-product-session.workspace = true

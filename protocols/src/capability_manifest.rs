@@ -86,6 +86,14 @@ mod tests {
     struct UnusedChat;
 
     impl crate::chat::v1::ChatService for UnusedChat {
+        fn list_conversations(
+            &self,
+            _: arut_rpc::Request<crate::chat::v1::ListConversationsRequest>,
+        ) -> arut_rpc::RpcFuture<arut_rpc::Response<crate::chat::v1::ListConversationsResponse>>
+        {
+            unreachable!()
+        }
+
         fn send_message(
             &self,
             _request: Request<crate::chat::v1::SendMessageRequest>,
