@@ -115,7 +115,7 @@ impl ChatClient {
     }
 
     pub fn id(&self) -> Option<String> {
-        self.state.get().id
+        self.state.read(|state| state.id.clone())
     }
 
     pub fn composer(&self) -> ComposerClient {

@@ -3,11 +3,15 @@
 //! `Watch<T>` wraps one Tokio watch sender containing the value and revision.
 //! Subscribers receive the current revision, coalesce intervening updates, and close
 //! when the writer is dropped. Tokio enables only `sync`; callers supply polling.
+//!
+//! The revision is the coalescing key every binding hops a scheduler for, so it
+//! moves only when the value actually differs: `update` and `set` compare through
+//! `send_if_modified` and leave the revision alone when a write is a no-op.
 
 //! A versioned cell over Tokio watch. No executor, queues, or callback registry.
-use futures_util::{StreamExt, stream::BoxStream};
+use futures_lite::{StreamExt, stream::Boxed};
 use std::sync::Arc;
-use tokio::sync::watch;
+use tokio::sync::{Mutex, watch};
 
 #[derive(Clone)]
 struct Versioned<T> {
@@ -17,7 +21,7 @@ struct Versioned<T> {
 
 pub struct Watch<T>(watch::Sender<Versioned<T>>);
 
-pub struct Subscription<T>(futures_util::lock::Mutex<BoxStream<'static, T>>);
+pub struct Subscription<T>(Mutex<Boxed<T>>);
 
 impl<T: Send + 'static> Subscription<T> {
     pub async fn changed(&self) -> Option<T> {
@@ -25,7 +29,7 @@ impl<T: Send + 'static> Subscription<T> {
     }
 }
 
-impl<T: Clone + Send + Sync + 'static> Watch<T> {
+impl<T: Clone + PartialEq + Send + Sync + 'static> Watch<T> {
     pub fn new(value: T) -> Self {
         Self(watch::channel(Versioned { revision: 0, value }).0)
     }
@@ -34,44 +38,92 @@ impl<T: Clone + Send + Sync + 'static> Watch<T> {
         self.0.borrow().value.clone()
     }
 
+    /// Reads one part of the value without cloning the rest of it.
+    ///
+    /// The read holds Tokio's internal read lock, so `read` must not call back
+    /// into this cell: see the re-entrancy note on [`Watch::update`].
+    pub fn read<R>(&self, read: impl FnOnce(&T) -> R) -> R {
+        read(&self.0.borrow().value)
+    }
+
+    /// Applies `update` to a detached copy and stores it only if it differs.
+    ///
+    /// Re-entrancy: `update` runs while Tokio's write lock is held, so it must
+    /// not touch this cell at all -- `get`, `read`, `set`, `update` and
+    /// `subscribe` all take that same lock and would deadlock the caller. The
+    /// closure is handed a `&mut T` and needs nothing else; capturing the
+    /// `Watch` itself is the mistake this note exists to prevent.
+    ///
+    /// Cost: one clone to build the candidate, plus one clone of the stored
+    /// value when it is really new. That buys the comparison that keeps a no-op
+    /// write from waking every binding, which costs a full projection re-read
+    /// and a scheduler hop each.
     pub fn update(&self, update: impl FnOnce(&mut T)) -> T {
         let mut result = None;
-        self.0.send_modify(|state| {
-            update(&mut state.value);
+        self.0.send_if_modified(|state| {
+            let mut next = state.value.clone();
+            update(&mut next);
+            if next == state.value {
+                result = Some(next);
+                return false;
+            }
+            state.value = next;
             state.revision = state
                 .revision
                 .checked_add(1)
                 .expect("watch revision overflow");
             result = Some(state.value.clone());
+            true
         });
         result.expect("watch modification runs synchronously")
     }
 
+    /// Stores `next`, bumping the revision only when it differs from the current
+    /// value. Subject to the same re-entrancy rule as [`Watch::update`].
     pub fn set(&self, next: T) -> T {
-        self.update(|value| *value = next)
+        let mut result = None;
+        self.0.send_if_modified(|state| {
+            if state.value == next {
+                result = Some(next);
+                return false;
+            }
+            state.value = next;
+            state.revision = state
+                .revision
+                .checked_add(1)
+                .expect("watch revision overflow");
+            result = Some(state.value.clone());
+            true
+        });
+        result.expect("watch modification runs synchronously")
     }
 
     pub fn subscribe(&self) -> Arc<Subscription<u64>> {
         let mut receiver = self.0.subscribe();
+        // `Sender::subscribe` hands back a receiver that has already "seen" the
+        // current value, while `watch::channel` hands back one that has not.
+        // Marking it changed makes every subscriber alike: the first `changed()`
+        // always delivers the revision that was current at subscribe time, so a
+        // surface renders from the invalidation stream rather than needing a
+        // separate first read. Removing this line silently drops that first
+        // invalidation and a scope handle renders empty until the next write.
         receiver.mark_changed();
-        let stream = futures_util::stream::unfold(receiver, |mut receiver| async move {
+        let stream = futures_lite::stream::unfold(receiver, |mut receiver| async move {
             receiver.changed().await.ok()?;
             let revision = receiver.borrow_and_update().revision;
             Some((revision, receiver))
         });
-        Arc::new(Subscription(futures_util::lock::Mutex::new(Box::pin(
-            stream,
-        ))))
+        Arc::new(Subscription(Mutex::new(Box::pin(stream))))
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use futures_util::FutureExt;
+    use futures_lite::future::{block_on, poll_once};
 
     fn ready(changes: &Subscription<u64>) -> Option<u64> {
-        changes.changed().now_or_never().flatten()
+        block_on(poll_once(changes.changed())).flatten()
     }
 
     #[test]
@@ -85,6 +137,26 @@ mod tests {
         assert_eq!(ready(&changes), Some(100));
         assert_eq!(ready(&changes), None);
         drop(watch);
-        assert_eq!(futures_executor::block_on(changes.changed()), None);
+        assert_eq!(block_on(changes.changed()), None);
+    }
+
+    #[test]
+    fn an_unchanged_write_leaves_the_revision_and_the_subscribers_alone() {
+        let watch = Watch::new(String::from("draft"));
+        let changes = watch.subscribe();
+        assert_eq!(ready(&changes), Some(0));
+
+        assert_eq!(watch.set("draft".into()), "draft");
+        assert_eq!(watch.update(|value| value.truncate(5)), "draft");
+        assert_eq!(ready(&changes), None);
+
+        assert_eq!(watch.update(|value| value.push('s')), "drafts");
+        assert_eq!(ready(&changes), Some(1));
+    }
+
+    #[test]
+    fn reads_one_field_without_cloning_the_whole_value() {
+        let watch = Watch::new((7u64, vec![1u8, 2, 3]));
+        assert_eq!(watch.read(|value| value.0), 7);
     }
 }
