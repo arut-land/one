@@ -27,9 +27,8 @@ run = [
   "cargo test --doc --workspace",
   "cargo machete",
   "cargo check -p arut_ffi --target wasm32-unknown-unknown",
-  "test -z \"$(cargo tree -i wasm-bindgen --target wasm32-unknown-unknown -p arut_ffi 2>/dev/null)\" || (echo 'wasm-bindgen leaked into the arut_ffi wasm dependency graph; see docs/ECOSYSTEM.md wasm rule' && exit 1)",
   "cargo check -p arut-i18n --target wasm32-unknown-unknown",
-  "test -z \"$(cargo tree -i wasm-bindgen --target wasm32-unknown-unknown -p arut-i18n 2>/dev/null)\" || (echo 'wasm-bindgen leaked into the arut-i18n wasm dependency graph; see docs/ECOSYSTEM.md wasm rule' && exit 1)",
+  "mise run check:wasm-graph",
   "buf lint",
   "buf breaking --against '.git#branch=master'",
   "pnpm check",
@@ -102,3 +101,11 @@ xcodegen = "2.46.0"
 [tasks."node:local"]
 description = "Run the local node daemon"
 run = "cargo run -p arut-runtime-local --bin arutd"
+
+[tasks."check:wasm-graph"]
+description = "Reject wasm-bindgen in the isolated core graphs"
+run = '''graph="$(cargo tree -p arut_ffi -p arut-i18n --target wasm32-unknown-unknown --prefix none --format '{p}')" || exit "$?"
+case "$graph" in
+  *"wasm-bindgen v"*) echo 'wasm-bindgen reached an isolated wasm graph'; exit 1 ;;
+esac
+'''
