@@ -225,7 +225,7 @@ Sharing a conversation copies explicitly shareable history and grants nothing el
 
 ## Repository layout
 
-The current workspace has 18 Rust crates. The tree below names each crate beside its directory; planned implementations are added when they exist.
+The current workspace has 20 Rust crates. The tree below names each crate beside its directory; planned implementations are added when they exist.
 
 ```text
 /
@@ -250,7 +250,8 @@ The current workspace has 18 Rust crates. The tree below names each crate beside
 |   `-- ipc/                        arut-transport-ipc: Unix sockets over Connect
 |-- runtimes/
 |   |-- local/                      arut-runtime-local: Tokio host and arutd
-|   `-- host-polled/                arut-runtime-host-polled: host-driven executor
+|   |-- host-polled/                arut-runtime-host-polled: host-driven executor and in-memory composition
+|   `-- browser/                    TypeScript host time and entropy callbacks
 |-- bindings/
 |   |-- ffi/                        arut_ffi: explicit exports and watch bridge
 |   |-- swift/, kotlin/, dotnet/    native observation adapters
@@ -260,8 +261,10 @@ The current workspace has 18 Rust crates. The tree below names each crate beside
 |   |-- apple/, android/, windows/
 |   `-- web/, chromium/, vscode/
 `-- tools/
+    |-- bindings/                   arut-binding-exports: native public aliases and factory forwarding
     |-- conformance/                arut-conformance: shared port suites
-    `-- i18n/                       arut-i18n-gen: native resources and typed accessors
+    |-- i18n/                       arut-i18n-gen: native resources and typed accessors
+    `-- layers/                     arut-layers: dependency directions, isolated graphs, unsafe lints
 ```
 
 Do not add generic `shared`, `common`, `utils`, or `services` buckets. The existing `surfaces/apple/shared` is a Swift package shared by the Apple application targets. Rust crates document themselves with `//!` comments at their entry point. Repository prose lives in `CONTEXT.md`, `ARCHITECTURE.md`, and `docs/`; no `README.md` files are maintained.
@@ -270,7 +273,7 @@ Surfaces outside the current release stay in the tree and stay compiling where t
 
 ## Ecosystems and tools
 
-Languages in the repository: Rust, Protobuf, Swift, Kotlin, C#, TypeScript. Each exists because a surface needs it; none exists for tooling. Tools: mise (toolchains and tasks), cargo, pnpm, buf (proto lint and breaking checks), BoltFFI (all foreign bindings), `tools/i18n` (Fluent to native string resources), gradle and xcodegen for their platforms. Protobuf compiles through `protox` in the build script, so no `protoc` binary is installed. Anything else is a dependency, not a project. Every tool is pinned in `mise.toml` and locked with checksums in `mise.lock`; platform toolchains are scoped to the tasks that need them. `mise run check` is the one gate for humans and CI and fans out to `check:rust`, `check:wasm`, `check:proto`, `check:i18n`, `check:deps`, and `check:ts`; generation tasks declare sources and outputs so they are skipped when nothing changed. Machine-specific tuning such as build parallelism lives in `mise.local.toml`, which is not committed.
+Languages in the repository: Rust, Protobuf, Swift, Kotlin, C#, TypeScript. Each exists because a surface needs it; none exists for tooling. Tools: mise (toolchains and tasks), cargo, pnpm, buf (proto lint and breaking checks), BoltFFI (all foreign bindings), `tools/i18n` (Fluent to native string resources), gradle and xcodegen for their platforms. Protobuf compiles through `protox` in the build script, so no `protoc` binary is installed. Anything else is a dependency, not a project. Every tool is pinned in `mise.toml` and locked with checksums in `mise.lock`; platform toolchains are scoped to the tasks that need them. `mise run check` is the one gate for humans and CI and fans out to `check:rust`, `check:wasm`, `check:proto`, `check:i18n`, `check:deps`, `check:ts`, `check:layers`, and `check:bindings`; generation tasks declare sources and outputs so they are skipped when nothing changed. Machine-specific tuning such as build parallelism lives in `mise.local.toml`, which is not committed.
 
 The dependencies that carry real weight, and what each replaces: iroh, `iroh-blobs`, `iroh-gossip` (identity, discovery, NAT traversal, relay, transport encryption, blob transfer, ephemeral replication); BoltFFI (every foreign binding); `rig` (model providers); `relm4` (the Linux surface); `fluent-bundle` and `fluent-syntax` (one string source for every surface); `keyring` (desktop secrets); `figment` (the config chain); `tracing` with OpenTelemetry and the OpenFeature SDK (telemetry and flags). Rejected with reasons in the ADRs: UniFFI, Diplomat, typeshare, `nami` and the other Rust reactive frameworks, `irpc`, libp2p, CRDT libraries.
 
