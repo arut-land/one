@@ -1,7 +1,8 @@
 //! Enforces ARCHITECTURE.md on declared edges and isolated production graphs.
 //! Includes optional, target-specific, build, and development dependency edges.
 //! Cargo tree isolates feature resolution per core root, avoiding workspace-wide
-//! Tokio feature unification. Compiler lints and parsed attributes guard unsafe.
+//! Tokio feature unification. Parsed source guards unsafe lints and prevents
+//! runtimes and product code from naming feature service implementations.
 use quote::ToTokens;
 use serde_json::Value;
 use std::{collections::BTreeSet, error::Error, fs, path::Path, process::Command};
@@ -39,7 +40,7 @@ fn exception(from: &str, to: &str) -> bool {
         ("features/chat", "product/i18n/macros") |
         // IPC is Connect over a Unix connector; sharing framing avoids a second protocol implementation.
         ("transports/ipc", "transports/connect-http") |
-        // ROADMAP session factory ABI is deferred; preserve its exports while moving hosting out of product/FFI.
+        // The FFI factory root supplies memory ports; observation stays in the runtime.
         // futures-executor is restricted below to test-only polling.
         ("bindings/ffi", "runtimes/host-polled" | "futures-executor")
     )
@@ -56,10 +57,40 @@ fn denied(value: &toml::Value) -> bool {
     )
 }
 struct Attributes<'a> {
+    layer: &'a str,
     file: &'a Path,
     violations: &'a mut BTreeSet<String>,
 }
+fn forbidden_implementation(layer: &str, identifier: &str) -> bool {
+    (matches!(layer, "runtimes" | "product") && identifier.contains("ServiceImpl"))
+        || (layer == "runtimes" && identifier.contains("Authority"))
+}
+impl Attributes<'_> {
+    fn implementation(&mut self, identifier: &str) {
+        if forbidden_implementation(self.layer, identifier) {
+            self.violations.insert(format!(
+                "{} -> {identifier}: feature composition belongs in features/",
+                self.file.display()
+            ));
+        }
+    }
+}
 impl<'ast> Visit<'ast> for Attributes<'_> {
+    fn visit_ident(&mut self, ident: &'ast syn::Ident) {
+        self.implementation(&ident.to_string());
+    }
+    fn visit_macro(&mut self, mac: &'ast syn::Macro) {
+        // Macro bodies are opaque to syn's visitor; inspect their tokens too.
+        for identifier in mac
+            .tokens
+            .to_string()
+            .split(|c: char| !c.is_alphanumeric() && c != '_')
+        {
+            self.implementation(identifier);
+        }
+        syn::visit::visit_macro(self, mac);
+    }
+
     fn visit_attribute(&mut self, attr: &'ast syn::Attribute) {
         if !["allow", "warn", "expect", "cfg_attr"]
             .iter()
@@ -80,7 +111,7 @@ impl<'ast> Visit<'ast> for Attributes<'_> {
         }
     }
 }
-fn sources(dir: &Path, violations: &mut BTreeSet<String>) -> Result<()> {
+fn sources(dir: &Path, layer: &str, violations: &mut BTreeSet<String>) -> Result<()> {
     for entry in fs::read_dir(dir)? {
         let path = entry?.path();
         if path.is_dir() && path.join("Cargo.toml").exists() {
@@ -92,10 +123,11 @@ fn sources(dir: &Path, violations: &mut BTreeSet<String>) -> Result<()> {
                 Some("target" | "node_modules" | ".git")
             )
         {
-            sources(&path, violations)?;
+            sources(&path, layer, violations)?;
         } else if path.extension().is_some_and(|ext| ext == "rs") {
             let parsed = syn::parse_file(&fs::read_to_string(&path)?)?;
             Attributes {
+                layer,
                 file: &path,
                 violations,
             }
@@ -177,7 +209,7 @@ fn check() -> Result<BTreeSet<String>> {
         {
             violations.insert(format!("{from} -> unsafe_code: missing deny/forbid lint"));
         }
-        sources(dir, &mut violations)?;
+        sources(dir, from.split('/').next().unwrap_or(from), &mut violations)?;
         if core(from) {
             let name = package["name"].as_str().ok_or("missing package name")?;
             let graph = cargo(&[
@@ -219,12 +251,59 @@ fn main() -> Result<()> {
     if !violations.is_empty() {
         std::process::exit(1);
     }
-    println!("Layer boundaries, isolated core graphs, and unsafe-code lints passed");
+    println!(
+        "Layer boundaries, feature composition ownership, isolated core graphs, and unsafe-code lints passed"
+    );
     Ok(())
 }
 #[cfg(test)]
 mod tests {
     use super::*;
+    fn source_violations(layer: &str, source: &str) -> BTreeSet<String> {
+        let mut violations = BTreeSet::new();
+        Attributes {
+            layer,
+            file: Path::new("fixture.rs"),
+            violations: &mut violations,
+        }
+        .visit_file(&syn::parse_file(source).unwrap());
+        violations
+    }
+
+    #[test]
+    fn implementation_names_cannot_hide_in_aliases_paths_or_macros() {
+        for source in [
+            "use feature::ChatServiceImpl as Hidden;",
+            "type Hidden = feature::ComposerServiceImpl;",
+            "macro_rules! construct { () => { feature::ChatServiceImpl }; }",
+        ] {
+            for layer in ["runtimes", "product"] {
+                assert!(
+                    !source_violations(layer, source).is_empty(),
+                    "{layer}: {source}"
+                );
+            }
+            assert!(source_violations("features", source).is_empty());
+        }
+        assert!(
+            !source_violations("runtimes", "use feature::ComposerAuthority as Hidden;").is_empty()
+        );
+    }
+
+    #[test]
+    fn runtime_ports_and_composed_features_remain_allowed() {
+        let source = "use feature::{compose, ChatRuntime, ChatFeature, ChatClients, ports::{IdSource, Persist, Drafts, Clock}};";
+        assert!(source_violations("runtimes", source).is_empty());
+        assert!(source_violations("product", "use feature::ChatClients;").is_empty());
+        assert!(
+            source_violations(
+                "runtimes",
+                "// ComposerAuthority is private.\nfn driver() {} "
+            )
+            .is_empty()
+        );
+    }
+
     #[test]
     fn boundaries_and_exceptions_are_narrow() {
         for (from, to) in [
