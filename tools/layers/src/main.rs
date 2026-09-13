@@ -6,9 +6,7 @@ use quote::ToTokens;
 use serde_json::Value;
 use std::{collections::BTreeSet, error::Error, fs, path::Path, process::Command};
 use syn::visit::Visit;
-
 type Result<T> = std::result::Result<T, Box<dyn Error>>;
-
 fn cargo(args: &[&str]) -> Result<String> {
     let output = Command::new("cargo").args(args).output()?;
     if !output.status.success() {
@@ -16,7 +14,6 @@ fn cargo(args: &[&str]) -> Result<String> {
     }
     Ok(String::from_utf8(output.stdout)?)
 }
-
 fn allowed(from: &str, to: &str) -> bool {
     let layer = to.split('/').next().unwrap_or(to);
     match from.split('/').next().unwrap_or(from) {
@@ -35,7 +32,6 @@ fn allowed(from: &str, to: &str) -> bool {
         _ => false,
     }
 }
-
 fn exception(from: &str, to: &str) -> bool {
     matches!(
         (from, to),
@@ -43,24 +39,22 @@ fn exception(from: &str, to: &str) -> bool {
         ("features/chat", "product/i18n/macros") |
         // IPC is Connect over a Unix connector; sharing framing avoids a second protocol implementation.
         ("transports/ipc", "transports/connect-http") |
-        // FFI observation polls watch invalidations and bridges callbacks, not product work.
-        ("bindings/ffi", "futures-util" | "futures-executor")
+        // ROADMAP session factory ABI is deferred; preserve its exports while moving hosting out of product/FFI.
+        // futures-executor is restricted below to test-only polling.
+        ("bindings/ffi", "runtimes/host-polled" | "futures-executor")
     )
 }
-
 fn core(path: &str) -> bool {
     ["features/", "product/", "substrates/", "bindings/ffi"]
         .iter()
         .any(|p| path.starts_with(p))
 }
-
 fn denied(value: &toml::Value) -> bool {
     matches!(
         value.as_str().or_else(|| value.get("level")?.as_str()),
         Some("deny" | "forbid")
     )
 }
-
 struct Attributes<'a> {
     file: &'a Path,
     violations: &'a mut BTreeSet<String>,
@@ -110,7 +104,6 @@ fn sources(dir: &Path, violations: &mut BTreeSet<String>) -> Result<()> {
     }
     Ok(())
 }
-
 fn check() -> Result<BTreeSet<String>> {
     let metadata: Value = serde_json::from_str(&cargo(&["metadata", "--format-version", "1"])?)?;
     let root = Path::new(
@@ -140,6 +133,17 @@ fn check() -> Result<BTreeSet<String>> {
             .ok_or("missing dependencies")?
         {
             let name = dep["name"].as_str().ok_or("missing dependency name")?;
+            if core(from)
+                && (name == "wasm-bindgen"
+                    || (name == "tokio"
+                        && dep["features"].as_array().is_some_and(|f| {
+                            f.iter().any(|f| f == "rt" || f == "rt-multi-thread")
+                        })))
+            {
+                violations.insert(format!(
+                    "{from} -> {name}: forbidden declared core dependency"
+                ));
+            }
             let local = dep["path"].as_str().map(Path::new);
             let to = local
                 .and_then(|p| p.strip_prefix(root).ok())
@@ -180,6 +184,7 @@ fn check() -> Result<BTreeSet<String>> {
                 "tree",
                 "-p",
                 name,
+                "--all-features",
                 "--edges",
                 "normal,build",
                 "--target",
@@ -217,7 +222,6 @@ fn main() -> Result<()> {
     println!("Layer boundaries, isolated core graphs, and unsafe-code lints passed");
     Ok(())
 }
-
 #[cfg(test)]
 mod tests {
     use super::*;

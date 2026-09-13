@@ -1,13 +1,14 @@
+mod support;
 use arut_feature_chat::{
     ChatServiceImpl,
     composer::{ComposerAuthority, ComposerScope, ReplaceComposer},
-    ports::NativeIds,
 };
 use arut_protocol::chat::v1::{ChatService, SendMessageRequest, StartChatRequest};
 use arut_rpc::Request;
 use arut_storage::Directory;
 use futures_executor::block_on;
 use std::sync::Arc;
+use support::NativeIds;
 fn transcript(service: &ChatServiceImpl, chat_id: &str) -> usize {
     service
         .projection()

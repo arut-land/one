@@ -76,7 +76,11 @@ fn main() {
     eprintln!("arut-linux-gtk: arutd ready over IPC");
     let session = Rc::new(ProductSession::remote(
         channel,
-        "desktop",
+        arut_product_session::SessionScope {
+            node_id: "local".into(),
+            workspace_id: "default".into(),
+            pending_scope_id: "desktop".into(),
+        },
         Arc::new(arut_runtime_local::NativeIds),
     ));
     let app = relm4::RelmApp::new("dev.arut.Arut");

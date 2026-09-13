@@ -16,21 +16,24 @@ pub mod chat {
 /// Observation contract shared by the session and its feature handles.
 pub use arut_watch::Subscription;
 pub mod scopes;
-use arut_feature_chat::ChatServiceImpl;
-use arut_feature_chat::composer::ComposerAuthority;
-use arut_feature_chat::composer::ComposerServiceImpl;
 use arut_feature_chat::ports::IdSource;
 use arut_feature_chat::{ChatClient, ChatStarted};
 use arut_protocol::capability::v1::{
     CapabilityServiceClient, GetCapabilitiesRequest, ServiceCapability,
 };
-use arut_protocol::capability_manifest::CapabilityServiceImpl;
 use arut_protocol::chat::composer::v1::{COMPOSER_SERVICE_DESCRIPTOR, ComposerServiceClient};
-use arut_protocol::chat::v1::{CHAT_SERVICE_DESCRIPTOR, ChatServiceClient};
-use arut_rpc::{Cancellation, Request, RpcChannel, ServiceMetadata, ServiceRegistration};
+use arut_protocol::chat::v1::ChatServiceClient;
+use arut_rpc::{Cancellation, Request, RpcChannel};
 use arut_watch::Watch;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, Weak};
+
+/// Scope identities supplied by the composition root.
+pub struct SessionScope {
+    pub node_id: String,
+    pub workspace_id: String,
+    pub pending_scope_id: String,
+}
 
 pub struct ProductSession {
     pub workspace: Arc<scopes::Workspace<scopes::Services>>,
@@ -182,34 +185,15 @@ impl ProductSession {
         Ok(())
     }
 
-    /// Hosts every service in this process; the composition root supplies IDs.
-    pub fn local(pending_scope_id: impl Into<String>, ids: Arc<dyn IdSource>) -> Self {
-        let authority = Arc::new(ComposerAuthority::default());
-        let chat = ChatServiceClient::direct(Arc::new(
-            ChatServiceImpl::new(
-                Arc::clone(&authority),
-                Arc::new(arut_storage::MemoryLog::default()),
-                ids.clone(),
-            )
-            .expect("empty local log"),
-        ));
-        let composer = ComposerServiceClient::direct(Arc::new(ComposerServiceImpl::new(authority)));
-        let capabilities = CapabilityServiceClient::direct(Arc::new(CapabilityServiceImpl::new([
-            ServiceRegistration::new(&CHAT_SERVICE_DESCRIPTOR, ServiceMetadata::default()),
-            ServiceRegistration::new(&COMPOSER_SERVICE_DESCRIPTOR, ServiceMetadata::default()),
-        ])));
-        Self::new(chat, composer, pending_scope_id, ids).with_capability_service(capabilities)
-    }
-
     pub fn remote(
         channel: Arc<dyn RpcChannel>,
-        pending_scope_id: impl Into<String>,
+        scope: SessionScope,
         ids: Arc<dyn IdSource>,
     ) -> Self {
         Self::new(
             ChatServiceClient::remote(channel.clone()),
             ComposerServiceClient::remote(channel.clone()),
-            pending_scope_id,
+            scope,
             ids,
         )
         .with_capability_service(CapabilityServiceClient::remote(channel))
@@ -218,16 +202,16 @@ impl ProductSession {
     pub fn new(
         chat: ChatServiceClient,
         composer: ComposerServiceClient,
-        pending_scope_id: impl Into<String>,
+        scope: SessionScope,
         ids: Arc<dyn IdSource>,
     ) -> Self {
-        let pending_scope_id = pending_scope_id.into();
+        let pending_scope_id = scope.pending_scope_id;
         assert!(
             !pending_scope_id.is_empty(),
             "pending scope ID must not be empty"
         );
         let runtime = Arc::new(scopes::Services { chat, composer });
-        let workspace = scopes::Node::new("local".into(), runtime).workspace("default".into());
+        let workspace = scopes::Node::new(scope.node_id, runtime).workspace(scope.workspace_id);
         let conversations = Arc::new(Watch::new(Vec::new()));
         let established = Established::default();
         let pending = ChatClient::pending(
@@ -267,7 +251,7 @@ impl ProductSession {
         self.workspace.node.cancellation()
     }
 
-    fn with_capability_service(mut self, service: CapabilityServiceClient) -> Self {
+    pub fn with_capability_service(mut self, service: CapabilityServiceClient) -> Self {
         self.capability_service = Some(service);
         self.availability.set(SessionAvailability {
             composer: FeatureAvailability::Unknown,
@@ -348,11 +332,38 @@ fn feature_availability(service: ServiceCapability) -> FeatureAvailability {
 mod tests {
     use super::*;
     use arut_feature_chat::composer::ComposerScope;
-    use arut_feature_chat::ports::NativeIds;
+    struct NativeIds;
+    impl IdSource for NativeIds {
+        fn new_id(&self) -> String {
+            uuid::Uuid::now_v7().to_string()
+        }
+    }
     use futures_executor::block_on;
 
     fn session() -> ProductSession {
-        ProductSession::local("account:one", Arc::new(NativeIds))
+        use arut_feature_chat::{
+            ChatServiceImpl,
+            composer::{ComposerAuthority, ComposerServiceImpl},
+        };
+        let ids: Arc<dyn IdSource> = Arc::new(NativeIds);
+        let authority = Arc::new(ComposerAuthority::default());
+        ProductSession::new(
+            ChatServiceClient::direct(Arc::new(
+                ChatServiceImpl::new(
+                    authority.clone(),
+                    Arc::new(arut_storage::MemoryLog::default()),
+                    ids.clone(),
+                )
+                .unwrap(),
+            )),
+            ComposerServiceClient::direct(Arc::new(ComposerServiceImpl::new(authority))),
+            SessionScope {
+                node_id: "local".into(),
+                workspace_id: "default".into(),
+                pending_scope_id: "account:one".into(),
+            },
+            ids,
+        )
     }
 
     fn titles(session: &ProductSession) -> Vec<String> {

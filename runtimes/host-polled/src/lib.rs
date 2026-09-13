@@ -137,3 +137,12 @@ mod tests {
         assert!(done.get());
     }
 }
+
+#[cfg(not(target_arch = "wasm32"))]
+mod ids;
+mod observation;
+mod session;
+#[cfg(not(target_arch = "wasm32"))]
+pub use ids::NativeIds;
+pub use observation::observe;
+pub use session::{in_memory_session, native_session};

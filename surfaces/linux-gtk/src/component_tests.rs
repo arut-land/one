@@ -5,7 +5,6 @@ use crate::{
     conversations::Conversations,
     transcript::Transcript,
 };
-use arut_product_session::ProductSession;
 use gtk::{glib, prelude::*};
 use relm4::{Component, ComponentController};
 use std::{rc::Rc, sync::Arc};
@@ -44,8 +43,8 @@ fn watches_preserve_message_widgets_and_bind_independent_drafts() {
     let _app = relm4::RelmApp::<()>::new("dev.arut.ComponentTest");
     let context = glib::MainContext::default();
     let _guard = context.acquire().unwrap();
-    let session = Rc::new(ProductSession::local(
-        "component-test",
+    let session = Rc::new(arut_runtime_local::in_memory_session(
+        "component-test".into(),
         Arc::new(arut_runtime_local::NativeIds),
     ));
     let chat = session.chat();
