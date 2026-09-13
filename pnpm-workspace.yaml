@@ -1,4 +1,5 @@
 packages:
+  - "runtimes/browser"
   - "bindings/generated/wasm/pkg"
   - "bindings/typescript"
   - "surfaces/web"

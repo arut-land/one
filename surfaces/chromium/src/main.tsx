@@ -1,1 +1,1 @@
-import "../../web/src/main";
+import "@arut/surface-web/main";

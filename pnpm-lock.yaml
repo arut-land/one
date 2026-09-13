@@ -176,11 +176,20 @@ importers:
         specifier: 'catalog:'
         version: 5.9.3
 
+  runtimes/browser:
+    devDependencies:
+      typescript:
+        specifier: 'catalog:'
+        version: 5.9.3
+
   surfaces/chromium:
     dependencies:
       '@arut/bindings-typescript':
         specifier: workspace:*
         version: link:../../bindings/typescript
+      '@arut/surface-web':
+        specifier: workspace:*
+        version: link:../web
       react:
         specifier: 'catalog:'
         version: 19.3.0
@@ -212,6 +221,9 @@ importers:
       '@arut/bindings-typescript':
         specifier: workspace:*
         version: link:../../bindings/typescript
+      '@arut/runtime-browser':
+        specifier: workspace:*
+        version: link:../../runtimes/browser
     devDependencies:
       '@types/node':
         specifier: ^22.13.1
@@ -231,6 +243,9 @@ importers:
       '@arut/bindings-typescript':
         specifier: workspace:*
         version: link:../../bindings/typescript
+      '@arut/runtime-browser':
+        specifier: workspace:*
+        version: link:../../runtimes/browser
       react:
         specifier: 'catalog:'
         version: 19.3.0

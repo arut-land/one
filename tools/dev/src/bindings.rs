@@ -166,6 +166,29 @@ fn generated(root: &Path) -> Result<[(&'static str, String); 3]> {
         ("bindings/dotnet/Exports.cs", csharp),
     ])
 }
+/// Relative source paths must stay within their surface or runtime package.
+fn crosses_package(file: &str, specifier: &str) -> bool {
+    if !specifier.starts_with("./") && !specifier.starts_with("../") {
+        return false;
+    }
+    let mut path: Vec<_> = file.split('/').collect();
+    path.pop();
+    let owner: Vec<_> = path.iter().take(2).copied().collect();
+    if !matches!(owner.first(), Some(&"surfaces" | &"runtimes")) {
+        return false;
+    }
+    for component in specifier.split('/') {
+        match component {
+            "." => {}
+            ".." => {
+                path.pop();
+            }
+            component => path.push(component),
+        }
+    }
+    !path.starts_with(&owner)
+}
+
 fn imports(root: &Path) -> Result<Vec<String>> {
     let output = Command::new("git")
         .args([
@@ -194,7 +217,23 @@ fn imports(root: &Path) -> Result<Vec<String>> {
         ) {
             continue;
         }
-        for (line, text) in fs::read_to_string(root.join(file))?.lines().enumerate() {
+        let path = root.join(file);
+        if !path.exists() {
+            continue;
+        }
+        for (line, text) in fs::read_to_string(path)?.lines().enumerate() {
+            for specifier in text.split(['\'', '"', '`']).skip(1).step_by(2) {
+                if matches!(
+                    Path::new(file).extension().and_then(|e| e.to_str()),
+                    Some("ts" | "tsx")
+                ) && crosses_package(file, specifier)
+                {
+                    violations.push(format!(
+                        "{file}:{} -> {specifier}: import through a workspace package",
+                        line + 1
+                    ));
+                }
+            }
             if ["ArutFfi", "dev.arut.ffi", "Arut.Ffi", "@arut/ffi"]
                 .iter()
                 .any(|package| text.contains(package))
@@ -234,4 +273,22 @@ pub(crate) fn run(check: bool) -> Result<()> {
         std::process::exit(1);
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn relative_paths_cannot_escape_surface_or_runtime_packages() {
+        for (file, specifier) in [
+            ("surfaces/web/src/main.tsx", "../../../runtimes/browser/ids"),
+            ("surfaces/chromium/src/main.tsx", "../../web/src/main"),
+            ("runtimes/browser/ids.ts", "../../surfaces/web/src/main"),
+        ] {
+            assert!(crosses_package(file, specifier));
+        }
+        for specifier in ["./view", "../style.css", "@arut/runtime-browser"] {
+            assert!(!crosses_package("surfaces/web/src/main.tsx", specifier));
+        }
+    }
 }
