@@ -10,7 +10,8 @@
   "dependencies": {
     "@arut/bindings-typescript": "workspace:*",
     "react": "catalog:",
-    "react-dom": "catalog:"
+    "react-dom": "catalog:",
+    "@arut/surface-web": "workspace:*"
   },
   "devDependencies": {
     "@types/react": "catalog:",

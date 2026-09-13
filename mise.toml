@@ -58,7 +58,7 @@ run = "cargo run --quiet -p arut-dev -- i18n"
 [tasks.install]
 description = "Install the JavaScript workspace (regenerates the wasm package first if stale)"
 depends = ["ffi:wasm"]
-sources = ["pnpm-lock.yaml", "pnpm-workspace.yaml", "package.json", "bindings/typescript/package.json", "surfaces/*/package.json", "bindings/generated/wasm/pkg/package.json"]
+sources = ["pnpm-lock.yaml", "pnpm-workspace.yaml", "package.json", "bindings/typescript/package.json", "surfaces/*/package.json", "runtimes/*/package.json", "bindings/generated/wasm/pkg/package.json"]
 outputs = ["node_modules/.modules.yaml"]
 run = "pnpm install"
 

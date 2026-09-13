@@ -1,4 +1,4 @@
-import { uuidV7 } from "../../../runtimes/browser/ids";
+import { uuidV7 } from "@arut/runtime-browser";
 import { createSession, loadStrings } from "@arut/bindings-typescript";
 import { registerChat } from "./surface";
 import { Uri, env, workspace, type ExtensionContext } from "vscode";
