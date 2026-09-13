@@ -4,8 +4,8 @@
 //! transaction. Facts and snapshots are Protobuf rows. Compaction requires a
 //! snapshot and retains outcomes for retries.
 //!
-//! Memory implements all three ports for tests and wasm. The native `redb`
-//! feature supplies transactional fact logs and key-value tables in one exclusively
+//! Memory supplies all three ports for tests and wasm, with ordered log range reads.
+//! Native `redb` supplies transactional logs and key-value tables in one exclusively
 //! owned database file. Both implementations share conformance tests.
 
 mod memory;
