@@ -18,6 +18,21 @@ fn drain(context: &glib::MainContext) {
     }
 }
 
+fn wait_until(context: &glib::MainContext, ready: impl Fn() -> bool) {
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    loop {
+        drain(context);
+        if ready() {
+            return;
+        }
+        assert!(
+            std::time::Instant::now() < deadline,
+            "UI did not receive the node response"
+        );
+        std::thread::sleep(std::time::Duration::from_millis(1));
+    }
+}
+
 fn scroll_content(scroll: &gtk::ScrolledWindow) -> gtk::Widget {
     let child = scroll.child().unwrap();
     if let Some(viewport) = child.downcast_ref::<gtk::Viewport>() {
@@ -40,13 +55,42 @@ fn transcript_rows(transcript: &relm4::Controller<Transcript>) -> gtk::Box {
 #[test]
 #[ignore = "requires a GTK display; run with --ignored --test-threads=1"]
 fn watches_preserve_message_widgets_and_bind_independent_drafts() {
+    use arut_product_session::{ProductSession, SessionScope, hosting::Host};
+    use arut_runtime_local::{
+        child::ChildHost,
+        hosting::{TokioSpawner, desktop_executor},
+    };
     let _app = relm4::RelmApp::<()>::new("dev.arut.ComponentTest");
     let context = glib::MainContext::default();
     let _guard = context.acquire().unwrap();
-    let session = Rc::new(arut_runtime_local::in_memory_session(
-        "component-test".into(),
+    let executor = desktop_executor().unwrap();
+    let directory = std::env::temp_dir().join(format!("arut-gtk-test-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&directory);
+    std::fs::create_dir_all(&directory).unwrap();
+    let host = ChildHost {
+        executable: std::env::current_exe()
+            .unwrap()
+            .parent()
+            .unwrap()
+            .parent()
+            .unwrap()
+            .join("arutd"),
+        socket: directory.join("node.sock"),
+        data: directory.join("data"),
+        spawner: Arc::new(TokioSpawner(executor.handle().clone())),
+    };
+    let channel = executor.block_on(host.connect()).unwrap();
+    let session = Rc::new(ProductSession::new(
+        arut_product_session::chat::ChatClients::remote(channel.clone()),
+        arut_product_session::CapabilityServiceClient::remote(channel),
+        SessionScope {
+            node_id: "local".into(),
+            workspace_id: "default".into(),
+            pending_scope_id: "component-test".into(),
+        },
         Arc::new(arut_runtime_local::NativeIds),
     ));
+    context.block_on(session.refresh_capabilities());
     let chat = session.chat();
     let transcript = Transcript::builder().launch(chat.clone()).detach();
     let composer = Composer::builder().launch(chat.clone()).detach();
@@ -67,7 +111,7 @@ fn watches_preserve_message_widgets_and_bind_independent_drafts() {
         .downcast::<gtk::TextView>()
         .unwrap();
     editor.buffer().set_text("first message");
-    drain(&context);
+    wait_until(&context, || chat.composer().state().text == "first message");
     assert_eq!(chat.composer().state().text, "first message");
     let controllers = editor.observe_controllers();
     let keys = (0..controllers.n_items())
@@ -96,7 +140,9 @@ fn watches_preserve_message_widgets_and_bind_independent_drafts() {
             &gtk::gdk::ModifierType::empty()
         ]
     ));
-    drain(&context);
+    wait_until(&context, || {
+        chat.messages_after(0).len() == 2 && editor.buffer().char_count() == 0
+    });
     assert_eq!(chat.messages_after(0).len(), 2);
     assert_eq!(editor.buffer().char_count(), 0);
     let rows = transcript_rows(&transcript);

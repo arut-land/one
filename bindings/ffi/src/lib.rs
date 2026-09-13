@@ -3,11 +3,11 @@
 //! Each handle has an explicit `#[export] impl`. BoltFFI's source scanner does not
 //! expand macros: a macro-generated handle silently disappears from bindings,
 //! even with `--deny-skipped`. Keep exports visible; share watch bridging through
-//! `ffi_subscription`. Chat metadata and keyed message ranges cross FFI separately.
+//! `ffi_subscription`. The factories compose features over memory ports. Chat metadata and keyed message ranges cross FFI separately.
 
 pub use arut_feature_chat::composer::{ComposerState, ComposerStatus};
 pub use arut_feature_chat::errors::{ChatError, ComposerError, NodeFailure};
-use arut_feature_chat::ports::IdSource;
+use arut_feature_chat::ports::{Clock, IdSource};
 use arut_feature_chat::{ChatClient, composer::ComposerClient};
 pub use arut_feature_chat::{ChatMessage, ChatRole, ChatState, ChatStatus};
 use arut_product_session::ProductSession;
@@ -132,8 +132,18 @@ impl ComposerHandle {
 /// `create_browser_session`.
 #[export]
 pub fn create_product_session(pending_scope_id: String) -> ProductSessionHandle {
-    ProductSessionHandle {
-        session: Arc::new(arut_runtime_host_polled::native_session(pending_scope_id)),
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        session(
+            pending_scope_id,
+            Arc::new(arut_runtime_host_polled::NativeIds),
+            Arc::new(arut_runtime_host_polled::NativeClock),
+        )
+    }
+    #[cfg(target_arch = "wasm32")]
+    {
+        let _ = pending_scope_id;
+        panic!("a wasm host supplies time and IDs through create_browser_session")
     }
 }
 
@@ -155,6 +165,7 @@ fn ffi_subscription(source: Arc<Subscription<u64>>) -> Arc<EventSubscription<u64
 #[export]
 pub trait HostIds: Send + Sync {
     fn new_id(&self) -> String;
+    fn now(&self) -> u64;
 }
 struct BrowserIds(Arc<dyn HostIds>);
 impl IdSource for BrowserIds {
@@ -162,19 +173,40 @@ impl IdSource for BrowserIds {
         self.0.new_id()
     }
 }
-/// Hosts without a clock or entropy, such as a browser, supply their own IDs.
+impl Clock for BrowserIds {
+    fn now(&self) -> u64 {
+        self.0.now()
+    }
+}
+/// Browser hosts supply wall time and UUIDv7 identities.
 #[export]
 pub fn create_browser_session(
     pending_scope_id: String,
     ids: Arc<dyn HostIds>,
 ) -> ProductSessionHandle {
-    session(pending_scope_id, Arc::new(BrowserIds(ids)))
+    let host = Arc::new(BrowserIds(ids));
+    session(pending_scope_id, host.clone(), host)
 }
 
-fn session(pending_scope_id: String, ids: Arc<dyn IdSource>) -> ProductSessionHandle {
+fn session(
+    pending_scope_id: String,
+    ids: Arc<dyn IdSource>,
+    clock: Arc<dyn Clock + Send + Sync>,
+) -> ProductSessionHandle {
+    let runtime = Arc::new(arut_runtime_host_polled::MemoryRuntime::new(
+        ids.clone(),
+        clock,
+    ));
+    let chat = arut_feature_chat::compose(runtime).expect("compose memory feature");
     ProductSessionHandle {
-        session: Arc::new(arut_runtime_host_polled::in_memory_session(
-            pending_scope_id,
+        session: Arc::new(ProductSession::new(
+            chat.clients(),
+            arut_product_session::capability_client(chat.registrations()),
+            arut_product_session::SessionScope {
+                node_id: "local".into(),
+                workspace_id: "default".into(),
+                pending_scope_id,
+            },
             ids,
         )),
     }

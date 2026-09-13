@@ -1,6 +1,7 @@
 //! Native Linux UI built with relm4 over GTK4, without libadwaita.
 //!
-//! The composition root owns the desktop executor and ChildHost. Components read
+//! The root owns the desktop executor and ChildHost and binds feature clients to IPC.
+//! Components read
 //! ProductSession handles directly and await independent watches on GLib. Only
 //! navigation is persisted here, under XDG_STATE_HOME/arut/linux-ui.
 //! Chat and composer errors are typed enums from the core (ADR 0016); strings.rs
@@ -74,8 +75,9 @@ fn main() {
         }
     };
     eprintln!("arut-linux-gtk: arutd ready over IPC");
-    let session = Rc::new(ProductSession::remote(
-        channel,
+    let session = Rc::new(ProductSession::new(
+        arut_product_session::chat::ChatClients::remote(channel.clone()),
+        arut_product_session::CapabilityServiceClient::remote(channel),
         arut_product_session::SessionScope {
             node_id: "local".into(),
             workspace_id: "default".into(),

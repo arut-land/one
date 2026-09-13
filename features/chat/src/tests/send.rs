@@ -1,13 +1,12 @@
-mod support;
-use arut_feature_chat::composer::ComposerAuthority;
-use arut_feature_chat::composer::ComposerServiceImpl;
-use arut_feature_chat::{ChatClient, ChatStatus};
+use crate::composer::ComposerAuthority;
+use crate::composer::ComposerServiceImpl;
+use crate::ports::NativeIds;
+use crate::{ChatClient, ChatStatus};
 use arut_protocol::chat::composer::v1::*;
 use arut_protocol::chat::v1::*;
 use arut_rpc::{Cancellation, Code, Request, Response, RpcFuture, RpcStream, Status};
 use futures_executor::block_on;
 use std::sync::{Arc, Mutex};
-use support::NativeIds;
 
 #[derive(Default)]
 struct AcceptThenLoseResponse(Mutex<Vec<SendMessageRequest>>);

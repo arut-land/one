@@ -6,8 +6,6 @@ license.workspace = true
 
 [dependencies]
 arut-feature-chat.workspace = true
-arut-product-session.workspace = true
-arut-protocol.workspace = true
 arut-storage.workspace = true
 arut-watch.workspace = true
 futures-util = "0.3.31"

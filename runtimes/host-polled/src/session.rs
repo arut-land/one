@@ -1,56 +1,96 @@
-//! In-memory composition retained behind the existing session factory ABI.
-//! Native hosting completion in ROADMAP.md will replace these factory exports
-//! with host injection. ProductSession itself only composes supplied services.
-use arut_feature_chat::{
-    ChatServiceImpl,
-    composer::{ComposerAuthority, ComposerServiceImpl},
-    ports::IdSource,
+//! Memory storage and injected host time and identity ports.
+use arut_feature_chat::ports::{Clock, Drafts, IdSource, Persist};
+use arut_storage::{Fact, FactLog, KeyValue, MemoryLog, MemoryStore, StorageError};
+use std::{
+    any::Any,
+    collections::HashMap,
+    sync::{Arc, Mutex},
 };
-use arut_product_session::{ProductSession, SessionScope};
-use arut_protocol::{
-    capability::v1::CapabilityServiceClient,
-    capability_manifest::CapabilityServiceImpl,
-    chat::{
-        composer::v1::{COMPOSER_SERVICE_DESCRIPTOR, ComposerServiceClient},
-        v1::{CHAT_SERVICE_DESCRIPTOR, ChatServiceClient},
-    },
-};
-use arut_rpc::{ServiceMetadata, ServiceRegistration};
-use std::sync::Arc;
-pub fn in_memory_session(pending_scope_id: String, ids: Arc<dyn IdSource>) -> ProductSession {
-    let authority = Arc::new(ComposerAuthority::default());
-    let chat = ChatServiceClient::direct(Arc::new(
-        ChatServiceImpl::new(
-            Arc::clone(&authority),
-            Arc::new(arut_storage::MemoryLog::default()),
-            ids.clone(),
-        )
-        .expect("empty local log"),
-    ));
-    let composer = ComposerServiceClient::direct(Arc::new(ComposerServiceImpl::new(authority)));
-    let capabilities = CapabilityServiceClient::direct(Arc::new(CapabilityServiceImpl::new([
-        ServiceRegistration::new(&CHAT_SERVICE_DESCRIPTOR, ServiceMetadata::default()),
-        ServiceRegistration::new(&COMPOSER_SERVICE_DESCRIPTOR, ServiceMetadata::default()),
-    ])));
-    ProductSession::new(
-        chat,
-        composer,
-        SessionScope {
-            node_id: "local".into(),
-            workspace_id: "default".into(),
-            pending_scope_id,
-        },
-        ids,
-    )
-    .with_capability_service(capabilities)
+
+/// Named memory logs and draft recovery storage shared by composed features.
+/// The map contains storage only. Reopening a namespace with another fact type
+/// fails instead of silently creating a different log under the same name.
+pub struct MemoryRuntime {
+    ids: Arc<dyn IdSource>,
+    clock: Arc<dyn Clock + Send + Sync>,
+    logs: Mutex<HashMap<String, Arc<dyn Any + Send + Sync>>>,
+    drafts: Arc<MemoryStore>,
+}
+impl MemoryRuntime {
+    pub fn new(ids: Arc<dyn IdSource>, clock: Arc<dyn Clock + Send + Sync>) -> Self {
+        Self {
+            ids,
+            clock,
+            logs: Mutex::default(),
+            drafts: Arc::default(),
+        }
+    }
+}
+impl IdSource for MemoryRuntime {
+    fn new_id(&self) -> String {
+        self.ids.new_id()
+    }
+}
+impl Clock for MemoryRuntime {
+    fn now(&self) -> u64 {
+        self.clock.now()
+    }
+}
+impl Drafts for MemoryRuntime {
+    fn drafts(&self) -> Arc<dyn KeyValue> {
+        self.drafts.clone()
+    }
+}
+impl<F: Fact> Persist<F> for MemoryRuntime {
+    fn log(&self, namespace: &str) -> Result<Arc<dyn FactLog<F>>, StorageError> {
+        self.logs
+            .lock()
+            .expect("memory logs poisoned")
+            .entry(namespace.into())
+            .or_insert_with(|| Arc::new(MemoryLog::<F>::default()))
+            .clone()
+            .downcast::<MemoryLog<F>>()
+            .map(|log| log as Arc<dyn FactLog<F>>)
+            .map_err(|_| StorageError::Corrupt)
+    }
 }
 
-pub fn native_session(pending_scope_id: String) -> ProductSession {
-    #[cfg(target_arch = "wasm32")]
-    {
-        let _ = pending_scope_id;
-        panic!("a wasm host supplies its own IDs through create_browser_session")
+#[cfg(test)]
+mod tests {
+    use super::*;
+    struct Host;
+    impl IdSource for Host {
+        fn new_id(&self) -> String {
+            "injected".into()
+        }
     }
-    #[cfg(not(target_arch = "wasm32"))]
-    in_memory_session(pending_scope_id, Arc::new(crate::NativeIds))
+    impl Clock for Host {
+        fn now(&self) -> u64 {
+            42
+        }
+    }
+    #[test]
+    fn namespaces_reopen_without_aliasing_other_logs_or_fact_types() {
+        let runtime = MemoryRuntime::new(Arc::new(Host), Arc::new(Host));
+        assert_eq!(runtime.new_id(), "injected");
+        assert_eq!(runtime.now(), 42);
+        let one = <MemoryRuntime as Persist<String>>::log(&runtime, "one").unwrap();
+        one.append(0, 1, "command", "fact".into()).unwrap();
+        assert_eq!(
+            <MemoryRuntime as Persist<String>>::log(&runtime, "one")
+                .unwrap()
+                .read_from(0)
+                .unwrap()
+                .len(),
+            1
+        );
+        assert!(
+            <MemoryRuntime as Persist<String>>::log(&runtime, "two")
+                .unwrap()
+                .read_from(0)
+                .unwrap()
+                .is_empty()
+        );
+        assert!(<MemoryRuntime as Persist<u64>>::log(&runtime, "one").is_err());
+    }
 }

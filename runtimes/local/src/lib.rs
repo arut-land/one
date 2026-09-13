@@ -1,53 +1,32 @@
-//! # Local runtime
+//! Native persistence ports, Tokio drivers, and generic node assembly.
 //!
-//! `arutd` hosts chat and composer services over Connect HTTP or a private Unix
-//! socket. Directory storage contains immutable chat facts, raw blobs, and local
-//! draft recovery values. ARUT_DATA selects the directory; ARUT_SOCKET selects IPC;
-//! ARUT_ADDRESS selects TCP; ARUT_STORAGE selects which implementation holds the
-//! facts and the drafts.
-//!
-//! Which one backs a node is a composition-root choice, not a storage one: both
-//! pass the same conformance suite, so `app` picks and everything above the port
-//! is unaware. The directory tree stays the default until redb has run here.
-//!
-//! TokioSpawner receives an executor handle from the composition root. ChannelHost
-//! provides scheduled RPC for foreign pollers. ChildHost starts arutd and awaits its
-//! READY handshake. The final channel drop terminates the child and removes its
-//! socket. No HTTP transport creates an executor.
+//! The composition root chooses storage and composes its feature list. A node
+//! lease remains held by the runtime and every active RPC dispatch. Blocking
+//! storage dispatch runs on Tokio's blocking pool, including router future polling.
+//! ChildHost supervises arutd; ScheduledChannel supports foreign pollers.
 
 mod blocking;
 #[cfg(unix)]
 pub mod child;
 pub mod hosting;
-use arut_feature_chat::ChatServiceImpl;
-use arut_feature_chat::composer::ComposerAuthority;
-use arut_feature_chat::composer::ComposerServiceImpl;
-use arut_protocol::capability::v1::CapabilityServiceRouter;
-use arut_protocol::capability_manifest::CapabilityServiceImpl;
-use arut_protocol::chat::composer::v1::ComposerServiceRouter;
-use arut_protocol::chat::v1::ChatFact;
-use arut_protocol::chat::v1::ChatServiceRouter;
-use arut_rpc::{RpcRegistry, RpcService};
-pub use arut_runtime_host_polled::{NativeIds, in_memory_session};
-use arut_storage::{FactLog, KeyValue, Redb, StorageError};
+use arut_feature_chat::ports::{Clock, Drafts, IdSource, Persist};
+use arut_rpc::{RpcRegistry, RpcService, Status};
+pub use arut_runtime_host_polled::{NativeClock, NativeIds};
+use arut_storage::{Directory, Fact, FactLog, KeyValue, Redb, StorageError};
 use axum::Router;
-use std::path::PathBuf;
-use std::sync::Arc;
+use std::{
+    collections::HashMap,
+    path::PathBuf,
+    sync::{Arc, Mutex},
+};
 
-/// Which storage implementation this node's composition root hands the feature.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum NodeStorage {
-    /// A directory tree: one Protobuf record per file. The default until redb
-    /// has run in front of real conversations.
     #[default]
     Directory,
-    /// One redb file holding the fact log and the drafts beside it. This node
-    /// owns that file exclusively while it runs.
     Redb,
 }
-
 impl NodeStorage {
-    /// Reads the choice from `ARUT_STORAGE`; anything unrecognised is the default.
     pub fn from_env() -> Self {
         match std::env::var("ARUT_STORAGE").as_deref() {
             Ok("redb") => Self::Redb,
@@ -56,57 +35,102 @@ impl NodeStorage {
     }
 }
 
-pub fn app(data_path: PathBuf) -> Result<Router, StorageError> {
-    app_with(data_path, NodeStorage::default())
+pub struct LocalRuntime {
+    directory: Arc<Directory>,
+    path: PathBuf,
+    databases: Option<Mutex<HashMap<String, Redb>>>,
+    drafts: Arc<dyn KeyValue>,
+    _lease: std::fs::File,
 }
-
-pub fn app_with(data_path: PathBuf, storage: NodeStorage) -> Result<Router, StorageError> {
-    let directory = Arc::new(arut_storage::Directory::open(&data_path)?);
-    let lease = Arc::new(
-        std::fs::OpenOptions::new()
+impl LocalRuntime {
+    /// `primary_log` assigns the existing node.redb file to its feature namespace.
+    /// Additional namespaces get separate databases; directory names stay stable.
+    pub fn open(
+        path: PathBuf,
+        storage: NodeStorage,
+        primary_log: &str,
+    ) -> Result<Self, StorageError> {
+        let directory = Arc::new(Directory::open(&path)?);
+        let lease = std::fs::OpenOptions::new()
             .create(true)
             .truncate(false)
             .read(true)
             .write(true)
-            .open(data_path.join("node.lock"))?,
-    );
-    lease.try_lock().map_err(|error| {
-        let error: std::io::Error = error.into();
-        StorageError::from(error)
-    })?;
-    let (log, drafts): (Arc<dyn FactLog<ChatFact>>, Arc<dyn KeyValue>) = match storage {
-        NodeStorage::Directory => (Arc::new(directory.log("chat")?), directory),
-        NodeStorage::Redb => {
-            let redb = Redb::open(data_path.join("node.redb"))?;
-            (Arc::new(redb.log()), Arc::new(redb))
+            .open(path.join("node.lock"))?;
+        lease
+            .try_lock()
+            .map_err(|error| StorageError::from(std::io::Error::from(error)))?;
+        let (databases, drafts): (_, Arc<dyn KeyValue>) = match storage {
+            NodeStorage::Directory => (None, directory.clone()),
+            NodeStorage::Redb => {
+                let database = Redb::open(path.join("node.redb"))?;
+                (
+                    Some(Mutex::new(HashMap::from([(
+                        primary_log.into(),
+                        database.clone(),
+                    )]))),
+                    Arc::new(database),
+                )
+            }
+        };
+        Ok(Self {
+            directory,
+            path,
+            databases,
+            drafts,
+            _lease: lease,
+        })
+    }
+}
+impl IdSource for LocalRuntime {
+    fn new_id(&self) -> String {
+        NativeIds.new_id()
+    }
+}
+impl Clock for LocalRuntime {
+    fn now(&self) -> u64 {
+        NativeClock.now()
+    }
+}
+impl Drafts for LocalRuntime {
+    fn drafts(&self) -> Arc<dyn KeyValue> {
+        self.drafts.clone()
+    }
+}
+impl<F: Fact> Persist<F> for LocalRuntime {
+    fn log(&self, namespace: &str) -> Result<Arc<dyn FactLog<F>>, StorageError> {
+        match &self.databases {
+            None => Ok(Arc::new(self.directory.log(namespace)?)),
+            Some(databases) => {
+                let mut databases = databases.lock().expect("databases poisoned");
+                if !databases.contains_key(namespace) {
+                    let path = self.path.join(format!(
+                        "log-{}.redb",
+                        arut_storage::digest(namespace.as_bytes())
+                    ));
+                    databases.insert(namespace.into(), Redb::open(path)?);
+                }
+                Ok(Arc::new(databases[namespace].log()))
+            }
         }
-    };
-    let authority = Arc::new(ComposerAuthority::with_store(drafts));
-    let composer = Arc::new(blocking::Blocking::new(
-        ComposerServiceImpl::new(Arc::clone(&authority)),
-        lease.clone(),
-    ));
-    let chat = Arc::new(blocking::Blocking::new(
-        ChatServiceImpl::new(authority, log, Arc::new(NativeIds))?,
-        lease,
-    ));
-    let composer_router: Arc<dyn RpcService> = Arc::new(ComposerServiceRouter::new(composer));
-    let chat_router: Arc<dyn RpcService> = Arc::new(ChatServiceRouter::new(chat));
-    let registry = RpcRegistry::default()
-        .register(composer_router)
-        .expect("composer RPC routes must be unique")
-        .register(chat_router)
-        .expect("chat RPC routes must be unique");
-    let capabilities = Arc::new(CapabilityServiceImpl::new(registry.registrations()));
-    let capability_router: Arc<dyn RpcService> =
-        Arc::new(CapabilityServiceRouter::new(capabilities));
-    let registry = Arc::new(
-        registry
-            .register(capability_router)
-            .expect("capability RPC routes must be unique"),
-    );
+    }
+}
 
-    Ok(arut_transport_connect_http::router(registry))
+pub struct Node;
+impl Node {
+    /// Roots flatten their feature routers here. Duplicate routes are errors.
+    pub fn serve<R: Send + Sync + 'static>(
+        runtime: Arc<R>,
+        features: impl IntoIterator<Item = Arc<dyn RpcService>>,
+    ) -> Result<Router, Status> {
+        let mut registry = RpcRegistry::default();
+        for router in features {
+            registry =
+                registry.register(Arc::new(blocking::Blocking::new(router, runtime.clone())))?;
+        }
+        let registry = arut_protocol::capability_manifest::with_capabilities(registry)?;
+        Ok(arut_transport_connect_http::router(Arc::new(registry)))
+    }
 }
 
 #[cfg(test)]
@@ -121,6 +145,15 @@ mod tests {
     use arut_rpc::{Request, RpcChannel};
     use arut_transport_connect_http::HttpRpcChannel;
     use futures_util::StreamExt;
+
+    fn app(data: PathBuf) -> Result<Router, StorageError> {
+        app_with(data, NodeStorage::default())
+    }
+    fn app_with(data: PathBuf, storage: NodeStorage) -> Result<Router, StorageError> {
+        let runtime = Arc::new(LocalRuntime::open(data, storage, "chat")?);
+        let feature = arut_feature_chat::compose(runtime.clone())?;
+        Ok(Node::serve(runtime, feature.routers()).unwrap())
+    }
 
     fn wire_scope(scope: &ComposerScope) -> arut_protocol::chat::composer::v1::ComposerScope {
         scope.into()
@@ -138,6 +171,22 @@ mod tests {
             drop(app_with(path.clone(), storage).unwrap());
             std::fs::remove_dir_all(path).unwrap();
         }
+    }
+
+    #[test]
+    fn a_surviving_direct_composer_client_keeps_the_node_lease() {
+        let path = std::env::temp_dir().join(format!("arut-client-lease-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&path);
+        let runtime =
+            Arc::new(LocalRuntime::open(path.clone(), NodeStorage::Directory, "chat").unwrap());
+        let feature = arut_feature_chat::compose(runtime.clone()).unwrap();
+        let composer = feature.clients().composer;
+        drop(feature);
+        drop(runtime);
+        assert!(LocalRuntime::open(path.clone(), NodeStorage::Directory, "chat").is_err());
+        drop(composer);
+        drop(LocalRuntime::open(path.clone(), NodeStorage::Directory, "chat").unwrap());
+        std::fs::remove_dir_all(path).unwrap();
     }
 
     #[tokio::test]

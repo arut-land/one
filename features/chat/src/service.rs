@@ -1,8 +1,10 @@
 //! Converts generated service requests and outcomes at the chat boundary.
+#[cfg(test)]
+use crate::ChatProjection;
 use crate::authority::{ChatAuthority, CommitError};
 use crate::command::Rejection;
 use crate::composer::ComposerAuthority;
-use crate::{ChatProjection, ports::IdSource};
+use crate::ports::IdSource;
 use arut_protocol::chat::v1::{
     ChatFact, ChatService, ListConversationsRequest, ListConversationsResponse, SendMessageRequest,
     SendMessageResponse, StartChatRequest, StartChatResponse,
@@ -12,7 +14,7 @@ use arut_storage::{FactLog, StorageError};
 use std::sync::Arc;
 use uuid::Uuid;
 
-pub struct ChatServiceImpl {
+pub(crate) struct ChatServiceImpl {
     authority: ChatAuthority,
 }
 impl ChatServiceImpl {
@@ -25,6 +27,7 @@ impl ChatServiceImpl {
             authority: ChatAuthority::new(composer, log, ids)?,
         })
     }
+    #[cfg(test)]
     pub fn projection(&self) -> ChatProjection {
         self.authority.projection()
     }

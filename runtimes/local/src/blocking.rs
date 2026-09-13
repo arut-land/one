@@ -1,110 +1,127 @@
-use arut_feature_chat::{ChatServiceImpl, composer::ComposerServiceImpl};
-use arut_protocol::chat::{
-    composer::v1::{
-        ComposerService, GetComposerRequest, GetComposerResponse, ReplaceComposerRequest,
-        ReplaceComposerResponse, WatchComposerRequest, WatchComposerResponse,
-    },
-    v1::{
-        ChatService, ListConversationsRequest, ListConversationsResponse, SendMessageRequest,
-        SendMessageResponse, StartChatRequest, StartChatResponse,
-    },
+//! Runs erased RPC dispatch and its response future on the blocking pool.
+//! Generated routers defer service calls until polling; moving only construction
+//! would still perform synchronous storage I/O on the async worker.
+use arut_rpc::{
+    Code, Request, Response, RpcChannel, RpcFuture, RpcService, RpcStream, ServiceDescriptor,
+    Status,
 };
-use arut_rpc::{Code, Request, Response, RpcFuture, RpcStream, Status};
-use std::{fs::File, sync::Arc};
+use std::sync::Arc;
 
-/// These local services perform storage I/O while constructing their RPC future.
-/// Keep that dispatch on the blocking pool; poll the returned future on Tokio.
-pub(crate) struct Blocking<S> {
-    service: Arc<S>,
-    lease: Arc<File>,
+pub(crate) struct Blocking<R> {
+    service: Arc<dyn RpcService>,
+    runtime: Arc<R>,
 }
-
-impl<S: Send + Sync + 'static> Blocking<S> {
-    pub(crate) fn new(service: S, lease: Arc<File>) -> Self {
-        Self {
-            service: Arc::new(service),
-            lease,
-        }
+impl<R: Send + Sync + 'static> Blocking<R> {
+    pub(crate) fn new(service: Arc<dyn RpcService>, runtime: Arc<R>) -> Self {
+        Self { service, runtime }
     }
-
     fn run<T: Send + 'static>(
         &self,
-        call: impl FnOnce(Arc<S>) -> RpcFuture<T> + Send + 'static,
+        call: impl FnOnce(Arc<dyn RpcService>) -> RpcFuture<T> + Send + 'static,
     ) -> RpcFuture<T> {
         let service = self.service.clone();
-        let lease = self.lease.clone();
+        let runtime = self.runtime.clone();
         Box::pin(async move {
+            let executor = tokio::runtime::Handle::current();
             tokio::task::spawn_blocking(move || {
-                let _lease = lease;
-                call(service)
+                let _runtime = runtime;
+                executor.block_on(call(service))
             })
             .await
             .map_err(|_| Status::new(Code::Internal, "local service stopped"))?
-            .await
         })
     }
 }
-
-impl ComposerService for Blocking<ComposerServiceImpl> {
-    fn get_composer(
-        &self,
-        request: Request<GetComposerRequest>,
-    ) -> RpcFuture<Response<GetComposerResponse>> {
-        self.run(|service| service.get_composer(request))
-    }
-    fn replace_composer(
-        &self,
-        request: Request<ReplaceComposerRequest>,
-    ) -> RpcFuture<Response<ReplaceComposerResponse>> {
-        self.run(|service| service.replace_composer(request))
-    }
-    fn watch_composer(
-        &self,
-        request: Request<WatchComposerRequest>,
-    ) -> RpcFuture<Response<RpcStream<WatchComposerResponse>>> {
-        self.run(|service| service.watch_composer(request))
+impl<R: Send + Sync + 'static> RpcService for Blocking<R> {
+    fn descriptor(&self) -> &'static ServiceDescriptor {
+        self.service.descriptor()
     }
 }
-
-impl ChatService for Blocking<ChatServiceImpl> {
-    fn list_conversations(
-        &self,
-        request: Request<ListConversationsRequest>,
-    ) -> RpcFuture<Response<ListConversationsResponse>> {
-        self.run(|service| service.list_conversations(request))
+impl<R: Send + Sync + 'static> RpcChannel for Blocking<R> {
+    fn unary(&self, procedure: &str, request: Request<Vec<u8>>) -> RpcFuture<Response<Vec<u8>>> {
+        let procedure = procedure.to_owned();
+        self.run(move |service| service.unary(&procedure, request))
     }
-    fn send_message(
+    fn server_stream(
         &self,
-        request: Request<SendMessageRequest>,
-    ) -> RpcFuture<Response<SendMessageResponse>> {
-        self.run(|service| service.send_message(request))
+        procedure: &str,
+        request: Request<Vec<u8>>,
+    ) -> RpcFuture<Response<RpcStream<Vec<u8>>>> {
+        let procedure = procedure.to_owned();
+        self.run(move |service| service.server_stream(&procedure, request))
     }
-    fn start_chat(
+    fn client_stream(
         &self,
-        request: Request<StartChatRequest>,
-    ) -> RpcFuture<Response<StartChatResponse>> {
-        self.run(|service| service.start_chat(request))
+        procedure: &str,
+        request: Request<RpcStream<Vec<u8>>>,
+    ) -> RpcFuture<Response<Vec<u8>>> {
+        let procedure = procedure.to_owned();
+        self.run(move |service| service.client_stream(&procedure, request))
+    }
+    fn bidirectional(
+        &self,
+        procedure: &str,
+        request: Request<RpcStream<Vec<u8>>>,
+    ) -> RpcFuture<Response<RpcStream<Vec<u8>>>> {
+        let procedure = procedure.to_owned();
+        self.run(move |service| service.bidirectional(&procedure, request))
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[tokio::test(flavor = "current_thread")]
-    async fn storage_dispatch_does_not_run_on_the_async_worker() {
-        let path = std::env::temp_dir().join(format!("arut-blocking-test-{}", std::process::id()));
-        let service = Blocking::new((), Arc::new(File::create(&path).unwrap()));
-        let worker = std::thread::current().id();
-        let dispatched = service
-            .run(move |_| {
+    struct Probe(std::thread::ThreadId);
+    impl RpcService for Probe {
+        fn descriptor(&self) -> &'static ServiceDescriptor {
+            &ServiceDescriptor {
+                name: "Probe",
+                package: "test",
+                version: "v1",
+                methods: &[],
+            }
+        }
+    }
+    impl RpcChannel for Probe {
+        fn unary(&self, _: &str, _: Request<Vec<u8>>) -> RpcFuture<Response<Vec<u8>>> {
+            let worker = self.0;
+            assert_ne!(std::thread::current().id(), worker);
+            Box::pin(async move {
                 assert_ne!(std::thread::current().id(), worker);
-                Box::pin(async { Ok(42) })
+                Ok(Response::new(vec![42]))
             })
-            .await
-            .unwrap();
-        assert_eq!(dispatched, 42);
+        }
+        fn server_stream(
+            &self,
+            _: &str,
+            _: Request<Vec<u8>>,
+        ) -> RpcFuture<Response<RpcStream<Vec<u8>>>> {
+            unreachable!()
+        }
+        fn client_stream(
+            &self,
+            _: &str,
+            _: Request<RpcStream<Vec<u8>>>,
+        ) -> RpcFuture<Response<Vec<u8>>> {
+            unreachable!()
+        }
+        fn bidirectional(
+            &self,
+            _: &str,
+            _: Request<RpcStream<Vec<u8>>>,
+        ) -> RpcFuture<Response<RpcStream<Vec<u8>>>> {
+            unreachable!()
+        }
+    }
+    #[tokio::test(flavor = "current_thread")]
+    async fn construction_and_polling_leave_the_async_worker_and_retain_runtime() {
+        let runtime = Arc::new(());
+        let weak = Arc::downgrade(&runtime);
+        let service = Blocking::new(Arc::new(Probe(std::thread::current().id())), runtime);
+        let response = service.unary("test", Request::new(vec![]));
         drop(service);
-        std::fs::remove_file(path).unwrap();
+        assert!(weak.upgrade().is_some());
+        assert_eq!(response.await.unwrap().message, [42]);
+        assert!(weak.upgrade().is_none());
     }
 }
