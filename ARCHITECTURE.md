@@ -81,6 +81,8 @@ anything -> a global service locator
 native view -> raw capability identifiers
 ```
 
+These rules are enforced, not just written: `check:layers` (in `tools/layers`) reads `cargo metadata` and fails the gate on any edge the lists above forbid, on Tokio's `rt` feature or `wasm-bindgen` anywhere in an isolated core graph, and on any crate that weakens the workspace `unsafe_code` deny. `check:bindings` (in `tools/bindings`) generates the per-language binding facades and fails if a native surface imports a generated FFI package directly. Four allowances are encoded in the tool with their reason and are the only ones: the chat feature depends on the i18n derive macro for compile-time message-key validation (ADR 0022); the IPC transport reuses the Connect framing crate rather than duplicating it; the FFI crate forwards to the host-polled runtime to preserve the session-factory ABI until host injection replaces it; and the FFI crate uses `futures-executor` in tests only. Adding a fifth is a decision, not a config change.
+
 ## Scopes
 
 Scopes are typed structs, not a container (ADR 0006).
