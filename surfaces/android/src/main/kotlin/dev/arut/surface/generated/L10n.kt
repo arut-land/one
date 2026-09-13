@@ -31,6 +31,15 @@ object L10n {
     fun actionCollapseSidebar(): String =
         stringResource(R.string.action_collapse_sidebar)
 
+    /** `action-copy-message` */
+    fun actionCopyMessage(context: Context): String =
+        context.getString(R.string.action_copy_message)
+
+    /** `action-copy-message` */
+    @Composable
+    fun actionCopyMessage(): String =
+        stringResource(R.string.action_copy_message)
+
     /** `action-expand-sidebar` */
     fun actionExpandSidebar(context: Context): String =
         context.getString(R.string.action_expand_sidebar)
@@ -39,6 +48,15 @@ object L10n {
     @Composable
     fun actionExpandSidebar(): String =
         stringResource(R.string.action_expand_sidebar)
+
+    /** `action-focus-composer` */
+    fun actionFocusComposer(context: Context): String =
+        context.getString(R.string.action_focus_composer)
+
+    /** `action-focus-composer` */
+    @Composable
+    fun actionFocusComposer(): String =
+        stringResource(R.string.action_focus_composer)
 
     /** `action-new-chat` */
     fun actionNewChat(context: Context): String =
@@ -76,6 +94,15 @@ object L10n {
     fun actionNewConversationShortcut(shortcut: String): String =
         stringResource(R.string.action_new_conversation_shortcut, shortcut)
 
+    /** `action-next-conversation` */
+    fun actionNextConversation(context: Context): String =
+        context.getString(R.string.action_next_conversation)
+
+    /** `action-next-conversation` */
+    @Composable
+    fun actionNextConversation(): String =
+        stringResource(R.string.action_next_conversation)
+
     /** `action-open-history` */
     fun actionOpenHistory(context: Context): String =
         context.getString(R.string.action_open_history)
@@ -84,6 +111,33 @@ object L10n {
     @Composable
     fun actionOpenHistory(): String =
         stringResource(R.string.action_open_history)
+
+    /** `action-previous-conversation` */
+    fun actionPreviousConversation(context: Context): String =
+        context.getString(R.string.action_previous_conversation)
+
+    /** `action-previous-conversation` */
+    @Composable
+    fun actionPreviousConversation(): String =
+        stringResource(R.string.action_previous_conversation)
+
+    /** `action-scroll-to-latest` */
+    fun actionScrollToLatest(context: Context): String =
+        context.getString(R.string.action_scroll_to_latest)
+
+    /** `action-scroll-to-latest` */
+    @Composable
+    fun actionScrollToLatest(): String =
+        stringResource(R.string.action_scroll_to_latest)
+
+    /** `action-search-conversations` */
+    fun actionSearchConversations(context: Context): String =
+        context.getString(R.string.action_search_conversations)
+
+    /** `action-search-conversations` */
+    @Composable
+    fun actionSearchConversations(): String =
+        stringResource(R.string.action_search_conversations)
 
     /** `action-send` */
     fun actionSend(context: Context): String =
@@ -382,6 +436,15 @@ object L10n {
     fun composerErrorSnapshotMissing(): String =
         stringResource(R.string.composer_error_snapshot_missing)
 
+    /** `composer-hint-command-return` */
+    fun composerHintCommandReturn(context: Context): String =
+        context.getString(R.string.composer_hint_command_return)
+
+    /** `composer-hint-command-return` */
+    @Composable
+    fun composerHintCommandReturn(): String =
+        stringResource(R.string.composer_hint_command_return)
+
     /** `composer-hint-enter` */
     fun composerHintEnter(context: Context): String =
         context.getString(R.string.composer_hint_enter)
@@ -399,6 +462,15 @@ object L10n {
     @Composable
     fun composerHintMultiline(): String =
         stringResource(R.string.composer_hint_multiline)
+
+    /** `composer-hint-option-return` */
+    fun composerHintOptionReturn(context: Context): String =
+        context.getString(R.string.composer_hint_option_return)
+
+    /** `composer-hint-option-return` */
+    @Composable
+    fun composerHintOptionReturn(): String =
+        stringResource(R.string.composer_hint_option_return)
 
     /** `composer-placeholder` */
     fun composerPlaceholder(context: Context): String =
@@ -426,6 +498,24 @@ object L10n {
     @Composable
     fun composerStatusFailed(): String =
         stringResource(R.string.composer_status_failed)
+
+    /** `conversation-search-empty` */
+    fun conversationSearchEmpty(context: Context): String =
+        context.getString(R.string.conversation_search_empty)
+
+    /** `conversation-search-empty` */
+    @Composable
+    fun conversationSearchEmpty(): String =
+        stringResource(R.string.conversation_search_empty)
+
+    /** `conversation-search-placeholder` */
+    fun conversationSearchPlaceholder(context: Context): String =
+        context.getString(R.string.conversation_search_placeholder)
+
+    /** `conversation-search-placeholder` */
+    @Composable
+    fun conversationSearchPlaceholder(): String =
+        stringResource(R.string.conversation_search_placeholder)
 
     /** `label-chat-history` */
     fun labelChatHistory(context: Context): String =

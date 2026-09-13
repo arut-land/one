@@ -59,3 +59,16 @@ chat-draft-synced = Draft synced across this session
 chat-status-thinking = Thinking
 composer-hint-enter = Enter to send
 composer-hint-multiline = Enter to send, Shift+Enter for a new line
+
+## Apple conversation controls
+
+action-copy-message = Copy message
+action-scroll-to-latest = Scroll to latest message
+action-focus-composer = Focus message field
+conversation-search-placeholder = Search conversations
+conversation-search-empty = No matching conversations
+composer-hint-command-return = ⌘ Return to send
+composer-hint-option-return = Return to send, Option+Return for a new line
+action-search-conversations = Search conversations
+action-next-conversation = Next conversation
+action-previous-conversation = Previous conversation

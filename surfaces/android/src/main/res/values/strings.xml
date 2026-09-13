@@ -3,12 +3,18 @@
 <resources>
     <string name="action_close_history">Close chat history</string>
     <string name="action_collapse_sidebar">Collapse sidebar</string>
+    <string name="action_copy_message">Copy message</string>
     <string name="action_expand_sidebar">Expand sidebar</string>
+    <string name="action_focus_composer">Focus message field</string>
     <string name="action_new_chat">New chat</string>
     <string name="action_new_chat_shortcut">New chat (%1$s)</string>
     <string name="action_new_conversation">New conversation</string>
     <string name="action_new_conversation_shortcut">New conversation (%1$s)</string>
+    <string name="action_next_conversation">Next conversation</string>
     <string name="action_open_history">Open chat history</string>
+    <string name="action_previous_conversation">Previous conversation</string>
+    <string name="action_scroll_to_latest">Scroll to latest message</string>
+    <string name="action_search_conversations">Search conversations</string>
     <string name="action_send">Send</string>
     <string name="action_send_message">Send message</string>
     <string name="action_toggle_history">Toggle chat history</string>
@@ -42,11 +48,15 @@
     <string name="composer_error_scope_mismatch">Your node answered about a different draft.</string>
     <string name="composer_error_scope_missing">Your node didn\'t say which draft it meant.</string>
     <string name="composer_error_snapshot_missing">Your node didn\'t send back the draft, so it may be out of sync.</string>
+    <string name="composer_hint_command_return">⌘ Return to send</string>
     <string name="composer_hint_enter">Enter to send</string>
     <string name="composer_hint_multiline">Enter to send, Shift+Enter for a new line</string>
+    <string name="composer_hint_option_return">Return to send, Option+Return for a new line</string>
     <string name="composer_placeholder">Message Arut</string>
     <string name="composer_status_connecting">Connecting draft…</string>
     <string name="composer_status_failed">Could not synchronize the draft. Check the node connection.</string>
+    <string name="conversation_search_empty">No matching conversations</string>
+    <string name="conversation_search_placeholder">Search conversations</string>
     <string name="label_chat_history">Chat history</string>
     <string name="label_conversations">Conversations</string>
     <string name="label_draft">Message draft</string>
