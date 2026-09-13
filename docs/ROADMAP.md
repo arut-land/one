@@ -31,6 +31,10 @@ Recorded here so the code they touch is not changed speculatively. Each names th
 - **Retry outcome retention.** ADR 0004 promises retry deduplication with no expiry window, so command outcomes are never pruned. Redb is now the default and indexes command IDs, but retained outcomes still grow without bound. Decide the retention window before pruning.
 - **Idle FFI observer release.** BoltFFI's event subscriptions expose no producer-side cancellation hook, so an unsubscribed observer is retained until its source changes. Contribute the hook upstream or adopt a generated subscription-owner API; do not add polling timers.
 - **Session factory ABI.** The native and browser session constructors look interchangeable but embed hosting behavior. Settle with the native-hosting completion in Phase 0's remaining work (ADR 0011) before changing the exported ABI.
+- **Daemon startup timeout.** `ChildHost` waits for the daemon's READY line with no bound; decide the timeout and the surface-facing failure before native hosting completes (ADR 0011).
+- **Transcript pagination.** Ranged reads exist, but nothing bounds how much of a long transcript a surface holds in memory; decide the window with the Phase 1 streaming work.
+- **Second locale.** Plural handling in the generator is only exercised by English; add one locale with real plural categories before calling ADR 0022's generator complete.
+- **Generated availability.** Per-service availability is still hand-typed in the product; generate it from descriptors when the approval feature arrives, which is the second consumer that justifies the generator (ADR 0008).
 - **BoltFFI npm packaging defect.** The generated package file list omits the Node loader; harmless while the package is unpublished. Fix upstream before publishing.
 
 ## Phase 1: Daily driver (v1)
