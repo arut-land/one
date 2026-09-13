@@ -20,7 +20,8 @@ Exit: the existing chat behavior runs on Linux, macOS, and Android through these
 - [x] `mise run check`: 115 nextest tests, doctests, Rust/wasm/TypeScript, protocol compatibility, localization, binding, dependency, and layer checks pass.
 - [x] `mise run build`: GTK, `arutd`, and web/Chromium/VS Code bundles build.
 - [x] GTK over child IPC verifies sending, independent drafts, and preserved widgets; generated wasm verifies draft/start/send/list, ranges, and timestamps; conformance passes.
-- [ ] Regenerate and compile Swift, Kotlin, and C# bindings with `accepted_at_ms`; verify native apps on their platforms.
+- [x] Kotlin: the Android surface builds in CI (BoltFFI pack for four targets, Gradle assembleDebug) as of 2026-09-13; Swift builds through `mise run check:apple` on macOS. Running the apps on devices remains manual.
+- [ ] C#: compile the Windows surface with the regenerated bindings on a Windows machine.
 - [ ] Complete persistent native hosting and host-polled platform callbacks; conversation/operation ownership structs remain Phase 2 work.
 
 ## Open decisions from the 2026-09-13 review
