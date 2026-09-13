@@ -128,6 +128,7 @@ dependencies = [
  "arut-watch",
  "boltffi",
  "futures-executor",
+ "uuid",
 ]
 
 [[package]]
@@ -163,9 +164,16 @@ dependencies = [
 name = "arut-runtime-host-polled"
 version = "0.1.0"
 dependencies = [
+ "arut-feature-chat",
+ "arut-product-session",
+ "arut-protocol",
  "arut-rpc",
+ "arut-storage",
+ "arut-watch",
  "async-executor",
  "futures-lite",
+ "futures-util",
+ "uuid",
 ]
 
 [[package]]
@@ -176,6 +184,7 @@ dependencies = [
  "arut-product-session",
  "arut-protocol",
  "arut-rpc",
+ "arut-runtime-host-polled",
  "arut-storage",
  "arut-transport-connect-http",
  "arut-transport-ipc",
@@ -229,10 +238,10 @@ version = "0.1.0"
 dependencies = [
  "arut-feature-chat",
  "arut-product-session",
+ "arut-runtime-host-polled",
  "arut-watch",
  "boltffi",
  "futures-executor",
- "futures-util",
 ]
 
 [[package]]

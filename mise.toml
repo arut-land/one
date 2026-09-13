@@ -24,7 +24,7 @@ buf = "1.72.0"
 [tasks."ffi:wasm"]
 description = "Generate and package the wasm bindings"
 dir = "{{config_root}}/bindings/ffi"
-sources = ["boltffi.toml", "src/**/*.rs", "../../features/**/*.rs", "../../product/**/*.rs", "../../substrates/**/*.rs", "../../protocols/**/*", "../../Cargo.lock"]
+sources = ["boltffi.toml", "src/**/*.rs", "../../features/**/*.rs", "../../product/**/*.rs", "../../substrates/**/*.rs", "../../runtimes/**/*.rs", "../../protocols/**/*", "../../Cargo.lock"]
 outputs = ["../generated/wasm/pkg/package.json"]
 run = "rm -rf ../generated/wasm && boltffi pack wasm --deny-skipped"
 

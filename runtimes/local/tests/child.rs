@@ -1,6 +1,6 @@
 #![cfg(unix)]
-use arut_feature_chat::ports::NativeIds;
 use arut_product_session::{ProductSession, hosting::Host};
+use arut_runtime_host_polled::NativeIds;
 use arut_runtime_local::{child::ChildHost, hosting::TokioSpawner};
 use std::sync::Arc;
 #[tokio::test]
@@ -13,8 +13,15 @@ async fn child_process_hosts_a_chat_over_unix_socket() {
         data: dir.join("data.pb"),
         spawner: Arc::new(TokioSpawner(tokio::runtime::Handle::current())),
     };
-    let session =
-        ProductSession::remote(host.connect().await.unwrap(), "test", Arc::new(NativeIds));
+    let session = ProductSession::remote(
+        host.connect().await.unwrap(),
+        arut_product_session::SessionScope {
+            node_id: "local".into(),
+            workspace_id: "default".into(),
+            pending_scope_id: "test".into(),
+        },
+        Arc::new(NativeIds),
+    );
     let chat = session.chat();
     let state = chat.send("through child IPC".into()).await;
     assert_eq!(chat.messages_after(0).len(), 2, "{:?}", state.error);

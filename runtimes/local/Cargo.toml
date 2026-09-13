@@ -5,6 +5,7 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
+arut-runtime-host-polled.workspace = true
 arut-feature-chat.workspace = true
 arut-product-session.workspace = true
 arut-protocol.workspace = true

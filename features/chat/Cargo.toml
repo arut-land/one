@@ -18,10 +18,8 @@ tracing = "0.1.44"
 thiserror = "2.0.20"
 uuid = { version = "1.18.1", default-features = false, features = ["std"] }
 
-[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-uuid = { version = "1.18.1", features = ["v7"] }
-
 [dev-dependencies]
+uuid = { version = "1.18.1", features = ["v7"] }
 futures-executor = "0.3.31"
 
 [lints]

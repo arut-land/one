@@ -12,7 +12,6 @@ use arut_feature_chat::{ChatClient, composer::ComposerClient};
 pub use arut_feature_chat::{ChatMessage, ChatRole, ChatState, ChatStatus};
 use arut_product_session::ProductSession;
 pub use arut_product_session::{ChatSummary, FeatureAvailability, SessionAvailability};
-mod observation;
 use arut_watch::Subscription;
 use boltffi::{EventSubscription, export};
 use std::sync::Arc;
@@ -133,21 +132,15 @@ impl ComposerHandle {
 /// `create_browser_session`.
 #[export]
 pub fn create_product_session(pending_scope_id: String) -> ProductSessionHandle {
-    #[cfg(target_arch = "wasm32")]
-    {
-        let _ = pending_scope_id;
-        panic!("a wasm host supplies its own IDs through create_browser_session")
+    ProductSessionHandle {
+        session: Arc::new(arut_runtime_host_polled::native_session(pending_scope_id)),
     }
-    #[cfg(not(target_arch = "wasm32"))]
-    session(
-        pending_scope_id,
-        Arc::new(arut_feature_chat::ports::NativeIds),
-    )
 }
+
 fn ffi_subscription(source: Arc<Subscription<u64>>) -> Arc<EventSubscription<u64>> {
     let target = Arc::new(EventSubscription::new(1));
     let weak = Arc::downgrade(&target);
-    observation::observe(source, move |revision| {
+    arut_runtime_host_polled::observe(source, move |revision| {
         let Some(target) = weak.upgrade() else {
             return false;
         };
@@ -180,7 +173,10 @@ pub fn create_browser_session(
 
 fn session(pending_scope_id: String, ids: Arc<dyn IdSource>) -> ProductSessionHandle {
     ProductSessionHandle {
-        session: Arc::new(ProductSession::local(pending_scope_id, ids)),
+        session: Arc::new(arut_runtime_host_polled::in_memory_session(
+            pending_scope_id,
+            ids,
+        )),
     }
 }
 
