@@ -1,6 +1,7 @@
 {
   "name": "arut-vscode",
   "displayName": "arut",
+  "icon": "media/arut.png",
   "description": "The arut VS Code surface",
   "version": "0.1.0",
   "private": true,

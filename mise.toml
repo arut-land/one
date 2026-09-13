@@ -7,13 +7,17 @@
 
 [settings]
 lockfile = true
+cargo.binstall = true
+cargo.binstall_only = true
 
 [tools]
+cargo-binstall = "1.23.0"
 rust = { version = "1.98.0", components = ["rustfmt", "clippy"], targets = ["wasm32-unknown-unknown"] }
 node = "26.8.2"
 pnpm = "12.3.4"
 buf = "1.72.0"
-"cargo:boltffi_cli" = "0.30.1"
+# The release archive names are not discoverable by cargo-binstall.
+"github:boltffi/boltffi" = "0.30.1"
 "cargo:cargo-nextest" = "0.9.144"
 "cargo:cargo-machete" = "0.9.2"
 "cargo:cargo-deny" = "0.20.2"
@@ -54,10 +58,12 @@ run = [
 [tasks."ffi:csharp"]
 description = "Generate and package the .NET bindings"
 dir = "{{config_root}}/bindings/ffi"
-run = "rm -rf ../generated/csharp && boltffi pack csharp --deny-skipped"
+sources = ["boltffi.toml", "Cargo.toml", "src/**/*.rs", "../../features/**/*", "../../product/**/*.rs", "../../product/**/Cargo.toml", "../../product/i18n/locales/**/*.ftl", "../../substrates/**/*", "../../runtimes/host-polled/**/*", "../../protocols/**/*", "../../Cargo.toml", "../../Cargo.lock", "../../surfaces/windows/build-bindings.ps1"]
+outputs = ["../generated/csharp/src/Arut_ffi.cs", "../generated/csharp/runtimes/**/native/*"]
+run = "{% if os() == 'windows' %}powershell -NoProfile -File ../../surfaces/windows/build-bindings.ps1{% else %}boltffi pack csharp --deny-skipped{% endif %}"
 
 [tasks."ffi:csharp".tools]
-dotnet = "10"
+dotnet = "10.0.401"
 
 [tasks.i18n]
 description = "Generate every surface's string resources and typed accessors from product/i18n/locales"
@@ -150,6 +156,59 @@ run = "cargo run -p arut-runtime-local --bin arutd"
 description = "Run the Linux GTK4 surface"
 run = "cargo run -p arut-linux"
 
+[tasks."build:windows"]
+description = "Build the native WinUI desktop app and Rust DLL on Windows x64"
+depends = ["ffi:csharp"]
+run = "dotnet build surfaces/windows/Arut.Windows.csproj"
+
+[tasks."build:windows".tools]
+dotnet = "10.0.401"
+
+[tasks."surface:windows"]
+description = "Build and launch the native Windows desktop app"
+depends = ["build:windows"]
+run = "dotnet run --project surfaces/windows/Arut.Windows.csproj --no-build"
+
+[tasks."surface:windows".tools]
+dotnet = "10.0.401"
+
+[tasks."check:windows"]
+description = "Build WinUI and run .NET binding tests"
+depends = ["build:windows", "check:observers-dotnet", "check:format-dotnet"]
+
+[tasks."tools:dotnet"]
+description = "Restore the pinned .NET formatter"
+run = "dotnet tool restore"
+
+[tasks."tools:dotnet".tools]
+dotnet = "10.0.401"
+
+[tasks."fmt:dotnet"]
+description = "Format handwritten C#, XAML, and .NET XML files"
+depends = ["tools:dotnet"]
+run = "dotnet csharpier format NuGet.Config bindings/dotnet surfaces/windows"
+
+[tasks."fmt:dotnet".tools]
+dotnet = "10.0.401"
+
+[tasks."check:format-dotnet"]
+description = "Check C#, XAML, and .NET XML formatting without changing files"
+depends = ["tools:dotnet"]
+run = "dotnet csharpier check NuGet.Config bindings/dotnet surfaces/windows"
+
+[tasks."check:format-dotnet".tools]
+dotnet = "10.0.401"
+
+[tasks."publish:windows"]
+description = "Publish a self-contained Windows x64 app folder"
+run = [
+  "powershell -NoProfile -File surfaces/windows/build-bindings.ps1 -Release",
+  "dotnet publish surfaces/windows/Arut.Windows.csproj -c Release -o surfaces/windows/bin/publish",
+]
+
+[tasks."publish:windows".tools]
+dotnet = "10.0.401"
+
 [tasks."surface:web"]
 description = "Run the web surface with hot reload"
 depends = ["install"]
@@ -199,7 +258,7 @@ description = "Test .NET observation without WinUI or the native FFI package"
 run = "dotnet test bindings/dotnet/tests/Arut.Observer.Tests.csproj"
 
 [tasks."check:observers-dotnet".tools]
-dotnet = "8.0.425"
+dotnet = "10.0.401"
 
 [tasks."review:linux"]
 description = "Capture Linux states on an isolated Hyprland output at three sizes, then clean up"

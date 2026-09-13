@@ -178,7 +178,9 @@ fn generated(root: &Path) -> Result<[(&'static str, String); 3]> {
     let mut kotlin_streams = String::new();
     streams(&ffi, &mut kotlin_imports, &mut kotlin_streams)?;
     let mut kotlin = format!("{HEADER}package dev.arut.bindings\n\n{kotlin_imports}\n");
-    let mut csharp = format!("{HEADER}global using Arut_ffi = global::Arut.Ffi.Arut_ffi;\n");
+    let mut csharp = format!(
+        "{HEADER}global using Arut_ffi = global::Arut.Ffi.Arut_ffi;\nglobal using static global::Arut.Ffi.Arut_ffi;\n"
+    );
     for name in &exports {
         swift.push_str(&format!("public typealias {name} = ArutFfi.{name}\n"));
         kotlin.push_str(&format!("typealias {name} = dev.arut.ffi.{name}\n"));

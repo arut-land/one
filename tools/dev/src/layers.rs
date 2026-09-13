@@ -159,7 +159,9 @@ fn check() -> Result<BTreeSet<String>> {
         let from = dir
             .strip_prefix(root)?
             .to_str()
-            .ok_or("non-UTF8 crate path")?;
+            .ok_or("non-UTF8 crate path")?
+            .replace('\\', "/");
+        let from = from.as_str();
         for dep in package["dependencies"]
             .as_array()
             .ok_or("missing dependencies")?
@@ -180,7 +182,9 @@ fn check() -> Result<BTreeSet<String>> {
             let to = local
                 .and_then(|p| p.strip_prefix(root).ok())
                 .and_then(|p| p.to_str())
-                .unwrap_or(name);
+                .unwrap_or(name)
+                .replace('\\', "/");
+            let to = to.as_str();
             let permitted = if local.is_some() {
                 allowed(from, to)
             } else {

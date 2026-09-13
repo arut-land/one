@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Arut
+Comment=Personal AI agent
+Exec=arut-linux
+Icon=dev.arut.Arut
+Terminal=false
+Categories=Network;Chat;
+StartupNotify=true

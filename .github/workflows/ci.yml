@@ -79,6 +79,8 @@ jobs:
       - uses: Swatinem/rust-cache@v2
 
       - uses: jdx/mise-action@v2
+        with:
+          install_args: cargo-binstall
 
       - name: Install toolchains
         run: mise install
@@ -89,6 +91,17 @@ jobs:
 
       - name: mise run build
         run: mise run build
+
+  windows:
+    name: Windows
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: jdx/mise-action@v2
+        with:
+          install_args: cargo-binstall
+      - uses: Swatinem/rust-cache@v2
+      - run: mise run check:windows
 
   android:
     needs: changes
@@ -110,6 +123,8 @@ jobs:
           packages: "platform-tools platforms;android-34 build-tools;34.0.0 ndk;26.1.10909125"
 
       - uses: jdx/mise-action@v2
+        with:
+          install_args: cargo-binstall
 
       - name: Install toolchains
         run: mise install
@@ -132,6 +147,8 @@ jobs:
       - uses: Swatinem/rust-cache@v2
 
       - uses: jdx/mise-action@v2
+        with:
+          install_args: cargo-binstall
 
       - name: Install toolchains
         run: mise install

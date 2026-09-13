@@ -16,7 +16,7 @@ The useful optimization is to bound notification work before it reaches the UI s
 | Kotlin / Android | `callbackFlow.conflate()` into `StateFlow` | `awaitClose` owns FFI cleanup when collection is canceled. Replaces manual channel and subscription bookkeeping; conflation was already present. An initial signal reads after subscription setup. |
 | TypeScript / React | One pending microtask and `useSyncExternalStore` | Subscription generations reject late callbacks. Replacement clears obsolete pending invalidations while retaining one scheduled microtask. Reads after subscription setup. |
 | .NET adapter | Coalesced `SynchronizationContext.Post` | Checks the generation at callback entry and publication, including reads completed after replacement or disposal. Counts invalidations locally because source revisions can restart. Reads after subscribing. |
-| Windows / WinUI | Coalesced `DispatcherQueue.TryEnqueue` per subscription | Bounds pending dispatcher work and rejects callbacks from previous conversations. Reads composer text once per refresh. |
+| Windows / WinUI | Shared .NET observer with injected `DispatcherQueue.TryEnqueue` | Removes the duplicate view adapter. Native presentation properties use `INotifyPropertyChanged`; ordered draft commands are separate from coalesced invalidations. |
 | Linux / GTK | Direct watch refresh into GObject properties and a keyed gio::ListModel | One native GLib task per subscription, canceled with its component. No relm message queue between watch and refresh. |
 
 Kotlin's [callbackFlow documentation](https://kotlinlang.org/api/kotlinx.coroutines/kotlinx-coroutines-core/kotlinx.coroutines.flow/callback-flow.html) defines cancellation cleanup and channel fusion. Windows uses the platform's [DispatcherQueue](https://learn.microsoft.com/en-us/windows/apps/windows-app-sdk/migrate-to-windows-app-sdk/guides/threading).
@@ -32,7 +32,7 @@ mise run check:ts
 
 The Kotlin test project compiles the actual observer source on the JVM, using the coroutine test dispatcher. The .NET project compiles the actual observer with a queued synchronization context. Neither requires generated native bindings. Their burst, initial-read, replacement, and disposal checks complement the Swift and TypeScript tests. TypeScript tests run in the existing workspace check gate.
 
-These are adapter tests, not complete Android or Windows application tests. This macOS machine lacks the Android SDK/NDK and WinUI runtime. The Windows view changes still need a Windows build and UI check. Burst tests check adapter refresh counts: 10,000 queued invalidations require one refresh in the TypeScript and .NET tests, and at most two in Kotlin because a suspended collector can already own one signal. No end-to-end latency or throughput benchmark has been recorded.
+These are adapter tests, not complete application tests. The Windows build and UI validation are documented in [WINDOWS.md](WINDOWS.md). Burst tests check adapter refresh counts: 10,000 queued invalidations require one refresh in the TypeScript and .NET tests, and at most two in Kotlin because a suspended collector can already own one signal. No end-to-end latency or throughput benchmark has been recorded.
 
 ## Adapter contract evidence
 
@@ -65,3 +65,5 @@ The scheduler uses one native gtk-rs task per subscription. In glib 0.22.9 that 
 The .NET adapter checks the generation again when publishing a completed read. This matters when no SynchronizationContext exists and refresh uses the thread pool. `ReplacementOrDisposalDuringReadRejectsStaleSnapshot` fails on the previous adapter for both replacement and disposal. `ReplacementRevisionRestartDoesNotLosePendingChange` proves a new source's revision can restart without losing an invalidation queued during the old read. A local invalidation counter drives rescheduling; source revision values do not cross subscription lifetimes.
 
 `SetupReadCannotOverwriteNewerRefresh` also covers a refresh completing while setup is still reading. Publication checks the local invalidation counter as well as the subscription generation, so the older setup snapshot cannot overwrite the newer value.
+
+`StoppingObservationDiscardsQueuedReadsAndCanResume` covers callbacks queued before `StopObserving()`. Those callbacks must not read or publish the inactive source. Explicit `RefreshNow()` remains available for command acknowledgements, and a later `Observe()` resumes subscriptions normally.

@@ -49,10 +49,52 @@ url = "https://github.com/bufbuild/buf/releases/download/v1.72.0/buf-Windows-x86
 url_api = "https://api.github.com/repos/bufbuild/buf/releases/assets/480772631"
 provenance = "minisign"
 
-[[tools."cargo:boltffi_cli"]]
-version = "0.30.1"
-backend = "cargo:boltffi_cli"
-specifiers = ["0.30.1"]
+[[tools.cargo-binstall]]
+version = "1.23.0"
+backend = "aqua:cargo-bins/cargo-binstall"
+specifiers = ["1.23.0"]
+
+[tools.cargo-binstall."platforms.linux-arm64"]
+checksum = "sha256:c458cfe9534d1958f159fc17b5f50e839297b4ee752b23ffdd80c5e15a734c42"
+url = "https://github.com/cargo-bins/cargo-binstall/releases/download/v1.23.0/cargo-binstall-aarch64-unknown-linux-gnu.tgz"
+url_api = "https://api.github.com/repos/cargo-bins/cargo-binstall/releases/assets/546062641"
+provenance = "github-attestations"
+
+[tools.cargo-binstall."platforms.linux-arm64-musl"]
+checksum = "sha256:ba9b7bf426c7b7375825cd3fa367c3f8a632ca7c6c546fdcb738114b167f4103"
+url = "https://github.com/cargo-bins/cargo-binstall/releases/download/v1.23.0/cargo-binstall-aarch64-unknown-linux-musl.tgz"
+url_api = "https://api.github.com/repos/cargo-bins/cargo-binstall/releases/assets/546062597"
+provenance = "github-attestations"
+
+[tools.cargo-binstall."platforms.linux-x64"]
+checksum = "sha256:cdada45ad6bb501185ab309f5eef3f628b6bc44460746565cb3e0c7538815bf3"
+url = "https://github.com/cargo-bins/cargo-binstall/releases/download/v1.23.0/cargo-binstall-x86_64-unknown-linux-gnu.tgz"
+url_api = "https://api.github.com/repos/cargo-bins/cargo-binstall/releases/assets/546062151"
+provenance = "github-attestations"
+
+[tools.cargo-binstall."platforms.linux-x64-musl"]
+checksum = "sha256:64bf954c68bb558431deeabecaec7687edd5541c2189ee263bb8bc18bc4fdf55"
+url = "https://github.com/cargo-bins/cargo-binstall/releases/download/v1.23.0/cargo-binstall-x86_64-unknown-linux-musl.tgz"
+url_api = "https://api.github.com/repos/cargo-bins/cargo-binstall/releases/assets/546062088"
+provenance = "github-attestations"
+
+[tools.cargo-binstall."platforms.macos-arm64"]
+checksum = "sha256:0f679c0bc992c6b84fdcbb0f65492588447d26596ef387cb6cb1ba41ad8ceb33"
+url = "https://github.com/cargo-bins/cargo-binstall/releases/download/v1.23.0/cargo-binstall-aarch64-apple-darwin.zip"
+url_api = "https://api.github.com/repos/cargo-bins/cargo-binstall/releases/assets/546062768"
+provenance = "github-attestations"
+
+[tools.cargo-binstall."platforms.macos-x64"]
+checksum = "sha256:5b4d6cd99651318e17a26ed9bab7505de0f496d88793a7735a0fc6e2079efe83"
+url = "https://github.com/cargo-bins/cargo-binstall/releases/download/v1.23.0/cargo-binstall-x86_64-apple-darwin.zip"
+url_api = "https://api.github.com/repos/cargo-bins/cargo-binstall/releases/assets/546062270"
+provenance = "github-attestations"
+
+[tools.cargo-binstall."platforms.windows-x64"]
+checksum = "sha256:f4641479477aca40387e88297e3813fab8e44a8d21f25faa44e0ff33e2bc1726"
+url = "https://github.com/cargo-bins/cargo-binstall/releases/download/v1.23.0/cargo-binstall-x86_64-pc-windows-msvc.zip"
+url_api = "https://api.github.com/repos/cargo-bins/cargo-binstall/releases/assets/546062212"
+provenance = "github-attestations"
 
 [[tools."cargo:cargo-deny"]]
 version = "0.20.2"
@@ -72,7 +114,50 @@ specifiers = ["0.9.144"]
 [[tools.dotnet]]
 version = "10.0.401"
 backend = "core:dotnet"
-specifiers = ["10"]
+specifiers = [
+    "10",
+    "10.0.401",
+]
+
+[[tools."github:boltffi/boltffi"]]
+version = "0.30.1"
+backend = "github:boltffi/boltffi"
+specifiers = ["0.30.1"]
+
+[tools."github:boltffi/boltffi"."platforms.linux-arm64"]
+checksum = "sha256:ec4d6a94cd5c032e8a381a824deddf97c724e7e3f43d86050e4df9f86e2e7b41"
+url = "https://github.com/boltffi/boltffi/releases/download/v0.30.1/boltffi-linux-aarch64.tar.gz"
+url_api = "https://api.github.com/repos/boltffi/boltffi/releases/assets/518497307"
+
+[tools."github:boltffi/boltffi"."platforms.linux-arm64-musl"]
+checksum = "sha256:4ba96694eedb9f522b90ddc8d9fbecfce44c391403fb46ca8755581293472691"
+url = "https://github.com/boltffi/boltffi/releases/download/v0.30.1/boltffi-linux-aarch64-musl.tar.gz"
+url_api = "https://api.github.com/repos/boltffi/boltffi/releases/assets/518497405"
+
+[tools."github:boltffi/boltffi"."platforms.linux-x64"]
+checksum = "sha256:342af5abf855dcea1b88b1f2fd8b72ba09083f0d8eab7a0930b954539defce4a"
+url = "https://github.com/boltffi/boltffi/releases/download/v0.30.1/boltffi-linux-x86_64.tar.gz"
+url_api = "https://api.github.com/repos/boltffi/boltffi/releases/assets/518497529"
+
+[tools."github:boltffi/boltffi"."platforms.linux-x64-musl"]
+checksum = "sha256:4b9d5873263e459b8155ce6d0b64b9b184dea09d47a32cb586116b888c7c26af"
+url = "https://github.com/boltffi/boltffi/releases/download/v0.30.1/boltffi-linux-x86_64-musl.tar.gz"
+url_api = "https://api.github.com/repos/boltffi/boltffi/releases/assets/518499117"
+
+[tools."github:boltffi/boltffi"."platforms.macos-arm64"]
+checksum = "sha256:ce3a47b5c398cbb9c327098a612b431f30db15d353d62cee4e4637540fa8321a"
+url = "https://github.com/boltffi/boltffi/releases/download/v0.30.1/boltffi-darwin-aarch64.tar.gz"
+url_api = "https://api.github.com/repos/boltffi/boltffi/releases/assets/518503259"
+
+[tools."github:boltffi/boltffi"."platforms.macos-x64"]
+checksum = "sha256:9f827785d201b224e41ad8a6a4905df3b3746367572228f1f328f72eef5deaa2"
+url = "https://github.com/boltffi/boltffi/releases/download/v0.30.1/boltffi-darwin-x86_64.tar.gz"
+url_api = "https://api.github.com/repos/boltffi/boltffi/releases/assets/518504570"
+
+[tools."github:boltffi/boltffi"."platforms.windows-x64"]
+checksum = "sha256:0cf1df0bfebd6fb52af46c94802bc0283f20fe055de5a5333d546eb9940b7fa3"
+url = "https://github.com/boltffi/boltffi/releases/download/v0.30.1/boltffi-windows-x86_64.zip"
+url_api = "https://api.github.com/repos/boltffi/boltffi/releases/assets/518499872"
 
 [[tools.gradle]]
 version = "8.9.0"
@@ -107,6 +192,39 @@ url_api = "https://api.github.com/repos/gradle/gradle-distributions/releases/ass
 url = "https://github.com/gradle/gradle-distributions/releases/download/v8.9.0/gradle-8.9-bin.zip"
 url_api = "https://api.github.com/repos/gradle/gradle-distributions/releases/assets/178998845"
 
+[[tools.gradle]]
+version = "8.12.1"
+backend = "aqua:gradle/gradle-distributions"
+specifiers = ["8.12.1"]
+
+[tools.gradle."platforms.linux-arm64"]
+url = "https://github.com/gradle/gradle-distributions/releases/download/v8.12.1/gradle-8.12.1-bin.zip"
+url_api = "https://api.github.com/repos/gradle/gradle-distributions/releases/assets/223109593"
+
+[tools.gradle."platforms.linux-arm64-musl"]
+url = "https://github.com/gradle/gradle-distributions/releases/download/v8.12.1/gradle-8.12.1-bin.zip"
+url_api = "https://api.github.com/repos/gradle/gradle-distributions/releases/assets/223109593"
+
+[tools.gradle."platforms.linux-x64"]
+url = "https://github.com/gradle/gradle-distributions/releases/download/v8.12.1/gradle-8.12.1-bin.zip"
+url_api = "https://api.github.com/repos/gradle/gradle-distributions/releases/assets/223109593"
+
+[tools.gradle."platforms.linux-x64-musl"]
+url = "https://github.com/gradle/gradle-distributions/releases/download/v8.12.1/gradle-8.12.1-bin.zip"
+url_api = "https://api.github.com/repos/gradle/gradle-distributions/releases/assets/223109593"
+
+[tools.gradle."platforms.macos-arm64"]
+url = "https://github.com/gradle/gradle-distributions/releases/download/v8.12.1/gradle-8.12.1-bin.zip"
+url_api = "https://api.github.com/repos/gradle/gradle-distributions/releases/assets/223109593"
+
+[tools.gradle."platforms.macos-x64"]
+url = "https://github.com/gradle/gradle-distributions/releases/download/v8.12.1/gradle-8.12.1-bin.zip"
+url_api = "https://api.github.com/repos/gradle/gradle-distributions/releases/assets/223109593"
+
+[tools.gradle."platforms.windows-x64"]
+url = "https://github.com/gradle/gradle-distributions/releases/download/v8.12.1/gradle-8.12.1-bin.zip"
+url_api = "https://api.github.com/repos/gradle/gradle-distributions/releases/assets/223109593"
+
 [[tools.java]]
 version = "21.0.2"
 backend = "core:java"
@@ -134,6 +252,35 @@ url = "https://download.java.net/java/GA/jdk21.0.2/f2283984656d49d69e91c55847602
 [tools.java."platforms.windows-x64"]
 checksum = "sha256:b6c17e747ae78cdd6de4d7532b3164b277daee97c007d3eaa2b39cca99882664"
 url = "https://download.java.net/java/GA/jdk21.0.2/f2283984656d49d69e91c558476027ac/13/GPL/openjdk-21.0.2_windows-x64_bin.zip"
+
+[[tools.java]]
+version = "temurin-17.0.20+101"
+backend = "core:java"
+specifiers = ["temurin-17.0.20+101"]
+
+[tools.java."platforms.linux-arm64"]
+checksum = "sha256:457b57af8f9c93ec39080bb8c764f559dc8c89a6da1a39d718a400b7890d3e41"
+url = "https://github.com/adoptium/temurin17-binaries/releases/download/jdk-17.0.20.1%2B1/OpenJDK17U-jdk_aarch64_linux_hotspot_17.0.20.1_1.tar.gz"
+
+[tools.java."platforms.linux-x64"]
+checksum = "sha256:3808d1d15e3ec6bd5b84057fb5d84c33d8a1536a258146bcea2e603fc726e08e"
+url = "https://github.com/adoptium/temurin17-binaries/releases/download/jdk-17.0.20.1%2B1/OpenJDK17U-jdk_x64_linux_hotspot_17.0.20.1_1.tar.gz"
+
+[tools.java."platforms.linux-x64-musl"]
+checksum = "sha256:0c4fcdefa2737ccd66e049245fdb9dc431f91796182141204cd5f8192cb288e6"
+url = "https://github.com/adoptium/temurin17-binaries/releases/download/jdk-17.0.20.1%2B1/OpenJDK17U-jdk_x64_alpine-linux_hotspot_17.0.20.1_1.tar.gz"
+
+[tools.java."platforms.macos-arm64"]
+checksum = "sha256:196d13ba5f10414bef7f6a05a9b3f00edacb18ebacef2b99485db9e2ee18f0e8"
+url = "https://github.com/adoptium/temurin17-binaries/releases/download/jdk-17.0.20.1%2B1/OpenJDK17U-jdk_aarch64_mac_hotspot_17.0.20.1_1.tar.gz"
+
+[tools.java."platforms.macos-x64"]
+checksum = "sha256:c01975da12ed4235250ff891fe8bba73a9e73037d444b269c9d0922b5dbc8e0a"
+url = "https://github.com/adoptium/temurin17-binaries/releases/download/jdk-17.0.20.1%2B1/OpenJDK17U-jdk_x64_mac_hotspot_17.0.20.1_1.tar.gz"
+
+[tools.java."platforms.windows-x64"]
+checksum = "sha256:e53a79c3c3d86865bd7e787903884331068e71321714ffd44f145785affc7cb0"
+url = "https://github.com/adoptium/temurin17-binaries/releases/download/jdk-17.0.20.1%2B1/OpenJDK17U-jdk_x64_windows_hotspot_17.0.20.1_1.zip"
 
 [[tools.node]]
 version = "26.8.2"
@@ -168,6 +315,11 @@ url = "https://nodejs.org/dist/v26.8.2/node-v26.8.2-darwin-x64.tar.gz"
 checksum = "sha256:cf02f5d0c06c794b84f277177d5cf3743d0924ca49f6641cd435dd7cb6ee9085"
 url = "https://nodejs.org/dist/v26.8.2/node-v26.8.2-win-x64.zip"
 
+[[tools."npm:typescript"]]
+version = "5.9.3"
+backend = "npm:typescript"
+specifiers = ["5.9.3"]
+
 [[tools.pnpm]]
 version = "12.3.4"
 backend = "aqua:pnpm/pnpm"
@@ -201,6 +353,12 @@ provenance = "github-attestations"
 checksum = "sha256:9560243d4e92780c4466bac2ee6aac4166c8bb601ad3c63f070cdd701b28f360"
 url = "https://github.com/pnpm/pnpm/releases/download/v12.3.4/pnpm-darwin-arm64.tar.gz"
 url_api = "https://api.github.com/repos/pnpm/pnpm/releases/assets/544431956"
+provenance = "github-attestations"
+
+[tools.pnpm."platforms.macos-x64"]
+checksum = "sha256:b1d4e02cd2f9a37c42dbb82d2f93e80675f417bd4d5f3be8b999a84db673040e"
+url = "https://github.com/pnpm/pnpm/releases/download/v12.3.4/pnpm-darwin-x64.tar.gz"
+url_api = "https://api.github.com/repos/pnpm/pnpm/releases/assets/544431958"
 provenance = "github-attestations"
 
 [tools.pnpm."platforms.windows-x64"]

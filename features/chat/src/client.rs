@@ -3,7 +3,7 @@ use crate::composer::ComposerClient;
 use crate::composer::ComposerScope;
 use crate::errors::{ChatError, ComposerError};
 use crate::ports::IdSource;
-use crate::projection::{ChatMessage, ChatRole, ChatState, ChatStatus};
+use crate::projection::{ChatMessage, ChatRole, ChatState, ChatStatus, transcript_after};
 use arut_protocol::chat::composer::v1::ComposerServiceClient;
 use arut_protocol::chat::v1::{
     ChatMessage as WireMessage, ChatRole as WireRole, ChatServiceClient, SendMessageRequest,
@@ -13,7 +13,6 @@ use arut_rpc::{Cancellation, Request};
 use arut_watch::{Subscription, Watch};
 use std::{
     collections::BTreeMap,
-    ops::Bound::{Excluded, Unbounded},
     sync::{Arc, Mutex},
 };
 
@@ -121,14 +120,11 @@ impl ChatClient {
     /// Reads only newly accepted messages, in key order. A key never changes or
     /// disappears: operation streaming is separate from the durable transcript.
     pub fn messages_after(&self, after_id: u64) -> Vec<ChatMessage> {
-        self.messages
-            .lock()
-            .unwrap()
-            .range((Excluded(after_id), Unbounded))
-            .map(|(_, message)| message.clone())
-            .collect()
+        transcript_after(&self.messages.lock().unwrap(), after_id)
     }
 
+    /// Reads first-message content without cloning it. Grouping flags are populated
+    /// by `messages_after`, not by this content-only access used for chat titles.
     pub fn read_first_message<R>(&self, read: impl FnOnce(Option<&ChatMessage>) -> R) -> R {
         read(
             self.messages
@@ -278,5 +274,7 @@ fn from_wire(message: WireMessage) -> Option<ChatMessage> {
         role,
         text: message.text,
         accepted_at_ms: message.accepted_at_ms,
+        starts_time_group: false,
+        starts_speaker_group: false,
     })
 }

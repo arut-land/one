@@ -1,0 +1,8 @@
+# Generated sources must match their generators.
+bindings/generated/
+bindings/dotnet/Exports.cs
+bindings/dotnet/Exports.props
+surfaces/windows/Generated/
+surfaces/windows/Strings/
+**/bin/
+**/obj/

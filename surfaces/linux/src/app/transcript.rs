@@ -84,7 +84,7 @@ impl SimpleComponent for Transcript {
         sender: ComponentSender<Self>,
     ) -> ComponentParts<Self> {
         let messages = Messages::default();
-        let factory = message_factory(&messages);
+        let factory = message_factory();
         let list = gtk::ListView::new(
             Some(gtk::NoSelection::new(Some(messages.clone()))),
             Some(factory),
@@ -175,7 +175,7 @@ impl SimpleComponent for Transcript {
     }
 }
 
-fn message_factory(messages: &Messages) -> gtk::SignalListItemFactory {
+fn message_factory() -> gtk::SignalListItemFactory {
     let factory = gtk::SignalListItemFactory::new();
     factory.connect_setup(|_, item| {
         let item = item.downcast_ref::<gtk::ListItem>().unwrap();
@@ -218,76 +218,60 @@ fn message_factory(messages: &Messages) -> gtk::SignalListItemFactory {
         row.append(&text);
         item.set_child(Some(&container));
     });
-    factory.connect_bind({
-        let messages = messages.clone();
-        move |_, item| {
-            let item = item.downcast_ref::<gtk::ListItem>().unwrap();
-            let object = item
-                .item()
-                .unwrap()
-                .downcast::<glib::BoxedAnyObject>()
-                .unwrap();
-            let message = object.borrow::<ChatMessage>();
-            let container = item.child().unwrap().downcast::<gtk::Box>().unwrap();
-            let time = container
-                .first_child()
-                .unwrap()
-                .downcast::<gtk::Label>()
-                .unwrap();
-            let row = time.next_sibling().unwrap().downcast::<gtk::Box>().unwrap();
-            let role = row.first_child().unwrap().downcast::<gtk::Label>().unwrap();
-            let text = role
-                .next_sibling()
-                .unwrap()
-                .downcast::<gtk::Label>()
-                .unwrap();
-            let previous = item
-                .position()
-                .checked_sub(1)
-                .and_then(|p| messages.item(p))
-                .and_then(|o| o.downcast::<glib::BoxedAnyObject>().ok());
-            let starts_time = previous.as_ref().is_none_or(|p| {
-                message
-                    .accepted_at_ms
-                    .saturating_sub(p.borrow::<ChatMessage>().accepted_at_ms)
-                    >= 300_000
-            });
-            let starts_speaker = starts_time
-                || previous
-                    .as_ref()
-                    .is_none_or(|p| p.borrow::<ChatMessage>().role != message.role);
-            let formatted = i64::try_from(message.accepted_at_ms / 1000)
-                .ok()
-                .and_then(|seconds| glib::DateTime::from_unix_local(seconds).ok())
-                .and_then(|date| date.format("%b %e, %H:%M").ok())
-                .unwrap_or_default();
-            time.set_label(&formatted);
-            time.set_visible(starts_time && message.accepted_at_ms > 0);
-            role.set_label(&strings::role(message.role));
-            role.set_visible(starts_speaker);
-            text.set_label(&message.text);
-            text.set_tooltip_text((message.accepted_at_ms > 0).then_some(formatted.as_str()));
-            container.set_margin_top(if starts_speaker { 12 } else { 0 });
-            row.set_halign(if message.role == ChatRole::User {
-                gtk::Align::End
-            } else {
-                gtk::Align::Start
-            });
-            row.set_margin_start(if message.role == ChatRole::User {
-                48
-            } else {
-                0
-            });
-            row.set_margin_end(if message.role == ChatRole::User {
-                0
-            } else {
-                48
-            });
-            if message.role == ChatRole::User {
-                row.add_css_class("arut-outgoing");
-            } else {
-                row.remove_css_class("arut-outgoing");
-            }
+    factory.connect_bind(|_, item| {
+        let item = item.downcast_ref::<gtk::ListItem>().unwrap();
+        let object = item
+            .item()
+            .unwrap()
+            .downcast::<glib::BoxedAnyObject>()
+            .unwrap();
+        let message = object.borrow::<ChatMessage>();
+        let container = item.child().unwrap().downcast::<gtk::Box>().unwrap();
+        let time = container
+            .first_child()
+            .unwrap()
+            .downcast::<gtk::Label>()
+            .unwrap();
+        let row = time.next_sibling().unwrap().downcast::<gtk::Box>().unwrap();
+        let role = row.first_child().unwrap().downcast::<gtk::Label>().unwrap();
+        let text = role
+            .next_sibling()
+            .unwrap()
+            .downcast::<gtk::Label>()
+            .unwrap();
+        let starts_time = message.starts_time_group;
+        let starts_speaker = message.starts_speaker_group;
+        let formatted = i64::try_from(message.accepted_at_ms / 1000)
+            .ok()
+            .and_then(|seconds| glib::DateTime::from_unix_local(seconds).ok())
+            .and_then(|date| date.format("%b %e, %H:%M").ok())
+            .unwrap_or_default();
+        time.set_label(&formatted);
+        time.set_visible(starts_time && message.accepted_at_ms > 0);
+        role.set_label(&strings::role(message.role));
+        role.set_visible(starts_speaker);
+        text.set_label(&message.text);
+        text.set_tooltip_text((message.accepted_at_ms > 0).then_some(formatted.as_str()));
+        container.set_margin_top(if starts_speaker { 12 } else { 0 });
+        row.set_halign(if message.role == ChatRole::User {
+            gtk::Align::End
+        } else {
+            gtk::Align::Start
+        });
+        row.set_margin_start(if message.role == ChatRole::User {
+            48
+        } else {
+            0
+        });
+        row.set_margin_end(if message.role == ChatRole::User {
+            0
+        } else {
+            48
+        });
+        if message.role == ChatRole::User {
+            row.add_css_class("arut-outgoing");
+        } else {
+            row.remove_css_class("arut-outgoing");
         }
     });
     factory

@@ -88,15 +88,15 @@ pub fn install(
                 model.refresh(|last| vec![
                     ChatMessage { id: last + 1, role: ChatRole::Assistant,
                         text: "The riverside route is a good choice. We can meet at the bakery at nine.".into(),
-                        accepted_at_ms: time },
+                        accepted_at_ms: time, starts_time_group: true, starts_speaker_group: true },
                     ChatMessage { id: last + 2, role: ChatRole::Assistant,
                         text: "Bring a light jacket. It is usually cooler near the water.\n\nIf it rains, we can spend the morning at the museum instead.".into(),
-                        accepted_at_ms: time + 1_000 },
+                        accepted_at_ms: time + 1_000, starts_time_group: false, starts_speaker_group: false },
                     ChatMessage { id: last + 3, role: ChatRole::User,
                         text: "Nine works for me. I will bring coffee.".into(),
-                        accepted_at_ms: time + 2_000 },
+                        accepted_at_ms: time + 2_000, starts_time_group: false, starts_speaker_group: true },
                     ChatMessage { id: last + 4, role: ChatRole::User,
-                        text: "See you there!".into(), accepted_at_ms: time + 3_000 },
+                        text: "See you there!".into(), accepted_at_ms: time + 3_000, starts_time_group: false, starts_speaker_group: false },
                 ]);
             }
             "send" => {

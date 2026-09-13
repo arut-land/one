@@ -76,6 +76,8 @@ mod tests {
             role: ChatRole::User,
             text: id.to_string(),
             accepted_at_ms: 1,
+            starts_time_group: id == 4,
+            starts_speaker_group: id == 4,
         };
         model.refresh(|cursor| {
             assert_eq!(cursor, 0);

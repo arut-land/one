@@ -20,7 +20,7 @@ struct TranscriptView: View {
                     ForEach(messages.indices, id: \.self) { index in
                         let message = messages[index]
                         VStack {
-                            if startsTimeGroup(at: index), message.acceptedAtMs > 0 {
+                            if message.startsTimeGroup, message.acceptedAtMs > 0 {
                                 Text(Date(timeIntervalSince1970: Double(message.acceptedAtMs) / 1_000),
                                      format: .dateTime.month(.abbreviated).day().hour().minute())
                                     .font(.caption)
@@ -68,15 +68,8 @@ struct TranscriptView: View {
         }
     }
 
-    private func startsTimeGroup(at index: Int) -> Bool {
-        guard index > 0 else { return true }
-        let previous = messages[index - 1].acceptedAtMs
-        let current = messages[index].acceptedAtMs
-        return current > previous && current - previous >= 300_000
-    }
-
     private func endsSpeakerGroup(at index: Int) -> Bool {
-        index == messages.count - 1 || messages[index].role != messages[index + 1].role || startsTimeGroup(at: index + 1)
+        index == messages.count - 1 || messages[index + 1].startsSpeakerGroup
     }
 
     private func scrollToLatest(_ proxy: ScrollViewProxy) {
