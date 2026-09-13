@@ -40,7 +40,7 @@ pub fn run() {
         executable: std::env::current_exe()
             .expect("executable path")
             .with_file_name("arutd"),
-        socket: std::env::temp_dir().join(format!("arut-{}.sock", std::process::id())),
+        socket: arut_runtime_local::child::default_socket_path(),
         data,
         spawner: Arc::new(TokioSpawner(runtime.handle().clone())),
     };
