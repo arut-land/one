@@ -1,0 +1,81 @@
+---
+name: gradle-run
+description: Diagnose Gradle failures or run focused Android build checks. Use the repository wrapper and mise tasks; an optional compact-output helper is available for noisy diagnostic sessions.
+---
+
+# Gradle run
+
+## Core principle
+
+Use the repository Gradle wrapper and mise tasks by default. Preserve incremental builds and inspect bounded diagnostic output without exposing credentials. The included Python helper is optional for noisy or repeated build investigations; its lifecycle below applies only when using it.
+
+When using the helper, every `create`, `run`, and `finish` invocation is the entire shell command for
+that tool call. Prefixes, assignments, conditionals, pipes, command chains, and
+follow-up inspection invalidate lifecycle evidence even when Gradle succeeds.
+
+## Procedure
+
+1. Classify the request. Reuse a current successful result when unchanged
+   source and inputs already answer the question. A focused task that validates
+   another change is incidental; build/check/warning/failure work is a
+   Gradle-centered workflow.
+2. If the compact-output helper is useful, resolve this skill directory and
+   confirm Python plus `scripts/gradle_run.py`. Otherwise use the repository
+   Gradle workflow directly and skip the helper lifecycle below.
+3. Create one workflow before its first command and retain its opaque ID:
+
+   ```sh
+   python3 <skill-dir>/scripts/gradle_run.py create
+   ```
+
+   Run `create`, each `run`, and `finish` as standalone shell commands. Do not
+   combine one with `test`, variable setup, `git`, `rg`, `&&`, `;`, a pipe, or a
+   newline containing another command. If `create` fails, retry a fresh
+   standalone `create` before any `run`. Within this optional workflow, use the helper consistently; it
+   supplies `--console=plain` and `--no-scan` unless console behavior was
+   selected or the user authorized `--scan`. Add `--warning-mode all` only for
+   warning discovery or an explicit request. A `workflow is busy` result is an
+   ownership violation: wait for the owner or correct ownership; do not start
+   or finish concurrently.
+4. For incidental validation, stay in the current agent and run the narrowest
+   task that answers a non-empty verification question:
+
+   ```sh
+   python3 <skill-dir>/scripts/gradle_run.py run \
+     --workflow <id> --scope targeted \
+     --question "Does :module:test pass after this change?" -- \
+     ./gradlew :module:test
+   ```
+
+   Do not substitute compilation for requested fixture tests. Read only the
+   bounded JSON summary; report both the managed wrapper and nested Gradle task,
+   the question, and its bounded answer.
+5. Keep one diagnostic owner for a helper workflow so commands cannot race.
+   The current agent can own both diagnosis and edits; no delegation is required.
+6. Have the owner reuse actionable summaries, group warnings/failures by
+   fingerprint, and return source/line evidence plus the narrowest next command.
+   Run broad only for an aggregate question that targeted evidence cannot
+   answer. On a repeated primary source/compiler fingerprint, stop rebuilding;
+   inspect the cited source line and nearby declaration, import, or receiver
+   context before revising the diagnosis. Verify each parent change with the
+   same wrapper and narrowest applicable task. In the final diagnosis, name the
+   focused inspection as the next action; do not claim a source fix before it.
+   A new question does not permit a blind repeat.
+7. Treat the full log as raw sensitive material even though summaries and
+   ledgers redact common credentials. Inspect only relevant diagnostic excerpts and redact secrets before reporting them.
+   On interruption, use the wrapper's recorded signal and bounded partial
+   diagnostics; it owns process-group/process-tree cleanup and durable ledger
+   updates. Only logs still represented by the bounded recent-run ledger remain.
+8. Finish after the last requested validation (targeted or broad) passes, or
+   report unresolved fingerprints and why validation cannot continue. In the
+   final response, quote each non-empty `--question` and give its bounded
+   answer; command history is not a substitute for reported evidence. Then run:
+
+   ```sh
+   python3 <skill-dir>/scripts/gradle_run.py finish --workflow <id>
+   ```
+
+   Report that finish removed only wrapper-owned logs. A finished known ID is
+   idempotent; an unknown ID or active workflow fails closed and leaves files in
+   place. This skill does not constrain unrelated review, implementation, or
+   subagents.
