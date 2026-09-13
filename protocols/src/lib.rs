@@ -48,6 +48,7 @@ mod tests {
                 Ok(Response::new(SendMessageResponse {
                     messages: vec![ChatMessage {
                         id: 1,
+                        accepted_at_ms: 123,
                         role: ChatRole::Assistant as i32,
                         text: format!("You said: {}", request.message.text),
                     }],

@@ -25,6 +25,7 @@ impl ChatService for AcceptThenLoseResponse {
             Ok(Response::new(SendMessageResponse {
                 messages: vec![ChatMessage {
                     id: 1,
+                    accepted_at_ms: 123,
                     role: ChatRole::User as i32,
                     text: request.message.text,
                 }],

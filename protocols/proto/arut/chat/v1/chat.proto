@@ -37,6 +37,8 @@ message ChatMessage {
   uint64 id = 1;
   ChatRole role = 2;
   string text = 3;
+  // Authority acceptance time in Unix milliseconds; zero for older facts.
+  uint64 accepted_at_ms = 4;
 }
 
 enum ChatRole {
@@ -46,8 +48,13 @@ enum ChatRole {
 }
 
 message ListConversationsRequest {}
-message Conversation { string id = 1; repeated ChatMessage messages = 2; }
-message ListConversationsResponse { repeated Conversation conversations = 1; }
+message Conversation {
+  string id = 1;
+  repeated ChatMessage messages = 2;
+}
+message ListConversationsResponse {
+  repeated Conversation conversations = 1;
+}
 
 // One command commits an atomic batch of transcript and operation facts.
 message ChatFact {
@@ -57,6 +64,8 @@ message ChatFact {
   repeated OperationFact operations = 4;
   // Pending draft revision consumed by this accepted start, when recorded.
   optional uint64 pending_revision = 5;
+  // Authority acceptance time for this atomic batch, in Unix milliseconds.
+  uint64 accepted_at_ms = 6;
 }
 
 message OperationFact {

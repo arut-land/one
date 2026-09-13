@@ -32,7 +32,7 @@ impl Command for ChatCommand {
     fn epoch(&self) -> u64 {
         1
     }
-    fn apply(self, current: &ChatProjection) -> Result<ChatFact, Rejection> {
+    fn apply(self, current: &ChatProjection, now: u64) -> Result<ChatFact, Rejection> {
         let exists = current.conversation(&self.chat_id).is_some();
         if self.pending_scope.is_none() && !exists {
             return Err(Rejection::ConversationMissing);
@@ -46,6 +46,7 @@ impl Command for ChatCommand {
             self.pending_scope,
             self.text,
             self.command_id,
+            now,
         ))
     }
 }
@@ -58,17 +59,24 @@ impl ChatCommand {
         pending: Option<PendingDraft>,
         text: String,
         operation_id: String,
+        accepted_at_ms: u64,
     ) -> ChatFact {
         let next = current
             .conversation(&chat_id)
             .map_or(0, |conversation| conversation.messages.len()) as u64;
         ChatFact {
+            accepted_at_ms,
             chat_id,
             pending_revision: pending.as_ref().map(|pending| pending.revision),
             pending_scope_id: pending.map_or_else(String::new, |pending| pending.scope_id),
             messages: vec![
-                message(next + 1, ChatRole::User, text.clone()),
-                message(next + 2, ChatRole::Assistant, crate::domain::respond(&text)),
+                message(next + 1, ChatRole::User, text.clone(), accepted_at_ms),
+                message(
+                    next + 2,
+                    ChatRole::Assistant,
+                    crate::domain::respond(&text),
+                    accepted_at_ms,
+                ),
             ],
             operations: vec![
                 operation(&operation_id, OperationPhase::Started),
@@ -78,8 +86,9 @@ impl ChatCommand {
     }
 }
 
-fn message(id: u64, role: ChatRole, text: String) -> ChatMessage {
+fn message(id: u64, role: ChatRole, text: String, accepted_at_ms: u64) -> ChatMessage {
     ChatMessage {
+        accepted_at_ms,
         id,
         role: role as i32,
         text,

@@ -225,6 +225,11 @@ mod tests {
         assert_eq!(composer.state().text, "hello");
         futures_executor::block_on(chat.send("hello".into()));
         assert_eq!(chat.messages_after(0).len(), 2);
+        assert!(
+            chat.messages_after(0)
+                .iter()
+                .all(|message| message.accepted_at_ms > 0)
+        );
         assert_eq!(list.state().len(), 1);
         assert_eq!(composer.state().text, "");
     }
