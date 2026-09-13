@@ -24,8 +24,8 @@ impl Default for ComposerAuthority {
 }
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum PromoteError {
-    RevisionConflict(ComposerSnapshot),
-    TextMismatch(ComposerSnapshot),
+    RevisionConflict,
+    TextMismatch,
 }
 fn stored(snapshot: &ComposerSnapshot) -> Vec<u8> {
     WireSnapshot::from(snapshot.clone()).encode_to_vec()
@@ -148,15 +148,15 @@ impl ComposerAuthority {
         text: &str,
         chat_id: &str,
         commit: impl FnOnce() -> Result<T, E>,
-    ) -> Result<Result<(T, ComposerSnapshot), PromoteError>, E> {
+    ) -> Result<Result<T, PromoteError>, E> {
         let scope = ComposerScope::pending(pending_id);
         let mut scopes = self.inner.lock().map_err(|_| StorageError::Corrupt)?;
         let pending = self.state(&mut scopes, &scope)?.watch.get();
         if pending.revision != revision {
-            return Ok(Err(PromoteError::RevisionConflict(pending)));
+            return Ok(Err(PromoteError::RevisionConflict));
         }
         if pending.text != text {
-            return Ok(Err(PromoteError::TextMismatch(pending)));
+            return Ok(Err(PromoteError::TextMismatch));
         }
         let mut cleared = ComposerSnapshot::empty(scope.clone());
         cleared.revision = pending
@@ -176,12 +176,12 @@ impl ComposerAuthority {
         scopes.insert(
             chat_scope,
             ScopeState {
-                watch: Watch::new(snapshot.clone()),
+                watch: Watch::new(snapshot),
                 last_command: None,
             },
         );
         self.store.put(&key(&scope), &stored(&cleared))?;
-        Ok(Ok((result, snapshot)))
+        Ok(Ok(result))
     }
 }
 
