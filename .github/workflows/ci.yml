@@ -6,7 +6,42 @@ on:
     tags: ["v*"]
   pull_request:
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
 jobs:
+  changes:
+    name: Android path filter
+    runs-on: ubuntu-latest
+    outputs:
+      android: ${{ steps.paths.outputs.android }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Check Android inputs
+        id: paths
+        shell: bash
+        env:
+          ARUT_DIFF_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+          ARUT_DIFF_HEAD: ${{ github.sha }}
+        run: |
+          if [[ -z "$ARUT_DIFF_BASE" || "$ARUT_DIFF_BASE" =~ ^0+$ ]]; then
+            git ls-tree -r --name-only "$ARUT_DIFF_HEAD" > changed-paths
+          else
+            git diff --name-only "$ARUT_DIFF_BASE" "$ARUT_DIFF_HEAD" > changed-paths
+          fi
+          android=false
+          while IFS= read -r path; do
+            case "$path" in
+              surfaces/android/*|bindings/kotlin/*|bindings/ffi/*|features/*|product/*|substrates/*|protocols/*|runtimes/*|Cargo.lock)
+                android=true
+                break
+                ;;
+            esac
+          done < changed-paths
+          echo "android=$android" >> "$GITHUB_OUTPUT"
   linux:
     name: Linux
     runs-on: ubuntu-latest
@@ -44,6 +79,8 @@ jobs:
         run: mise run build
 
   android:
+    needs: changes
+    if: needs.changes.outputs.android == 'true'
     name: Android
     runs-on: ubuntu-latest
     steps:
