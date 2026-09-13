@@ -91,6 +91,33 @@ fn factory(function: &syn::ItemFn, swift: &mut String, kotlin: &mut String) -> R
     ));
     Ok(())
 }
+fn streams(ffi: &syn::File, kotlin_imports: &mut String, kotlin: &mut String) -> Result<()> {
+    for item in &ffi.items {
+        let Item::Impl(item) = item else { continue };
+        if !item.attrs.iter().any(|a| a.path().is_ident("export")) {
+            continue;
+        }
+        let Type::Path(self_ty) = &*item.self_ty else { continue };
+        let handle = self_ty.path.segments.last().ok_or("empty impl type")?.ident.to_string();
+        for member in &item.items {
+            let syn::ImplItem::Fn(method) = member else { continue };
+            if !method.attrs.iter().any(|a| a.path().is_ident("ffi_stream")) {
+                continue;
+            }
+            let name = camel(&method.sig.ident.to_string());
+            let mut cancellable = name.clone();
+            if let Some(first) = cancellable.get_mut(0..1) {
+                first.make_ascii_uppercase();
+            }
+            cancellable.push_str("Cancellable");
+            kotlin_imports.push_str(&format!("import dev.arut.ffi.{name} as ffi_{name}\n"));
+            kotlin.push_str(&format!(
+                "\ntypealias {cancellable} = dev.arut.ffi.{cancellable}\nfun {handle}.{name}(callback: (ULong) -> Unit): {cancellable} =\n    this.ffi_{name}(callback)\n"
+            ));
+        }
+    }
+    Ok(())
+}
 fn variants(dir: &Path, exports: &BTreeSet<String>, into: &mut String) -> Result<()> {
     for entry in fs::read_dir(dir)? {
         let path = entry?.path();
@@ -119,7 +146,7 @@ fn generated(root: &Path) -> Result<[(&'static str, String); 3]> {
     let ffi = syn::parse_file(&fs::read_to_string(root.join("bindings/ffi/src/lib.rs"))?)?;
     let mut exports = BTreeSet::new();
     let mut functions = Vec::new();
-    for item in ffi.items {
+    for item in ffi.items.clone() {
         match item {
             Item::Use(item) if matches!(item.vis, Visibility::Public(_)) => {
                 names(&item.tree, &mut exports)?;
@@ -137,7 +164,10 @@ fn generated(root: &Path) -> Result<[(&'static str, String); 3]> {
         }
     }
     let mut swift = format!("{HEADER}import ArutFfi\n\n");
-    let mut kotlin = format!("{HEADER}package dev.arut.bindings\n\n");
+    let mut kotlin_imports = String::new();
+    let mut kotlin_streams = String::new();
+    streams(&ffi, &mut kotlin_imports, &mut kotlin_streams)?;
+    let mut kotlin = format!("{HEADER}package dev.arut.bindings\n\n{kotlin_imports}\n");
     let mut csharp = format!("{HEADER}global using Arut_ffi = global::Arut.Ffi.Arut_ffi;\n");
     for name in &exports {
         swift.push_str(&format!("public typealias {name} = ArutFfi.{name}\n"));
@@ -157,6 +187,7 @@ fn generated(root: &Path) -> Result<[(&'static str, String); 3]> {
     for function in functions {
         factory(&function, &mut swift, &mut kotlin)?;
     }
+    kotlin.push_str(&kotlin_streams);
     Ok([
         ("bindings/swift/Sources/ArutBindings/Exports.swift", swift),
         (
