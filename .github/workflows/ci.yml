@@ -35,52 +35,12 @@ jobs:
       - name: Install toolchains
         run: mise install
 
-      - name: cargo fmt
-        run: cargo fmt --all --check
+      # One entry point for humans and CI: mise.toml owns what "check" means.
+      - name: mise run check
+        run: mise run check
 
-      - name: cargo clippy
-        run: cargo clippy --workspace --all-targets -- -D warnings
-
-      - name: cargo nextest
-        run: cargo nextest run --workspace
-
-      - name: cargo test (doctests)
-        run: cargo test --doc --workspace
-
-      - name: cargo machete
-        run: cargo machete
-
-      - name: cargo deny
-        run: cargo deny check
-
-      - name: cargo check (wasm)
-        run: cargo check -p arut_ffi --target wasm32-unknown-unknown
-
-      - name: cargo check (wasm, arut-i18n)
-        run: cargo check -p arut-i18n --target wasm32-unknown-unknown
-
-      - name: Check isolated wasm dependency graphs
-        run: mise run check:wasm-graph
-
-      # ADR 0022: the .ftl files are the source, so a generated resource or
-      # accessor that disagrees with them is a change nobody made on purpose.
-      - name: Check the generated string resources
-        run: cargo run --quiet -p arut-i18n-gen -- --check
-
-      - name: buf lint
-        run: buf lint
-
-      - name: buf breaking
-        run: mise run protocol:breaking
-
-      - name: Generate wasm bindings and install JS workspace
-        run: mise run install
-
-      - name: pnpm check
-        run: pnpm check
-
-      - name: pnpm build
-        run: pnpm build
+      - name: mise run build
+        run: mise run build
 
   android:
     name: Android
