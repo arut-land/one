@@ -356,31 +356,20 @@ impl From<RedbError> for StorageError {
     }
 }
 
-impl From<redb::DatabaseError> for StorageError {
-    fn from(error: redb::DatabaseError) -> Self {
-        RedbError::from(error).into()
-    }
+macro_rules! storage_errors {
+    ($($error:ty),+ $(,)?) => {$(
+        impl From<$error> for StorageError {
+            fn from(error: $error) -> Self { RedbError::from(error).into() }
+        }
+    )+};
 }
-impl From<redb::TransactionError> for StorageError {
-    fn from(error: redb::TransactionError) -> Self {
-        RedbError::from(error).into()
-    }
-}
-impl From<redb::TableError> for StorageError {
-    fn from(error: redb::TableError) -> Self {
-        RedbError::from(error).into()
-    }
-}
-impl From<redb::CommitError> for StorageError {
-    fn from(error: redb::CommitError) -> Self {
-        RedbError::from(error).into()
-    }
-}
-impl From<redb::StorageError> for StorageError {
-    fn from(error: redb::StorageError) -> Self {
-        RedbError::from(error).into()
-    }
-}
+storage_errors!(
+    redb::DatabaseError,
+    redb::TransactionError,
+    redb::TableError,
+    redb::CommitError,
+    redb::StorageError
+);
 
 /// The on-disk shape of a record; the fact keeps its own Protobuf encoding.
 #[derive(Clone, PartialEq, prost::Message)]

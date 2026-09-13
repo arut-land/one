@@ -1,7 +1,7 @@
 //! Every user-facing string the product owns, once, in Fluent (ADR 0022).
 //!
 //! `locales/<lang>/*.ftl` is the single source. Rust and wasm consumers read it
-//! through [`Localizer`]; `tools/i18n` turns the same files into
+//! through [`Localizer`]; `arut-dev i18n` turns the same files into
 //! `Localizable.xcstrings`, `strings.xml`, `.resw`, and a served copy for
 //! `@fluent/bundle`, so a native surface localizes through its own platform API
 //! and never through this crate.
@@ -109,7 +109,7 @@ impl Localizer {
             // GTK label or a native resource string.
             bundle.set_use_isolating(false);
             // fluent-rs ships no built-in functions, so NUMBER() -- the marker
-            // that tells `tools/i18n` to emit an integer placeholder on native
+            // that tells `arut-dev i18n` to emit an integer placeholder on native
             // surfaces -- has to be supplied here or every message that uses it
             // resolves to an error.
             bundle

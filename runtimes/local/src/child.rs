@@ -21,7 +21,7 @@ impl Drop for ChildChannel {
         let _ = self
             .child
             .get_mut()
-            .expect("child lock poisoned")
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
             .start_kill();
         let _ = std::fs::remove_file(&self.socket);
     }

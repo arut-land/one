@@ -80,9 +80,8 @@ fn watches_preserve_message_widgets_and_bind_independent_drafts() {
         spawner: Arc::new(TokioSpawner(executor.handle().clone())),
     };
     let channel = executor.block_on(host.connect()).unwrap();
-    let session = Rc::new(ProductSession::new(
-        arut_product_session::chat::ChatClients::remote(channel.clone()),
-        arut_product_session::CapabilityServiceClient::remote(channel),
+    let session = Rc::new(ProductSession::remote(
+        channel,
         SessionScope {
             node_id: "local".into(),
             workspace_id: "default".into(),

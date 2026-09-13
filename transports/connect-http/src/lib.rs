@@ -4,10 +4,7 @@
 //! fragmented envelopes are bounded to 8 MiB and errors retain codes and details.
 //! Request-streaming methods return Unimplemented.
 //!
-//! The recorded connectrpc 0.9.0 spike passed RPC conformance but required more
-//! adapter code than it replaced: buffa/prost bridging, erased messages, metadata,
-//! and an HTTP/1.1 Unix-socket client. Revisit when it supports prost or byte-level
-//! handlers. IPC reuses this framing and router.
+//! IPC reuses this framing and router.
 
 #![cfg(not(target_arch = "wasm32"))]
 mod framing;

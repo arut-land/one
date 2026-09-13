@@ -26,7 +26,7 @@ impl<F: Fact> FactLog<F> for MemoryLog<F> {
         id: &str,
         decide: &mut crate::CommitDecision<'_, F>,
     ) -> Result<Option<Record<F>>> {
-        let mut state = self.0.lock().unwrap();
+        let mut state = self.0.lock().map_err(|_| StorageError::Corrupt)?;
         if cursor.is_some_and(|cursor| cursor < state.compacted) {
             return Err(StorageError::CursorUnavailable {
                 through: state.compacted,
@@ -60,14 +60,14 @@ impl<F: Fact> FactLog<F> for MemoryLog<F> {
         Ok(self
             .0
             .lock()
-            .unwrap()
+            .map_err(|_| StorageError::Corrupt)?
             .records
             .iter()
             .find(|r| r.command_id == id)
             .cloned())
     }
     fn read_from(&self, cursor: u64) -> Result<Vec<Record<F>>> {
-        let state = self.0.lock().unwrap();
+        let state = self.0.lock().map_err(|_| StorageError::Corrupt)?;
         if cursor < state.compacted {
             return Err(StorageError::CursorUnavailable {
                 through: state.compacted,
@@ -81,10 +81,15 @@ impl<F: Fact> FactLog<F> for MemoryLog<F> {
             .collect())
     }
     fn snapshot(&self) -> Result<Option<Snapshot>> {
-        Ok(self.0.lock().unwrap().snapshot.clone())
+        Ok(self
+            .0
+            .lock()
+            .map_err(|_| StorageError::Corrupt)?
+            .snapshot
+            .clone())
     }
     fn save_snapshot(&self, snapshot: Snapshot) -> Result<()> {
-        let mut state = self.0.lock().unwrap();
+        let mut state = self.0.lock().map_err(|_| StorageError::Corrupt)?;
         if snapshot.sequence > state.records.last().map_or(0, |r| r.sequence)
             || snapshot.sequence < state.compacted
         {
@@ -94,7 +99,7 @@ impl<F: Fact> FactLog<F> for MemoryLog<F> {
         Ok(())
     }
     fn compact(&self, through: u64) -> Result<()> {
-        let mut state = self.0.lock().unwrap();
+        let mut state = self.0.lock().map_err(|_| StorageError::Corrupt)?;
         if state.snapshot.as_ref().is_none_or(|s| s.sequence < through) {
             return Err(StorageError::SnapshotRequired);
         }
@@ -111,18 +116,28 @@ struct MemoryState {
 pub struct MemoryStore(Mutex<MemoryState>);
 impl KeyValue for MemoryStore {
     fn get(&self, key: &str) -> Result<Option<Vec<u8>>> {
-        Ok(self.0.lock().unwrap().values.get(key).cloned())
+        Ok(self
+            .0
+            .lock()
+            .map_err(|_| StorageError::Corrupt)?
+            .values
+            .get(key)
+            .cloned())
     }
     fn put(&self, key: &str, value: &[u8]) -> Result<()> {
         self.0
             .lock()
-            .unwrap()
+            .map_err(|_| StorageError::Corrupt)?
             .values
             .insert(key.to_owned(), value.to_vec());
         Ok(())
     }
     fn remove(&self, key: &str) -> Result<()> {
-        self.0.lock().unwrap().values.remove(key);
+        self.0
+            .lock()
+            .map_err(|_| StorageError::Corrupt)?
+            .values
+            .remove(key);
         Ok(())
     }
 }
@@ -131,7 +146,7 @@ impl BlobStore for MemoryStore {
         let id = digest(bytes);
         self.0
             .lock()
-            .unwrap()
+            .map_err(|_| StorageError::Corrupt)?
             .blobs
             .insert(id.clone(), bytes.to_vec());
         Ok(id)
@@ -140,7 +155,7 @@ impl BlobStore for MemoryStore {
         Ok(self
             .0
             .lock()
-            .unwrap()
+            .map_err(|_| StorageError::Corrupt)?
             .blobs
             .get(checked_digest(id)?)
             .cloned())

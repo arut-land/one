@@ -120,7 +120,6 @@ dependencies = [
  "arut-watch",
  "boltffi",
  "futures-executor",
- "uuid",
 ]
 
 [[package]]

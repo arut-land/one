@@ -231,13 +231,15 @@ impl ChatClient {
                 .as_ref()
                 .is_none_or(|request| request.chat_id != chat_id || request.text != text)
             {
-                *pending = Some(SendMessageRequest {
+                *pending = None;
+            }
+            pending
+                .get_or_insert_with(|| SendMessageRequest {
                     chat_id,
                     text,
                     command_id: self.ids.new_id(),
-                });
-            }
-            pending.as_ref().unwrap().clone()
+                })
+                .clone()
         };
         match self.service.send_message(Request::new(request)).await {
             Ok(response) => {

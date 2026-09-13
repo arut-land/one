@@ -130,7 +130,7 @@ impl<C: Command> Authority<C> {
             epoch = command.epoch()
         );
         let _commit = commit.enter();
-        let mut state = self.state.lock().unwrap();
+        let mut state = self.state.lock().map_err(|_| StorageError::Corrupt)?;
         if command.epoch() != self.epoch {
             return Ok(Outcome::AuthorityMismatch {
                 current_epoch: self.epoch,
@@ -154,7 +154,7 @@ impl<C: Command> Authority<C> {
                     return Ok(None);
                 }
                 match self.apply(
-                    command.take().expect("log decides once"),
+                    command.take().ok_or(StorageError::Corrupt)?,
                     now(),
                     &state.projection,
                 ) {
@@ -168,7 +168,7 @@ impl<C: Command> Authority<C> {
         );
         let record = match result {
             Ok(Some(record)) => record,
-            Ok(None) => return Ok(outcome.expect("log decided without a fact")),
+            Ok(None) => return outcome.ok_or(StorageError::Corrupt),
             Err(StorageError::Conflict { actual }) => {
                 return Ok(Outcome::RevisionConflict { current: actual });
             }
@@ -213,7 +213,7 @@ impl<C: Command> Authority<C> {
         command.apply(projection, now).map_err(Outcome::Rejected)
     }
     pub fn checkpoint(&self, compact: bool) -> Result<(), StorageError> {
-        let state = self.state.lock().unwrap();
+        let state = self.state.lock().map_err(|_| StorageError::Corrupt)?;
         tracing::debug!(
             sequence = state.cursor,
             epoch = self.epoch,

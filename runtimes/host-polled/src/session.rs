@@ -45,7 +45,7 @@ impl<F: Fact> Persist<F> for MemoryRuntime {
     fn log(&self, namespace: &str) -> Result<Arc<dyn FactLog<F>>, StorageError> {
         self.logs
             .lock()
-            .expect("memory logs poisoned")
+            .map_err(|_| StorageError::Corrupt)?
             .entry(namespace.into())
             .or_insert_with(|| Arc::new(MemoryLog::<F>::default()))
             .clone()

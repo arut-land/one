@@ -199,9 +199,8 @@ fn session(
     ));
     let chat = arut_feature_chat::compose(runtime).expect("compose memory feature");
     ProductSessionHandle {
-        session: Arc::new(ProductSession::new(
-            chat.clients(),
-            arut_product_session::capability_client(chat.registrations()),
+        session: Arc::new(ProductSession::from_chat(
+            &chat,
             arut_product_session::SessionScope {
                 node_id: "local".into(),
                 workspace_id: "default".into(),

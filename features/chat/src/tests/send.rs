@@ -1,6 +1,6 @@
 use crate::composer::ComposerAuthority;
 use crate::composer::ComposerServiceImpl;
-use crate::ports::NativeIds;
+use crate::test_support::TestIds;
 use crate::{ChatClient, ChatStatus};
 use arut_protocol::chat::composer::v1::*;
 use arut_protocol::chat::v1::*;
@@ -80,7 +80,7 @@ fn retry_keeps_command_identity_and_cleanup_failure_keeps_accepted_messages() {
         ComposerServiceClient::direct(composer),
         "chat".into(),
         vec![],
-        Arc::new(NativeIds),
+        Arc::new(TestIds),
         Arc::new(Cancellation::root()),
     );
     block_on(chat.composer().replace("hello".into()));

@@ -7,8 +7,7 @@ use std::fmt::Write;
 use std::io;
 use std::path::{Path, PathBuf};
 
-#[derive(Default)]
-pub struct ArutServiceGenerator;
+struct ArutServiceGenerator;
 
 pub fn compile_dir(root: impl AsRef<Path>) -> io::Result<()> {
     let root = root.as_ref();

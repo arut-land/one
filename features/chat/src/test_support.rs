@@ -40,3 +40,20 @@ impl Persist<ChatFact> for MemoryPorts {
         Ok(self.log.clone())
     }
 }
+
+/// Canonical UUIDv7-shaped identities and a fixed acceptance clock for tests.
+pub struct TestIds;
+impl IdSource for TestIds {
+    fn new_id(&self) -> String {
+        static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+        format!(
+            "00000000-0000-7000-8000-{:012x}",
+            NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+        )
+    }
+}
+impl Clock for TestIds {
+    fn now(&self) -> u64 {
+        123
+    }
+}

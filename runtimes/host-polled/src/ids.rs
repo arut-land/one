@@ -16,7 +16,7 @@ impl arut_feature_chat::ports::Clock for NativeClock {
     fn now(&self) -> u64 {
         std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
-            .expect("clock before epoch")
+            .unwrap_or_default()
             .as_millis() as u64
     }
 }

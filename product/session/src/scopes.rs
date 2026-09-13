@@ -7,26 +7,6 @@ use arut_protocol::chat::{composer::v1::ComposerServiceClient, v1::ChatServiceCl
 use arut_rpc::Cancellation;
 use std::sync::Arc;
 
-/// Client access for product scopes; feature runtime ports live in the feature.
-pub trait ChatServices: Send + Sync + 'static {
-    fn chat_service(&self) -> ChatServiceClient;
-    fn composer_service(&self) -> ComposerServiceClient;
-}
-
-#[derive(Clone)]
-pub(crate) struct Services {
-    pub(crate) chat: ChatServiceClient,
-    pub(crate) composer: ComposerServiceClient,
-}
-impl ChatServices for Services {
-    fn chat_service(&self) -> ChatServiceClient {
-        self.chat.clone()
-    }
-    fn composer_service(&self) -> ComposerServiceClient {
-        self.composer.clone()
-    }
-}
-
 pub struct Node<R> {
     runtime: Arc<R>,
     id: String,
@@ -75,12 +55,12 @@ impl<R> Workspace<R> {
         Arc::new(self.cancellation.child())
     }
 }
-impl<R: ChatServices> Workspace<R> {
+impl Workspace<arut_feature_chat::ChatClients> {
     pub fn chat_service(&self) -> ChatServiceClient {
-        self.node.runtime.chat_service()
+        self.node.runtime.chat.clone()
     }
     pub fn composer_service(&self) -> ComposerServiceClient {
-        self.node.runtime.composer_service()
+        self.node.runtime.composer.clone()
     }
 }
 

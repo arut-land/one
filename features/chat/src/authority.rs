@@ -106,7 +106,7 @@ impl ChatAuthority {
         revision: u64,
         text: String,
     ) -> Result<(ChatFact, crate::composer::ComposerSnapshot), CommitError> {
-        let _start = self.start_gate.lock().unwrap();
+        let _start = self.start_gate.lock().map_err(|_| StorageError::Corrupt)?;
         let fact = if let Some(record) = self.authority.outcome_of(&command_id)? {
             if record.fact.pending_scope_id != pending_scope_id {
                 return Err(CommitError::CommandConflict);

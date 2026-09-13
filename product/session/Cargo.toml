@@ -13,7 +13,6 @@ arut-watch.workspace = true
 
 [dev-dependencies]
 arut-feature-chat = { workspace = true, features = ["test-support"] }
-uuid = { version = "1.18.1", features = ["v7"] }
 futures-executor = "0.3.31"
 
 [lints]

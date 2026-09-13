@@ -280,7 +280,7 @@ mod tests {
                 ComposerAuthority::default(),
             )))),
             ComposerScope::chat("chat"),
-            Arc::new(crate::ports::NativeIds),
+            Arc::new(crate::test_support::TestIds),
             Arc::new(Cancellation::root()),
         );
         let snapshot = |epoch, revision, text: &str| WireSnapshot {
@@ -306,7 +306,7 @@ mod tests {
         let composer = ComposerClient::new(
             service,
             ComposerScope::pending("account"),
-            Arc::new(crate::ports::NativeIds),
+            Arc::new(crate::test_support::TestIds),
             Arc::new(Cancellation::root()),
         );
         let snapshot = WireSnapshot {
@@ -367,7 +367,7 @@ mod tests {
         let composer = ComposerClient::new(
             service,
             ComposerScope::pending("account"),
-            Arc::new(crate::ports::NativeIds),
+            Arc::new(crate::test_support::TestIds),
             cancellation.clone(),
         );
         let mut follow = Box::pin(composer.follow());
@@ -401,7 +401,7 @@ mod tests {
         let composer = ComposerClient::new(
             service,
             ComposerScope::pending("account"),
-            Arc::new(crate::ports::NativeIds),
+            Arc::new(crate::test_support::TestIds),
             cancellation.clone(),
         );
 

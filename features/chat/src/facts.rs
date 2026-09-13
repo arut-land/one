@@ -4,7 +4,7 @@ use arut_protocol::chat::v1::{ChatFact, Conversation, OperationPhase};
 
 /// The durable projection of accepted chat facts; snapshots persist it as a row.
 #[derive(Clone, PartialEq, prost::Message)]
-pub struct ChatProjection {
+pub(crate) struct ChatProjection {
     #[prost(message, repeated, tag = "1")]
     pub conversations: Vec<Conversation>,
     #[prost(string, repeated, tag = "2")]

@@ -132,18 +132,6 @@ impl ComposerError {
     ];
 }
 
-impl From<&Status> for ComposerError {
-    fn from(status: &Status) -> Self {
-        Self::Node(status.into())
-    }
-}
-
-impl From<Status> for ComposerError {
-    fn from(status: Status) -> Self {
-        Self::Node(status.into())
-    }
-}
-
 /// Why a chat could not accept what a person did.
 #[boltffi::data]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Error, Localized)]
@@ -157,7 +145,7 @@ pub enum ChatError {
     #[error("the conversation scope was cancelled")]
     Cancelled,
     #[error("the draft could not be committed: {0}")]
-    Draft(ComposerError),
+    Draft(#[from] ComposerError),
     #[error("the node started a conversation without naming it")]
     ChatIdMissing,
 }
@@ -175,23 +163,17 @@ impl ChatError {
     ];
 }
 
-impl From<ComposerError> for ChatError {
-    fn from(error: ComposerError) -> Self {
-        Self::Draft(error)
-    }
+macro_rules! node_errors {
+    ($($error:ty),+ $(,)?) => {$(
+        impl From<&Status> for $error {
+            fn from(status: &Status) -> Self { Self::Node(status.into()) }
+        }
+        impl From<Status> for $error {
+            fn from(status: Status) -> Self { Self::from(&status) }
+        }
+    )+};
 }
-
-impl From<&Status> for ChatError {
-    fn from(status: &Status) -> Self {
-        Self::Node(status.into())
-    }
-}
-
-impl From<Status> for ChatError {
-    fn from(status: Status) -> Self {
-        Self::Node(status.into())
-    }
-}
+node_errors!(ComposerError, ChatError);
 
 #[cfg(test)]
 mod tests {

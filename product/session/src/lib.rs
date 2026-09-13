@@ -2,7 +2,8 @@
 //!
 //! The session owns pending and established chats, conversation summaries, and
 //! availability. A weak registration callback avoids a cycle between the registry
-//! and its chats. Surfaces own selection and disposable observers.
+//! and its chats. Local feature and remote channel constructors assemble the
+//! required capability client. Surfaces own selection and disposable observers.
 
 mod failure;
 pub mod hosting;
@@ -20,9 +21,9 @@ pub use arut_watch::Subscription;
 pub mod scopes;
 use arut_feature_chat::ports::IdSource;
 use arut_feature_chat::{ChatClient, ChatClients, ChatStarted};
-pub use arut_protocol::capability::v1::CapabilityServiceClient;
+use arut_protocol::capability::v1::CapabilityServiceClient;
 use arut_protocol::capability::v1::{GetCapabilitiesRequest, ServiceCapability};
-pub use arut_protocol::capability_manifest::capability_client;
+use arut_protocol::capability_manifest::capability_client;
 use arut_protocol::chat::composer::v1::COMPOSER_SERVICE_DESCRIPTOR;
 use arut_rpc::{Cancellation, Request};
 use arut_watch::Watch;
@@ -37,7 +38,7 @@ pub struct SessionScope {
 }
 
 pub struct ProductSession {
-    workspace: Arc<scopes::Workspace<scopes::Services>>,
+    pending: Mutex<ChatClient>,
     chats: SessionChats,
     capability_service: CapabilityServiceClient,
     availability: Watch<SessionAvailability>,
@@ -48,8 +49,7 @@ type Established = Arc<Mutex<HashMap<String, ChatClient>>>;
 struct SessionChats {
     ids: Arc<dyn IdSource>,
     established: Established,
-    pending: Mutex<ChatClient>,
-    workspace: Arc<scopes::Workspace<scopes::Services>>,
+    workspace: Arc<scopes::Workspace<ChatClients>>,
     pending_scope_id: String,
     conversations: Arc<Watch<Vec<ChatSummary>>>,
 }
@@ -159,6 +159,34 @@ pub enum FeatureAvailability {
 }
 
 impl ProductSession {
+    /// Compose a session from a local feature and its served capability descriptors.
+    pub fn from_chat(
+        feature: &arut_feature_chat::ChatFeature,
+        scope: SessionScope,
+        ids: Arc<dyn IdSource>,
+    ) -> Self {
+        Self::new(
+            feature.clients(),
+            capability_client(feature.registrations()),
+            scope,
+            ids,
+        )
+    }
+
+    /// Bind the session's clients to the composition root's chosen route.
+    pub fn remote(
+        channel: Arc<dyn arut_rpc::RpcChannel>,
+        scope: SessionScope,
+        ids: Arc<dyn IdSource>,
+    ) -> Self {
+        Self::new(
+            ChatClients::remote(channel.clone()),
+            CapabilityServiceClient::remote(channel),
+            scope,
+            ids,
+        )
+    }
+
     pub async fn initialize(&self) -> Result<(), SessionError> {
         let response = self
             .chats
@@ -186,41 +214,27 @@ impl ProductSession {
         Ok(())
     }
 
-    pub fn new(
+    fn new(
         clients: ChatClients,
         capabilities: CapabilityServiceClient,
         scope: SessionScope,
         ids: Arc<dyn IdSource>,
     ) -> Self {
-        let ChatClients { chat, composer } = clients;
         let pending_scope_id = scope.pending_scope_id;
-        assert!(
-            !pending_scope_id.is_empty(),
-            "pending scope ID must not be empty"
-        );
-        let runtime = Arc::new(scopes::Services { chat, composer });
+        let runtime = Arc::new(clients);
         let workspace = scopes::Node::new(scope.node_id, runtime).workspace(scope.workspace_id);
         let conversations = Arc::new(Watch::new(Vec::new()));
         let established = Established::default();
-        let pending = ChatClient::pending(
-            workspace.chat_service(),
-            workspace.composer_service(),
-            pending_scope_id.clone(),
-            Some(RegisterChat::new(&established, &conversations)),
-            ids.clone(),
-            workspace.conversation_cancellation(),
-        );
         let chats = SessionChats {
             ids,
             conversations,
             established,
-            pending: Mutex::new(pending),
-            workspace: workspace.clone(),
+            workspace,
             pending_scope_id,
         };
 
         Self {
-            workspace,
+            pending: Mutex::new(chats.new_pending()),
             chats,
             capability_service: capabilities,
             availability: Watch::new(SessionAvailability {
@@ -236,19 +250,15 @@ impl ProductSession {
     /// The node scope every workspace, conversation, and operation hangs from.
     /// Cancelling it stops the whole session's outstanding work.
     pub fn cancellation(&self) -> &Cancellation {
-        self.workspace.node().cancellation()
+        self.chats.workspace.node().cancellation()
     }
 
     pub fn chat(&self) -> ChatClient {
-        self.chats
-            .pending
-            .lock()
-            .expect("pending chat poisoned")
-            .clone()
+        self.pending.lock().expect("pending chat poisoned").clone()
     }
 
     pub fn new_chat(&self) -> ChatClient {
-        let mut pending = self.chats.pending.lock().expect("pending chat poisoned");
+        let mut pending = self.pending.lock().expect("pending chat poisoned");
         if pending.id().is_some() {
             *pending = self.chats.new_pending();
         }
@@ -310,23 +320,17 @@ fn feature_availability(service: ServiceCapability) -> FeatureAvailability {
 mod tests {
     use super::*;
     use arut_feature_chat::composer::ComposerScope;
-    struct NativeIds;
-    impl IdSource for NativeIds {
-        fn new_id(&self) -> String {
-            uuid::Uuid::now_v7().to_string()
-        }
-    }
+    use arut_feature_chat::test_support::TestIds;
     use futures_executor::block_on;
 
     fn session() -> ProductSession {
-        let ids: Arc<dyn IdSource> = Arc::new(NativeIds);
+        let ids: Arc<dyn IdSource> = Arc::new(TestIds);
         let feature = arut_feature_chat::compose(Arc::new(
             arut_feature_chat::test_support::MemoryPorts::new(ids.clone()),
         ))
         .unwrap();
-        ProductSession::new(
-            feature.clients(),
-            capability_client(feature.registrations()),
+        ProductSession::from_chat(
+            &feature,
             SessionScope {
                 node_id: "local".into(),
                 workspace_id: "default".into(),
@@ -449,12 +453,12 @@ mod tests {
         // The node has no such conversation, so it answers NotFound; the
         // projection keeps the reason and drops the status message.
         let unknown = ChatClient::established(
-            session.workspace.chat_service(),
-            session.workspace.composer_service(),
+            session.chats.workspace.chat_service(),
+            session.chats.workspace.composer_service(),
             "no-such-conversation".into(),
             Vec::new(),
-            Arc::new(NativeIds),
-            session.workspace.conversation_cancellation(),
+            Arc::new(TestIds),
+            session.chats.workspace.conversation_cancellation(),
         );
         let failed = block_on(unknown.send("nowhere".into()));
 
