@@ -73,12 +73,8 @@ impl<F: Fact> FactLog<F> for MemoryLog<F> {
                 through: state.compacted,
             });
         }
-        Ok(state
-            .records
-            .iter()
-            .filter(|r| r.sequence > cursor)
-            .cloned()
-            .collect())
+        let start = state.records.partition_point(|r| r.sequence <= cursor);
+        Ok(state.records[start..].to_vec())
     }
     fn snapshot(&self) -> Result<Option<Snapshot>> {
         Ok(self
