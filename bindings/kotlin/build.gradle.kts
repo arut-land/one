@@ -11,9 +11,21 @@ android {
         minSdk = 24
     }
 
+    // One JVM target for Java and Kotlin; Gradle rejects a mismatch between them.
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
+
     sourceSets.named("main") {
         java.srcDir(rootProject.file("../../bindings/generated/android/kotlin"))
         jniLibs.srcDir(rootProject.file("../../bindings/generated/android/jniLibs"))
+    }
+}
+
+kotlin {
+    compilerOptions {
+        jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
     }
 }
 
