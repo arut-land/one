@@ -21,7 +21,7 @@ mod facts;
 pub mod ports;
 mod projection;
 mod service;
-pub use client::{ChatClient, ChatStarted};
+pub use client::{ChatClient, ChatObserver};
 #[cfg(test)]
 pub(crate) use facts::ChatProjection;
 pub use projection::{ChatMessage, ChatRole, ChatState, ChatStatus};

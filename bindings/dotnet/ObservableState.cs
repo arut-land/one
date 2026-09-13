@@ -9,6 +9,7 @@ public sealed class ObservableState<T> : IDisposable, INotifyPropertyChanged
 {
     private readonly SynchronizationContext? context = SynchronizationContext.Current;
     private readonly Func<Action, bool>? dispatch;
+    private readonly IEqualityComparer<T> comparer;
     private readonly object gate = new();
     private Func<T> read;
     private IDisposable? subscription;
@@ -23,10 +24,12 @@ public sealed class ObservableState<T> : IDisposable, INotifyPropertyChanged
     public ObservableState(
         Func<T> read,
         Func<Action<ulong>, IDisposable> subscribe,
-        Func<Action, bool>? dispatch = null
+        Func<Action, bool>? dispatch = null,
+        IEqualityComparer<T>? comparer = null
     )
     {
         this.dispatch = dispatch;
+        this.comparer = comparer ?? EqualityComparer<T>.Default;
         this.read = read;
         value = read();
         subscription = subscribe(_ => Invalidate(0));
@@ -167,7 +170,7 @@ public sealed class ObservableState<T> : IDisposable, INotifyPropertyChanged
             // publish it if replacement or disposal happened during that read.
             if (disposed || observedGeneration != generation || revision != requestedRevision)
                 return;
-            if (EqualityComparer<T>.Default.Equals(value, next))
+            if (comparer.Equals(value, next))
                 return;
             value = next;
             changed = Changed;

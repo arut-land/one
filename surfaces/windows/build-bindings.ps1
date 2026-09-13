@@ -4,7 +4,7 @@ $ErrorActionPreference = 'Stop'
 
 # BoltFFI links its generated C bridge with cl.exe. Load the installed MSVC
 # environment so mise works from an ordinary PowerShell terminal.
-if (-not (Get-Command cl.exe -ErrorAction SilentlyContinue)) {
+if ($env:VSCMD_ARG_TGT_ARCH -ne 'x64' -or -not (Get-Command cl.exe -ErrorAction SilentlyContinue)) {
     $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio/Installer/vswhere.exe'
     if (-not (Test-Path -LiteralPath $vswhere)) {
         throw 'Install Visual Studio Build Tools with Desktop development with C++ and a Windows SDK.'

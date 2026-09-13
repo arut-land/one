@@ -16,9 +16,11 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-/// The session learns here that a pending chat became a conversation.
-pub trait ChatStarted: Send + Sync {
+/// Synchronous session projections after accepted transcript changes.
+pub trait ChatObserver: Send + Sync {
     fn chat_started(&self, chat_id: String, chat: ChatClient);
+
+    fn chat_updated(&self, chat_id: &str, chat: &ChatClient);
 }
 
 /// What a chat that has not started yet needs, and an established one does not.
@@ -26,7 +28,6 @@ pub trait ChatStarted: Send + Sync {
 struct PendingStart {
     scope_id: String,
     command_id: String,
-    on_started: Option<Arc<dyn ChatStarted>>,
 }
 
 #[derive(Clone)]
@@ -36,6 +37,7 @@ pub struct ChatClient {
     state: Arc<Watch<ChatState>>,
     messages: Arc<Mutex<BTreeMap<u64, ChatMessage>>>,
     start: Option<PendingStart>,
+    observer: Option<Arc<dyn ChatObserver>>,
     pending_send: Arc<Mutex<Option<SendMessageRequest>>>,
     ids: Arc<dyn IdSource>,
     cancellation: Arc<Cancellation>,
@@ -70,6 +72,7 @@ impl ChatClient {
             })),
             messages: Arc::new(Mutex::new(messages)),
             start: None,
+            observer: None,
             pending_send: Arc::default(),
             ids,
             cancellation,
@@ -80,7 +83,7 @@ impl ChatClient {
         service: ChatServiceClient,
         composer_service: ComposerServiceClient,
         pending_scope_id: String,
-        on_started: Option<Arc<dyn ChatStarted>>,
+        observer: Option<Arc<dyn ChatObserver>>,
         ids: Arc<dyn IdSource>,
         cancellation: Arc<Cancellation>,
     ) -> Self {
@@ -98,8 +101,8 @@ impl ChatClient {
             start: Some(PendingStart {
                 scope_id: pending_scope_id,
                 command_id: ids.new_id(),
-                on_started,
             }),
+            observer,
             ids,
             cancellation,
         }
@@ -107,6 +110,12 @@ impl ChatClient {
 
     pub fn id(&self) -> Option<String> {
         self.state.read(|state| state.id.clone())
+    }
+
+    /// Attach the session projection before publishing an established client.
+    pub fn with_observer(mut self, observer: Arc<dyn ChatObserver>) -> Self {
+        self.observer = Some(observer);
+        self
     }
 
     pub fn composer(&self) -> ComposerClient {
@@ -131,6 +140,17 @@ impl ChatClient {
                 .lock()
                 .unwrap()
                 .first_key_value()
+                .map(|(_, message)| message),
+        )
+    }
+
+    /// Reads latest content without cloning the transcript.
+    pub fn read_last_message<R>(&self, read: impl FnOnce(Option<&ChatMessage>) -> R) -> R {
+        read(
+            self.messages
+                .lock()
+                .unwrap()
+                .last_key_value()
                 .map(|(_, message)| message),
         )
     }
@@ -211,7 +231,7 @@ impl ChatClient {
                     state.status = ChatStatus::Idle;
                     state.error = None;
                 });
-                if let Some(callback) = &start.on_started {
+                if let Some(callback) = &self.observer {
                     callback.chat_started(chat_id, self.clone());
                 }
                 self.state.get()
@@ -231,7 +251,7 @@ impl ChatClient {
             }
             pending
                 .get_or_insert_with(|| SendMessageRequest {
-                    chat_id,
+                    chat_id: chat_id.clone(),
                     text,
                     command_id: self.ids.new_id(),
                 })
@@ -246,6 +266,9 @@ impl ChatClient {
                     state.status = ChatStatus::Idle;
                     state.error = None;
                 });
+                if let Some(callback) = &self.observer {
+                    callback.chat_updated(&chat_id, self);
+                }
                 // Draft cleanup has its own error state. Acceptance is already durable.
                 self.composer.replace_unlocked(String::new()).await;
                 self.state.get()

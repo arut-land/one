@@ -14,8 +14,9 @@ public sealed class ConversationModel : INotifyPropertyChanged, IAsyncDisposable
     private readonly ObservableState<ChatState> state;
     private readonly ObservableState<ComposerState> draftState;
     private readonly Task following;
-    private Task commands = Task.CompletedTask;
-    private int pendingEdits;
+    private readonly ConversationCommands commands;
+    private long draftVersion;
+    private long appliedDraftVersion;
     private bool sending;
     private bool disposed;
     private bool active = true;
@@ -35,8 +36,9 @@ public sealed class ConversationModel : INotifyPropertyChanged, IAsyncDisposable
         state.Changed += RefreshTranscript;
         draftState.Changed += RefreshDraft;
         Refresh();
-        commands = Initialize();
-        following = Follow(commands);
+        var initialized = Initialize();
+        commands = new(initialized);
+        following = Follow(initialized);
     }
 
     public ObservableCollection<MessageRow> Messages { get; } = new();
@@ -64,18 +66,21 @@ public sealed class ConversationModel : INotifyPropertyChanged, IAsyncDisposable
             if (disposed || draft == value)
                 return;
             draft = value;
-            pendingEdits++;
-            _ = Enqueue(async () =>
-            {
-                try
+            var version = ++draftVersion;
+            _ = Enqueue(
+                async () =>
                 {
-                    await composer.Replace(value, lifetime.Token);
-                }
-                finally
-                {
-                    pendingEdits--;
-                }
-            });
+                    try
+                    {
+                        await composer.Replace(value, lifetime.Token);
+                    }
+                    finally
+                    {
+                        appliedDraftVersion = version;
+                    }
+                },
+                edit: true
+            );
             Notify(nameof(CanSend));
         }
     }
@@ -104,9 +109,7 @@ public sealed class ConversationModel : INotifyPropertyChanged, IAsyncDisposable
         }
         else
         {
-            revealReplies = false;
-            foreach (var message in Messages)
-                message.RevealOnLoad = false;
+            StopReplyMotion();
             state.StopObserving();
             draftState.StopObserving();
         }
@@ -122,6 +125,13 @@ public sealed class ConversationModel : INotifyPropertyChanged, IAsyncDisposable
     {
         holdReplies = true;
         revealReplies = false;
+    }
+
+    internal void StopReplyMotion()
+    {
+        revealReplies = false;
+        foreach (var message in Messages)
+            message.RevealOnLoad = false;
     }
 
     internal void ReleaseReplies(bool animate)
@@ -162,7 +172,7 @@ public sealed class ConversationModel : INotifyPropertyChanged, IAsyncDisposable
             return;
         // Only a fresh composer snapshot may acknowledge an edit. Chat revisions
         // can arrive first and still have an older cached composer snapshot.
-        if (pendingEdits == 0 && draft != draftState.Value.Text)
+        if (appliedDraftVersion == draftVersion && draft != draftState.Value.Text)
         {
             draft = draftState.Value.Text;
             Notify(nameof(Draft));
@@ -190,15 +200,11 @@ public sealed class ConversationModel : INotifyPropertyChanged, IAsyncDisposable
         });
     }
 
-    private Task Enqueue(Func<Task> action)
+    private Task Enqueue(Func<Task> action, bool edit = false)
     {
-        var previous = commands;
-        return commands = Run();
+        return commands.Enqueue(Run, edit);
         async Task Run()
         {
-            // Yield so the task is assigned before any synchronous native completion.
-            await Task.Yield();
-            await previous;
             try
             {
                 lifetime.Token.ThrowIfCancellationRequested();
@@ -216,9 +222,11 @@ public sealed class ConversationModel : INotifyPropertyChanged, IAsyncDisposable
                 if (!disposed)
                 {
                     // Read after completion, independently of callback delivery timing.
-                    state.RefreshNow();
+                    if (!edit)
+                        state.RefreshNow();
                     draftState.RefreshNow();
-                    NotifyStatus();
+                    // A callback may have cached this value while the edit was pending.
+                    RefreshDraft();
                 }
             }
         }
@@ -269,67 +277,10 @@ public sealed class ConversationModel : INotifyPropertyChanged, IAsyncDisposable
         state.Dispose();
         draftState.Dispose();
         lifetime.Cancel();
-        await commands;
+        await commands.Completion;
         await following;
         composer.Dispose();
         chat.Dispose();
         lifetime.Dispose();
     }
-}
-
-public sealed class MessageRow
-{
-    internal bool RevealOnLoad { get; set; }
-
-    public MessageRow(ChatMessage message)
-    {
-        Id = message.Id;
-        Text = message.Text;
-        IsOutgoing = message.Role == ChatRole.User;
-        var acceptedAtMs = message.AcceptedAtMs;
-        var timestamp =
-            acceptedAtMs > 0 && acceptedAtMs <= 253402300799999UL
-                ? DateTimeOffset.FromUnixTimeMilliseconds((long)acceptedAtMs).ToLocalTime()
-                : (DateTimeOffset?)null;
-        StartsGroup = message.StartsSpeakerGroup;
-        Time = timestamp?.ToString("t") ?? "";
-        FullTime = timestamp?.ToString("f") ?? "";
-        TimeGroup = message.StartsTimeGroup ? FullTime : "";
-    }
-
-    public ulong Id { get; }
-    public string Text { get; }
-    public bool IsOutgoing { get; }
-    public bool StartsGroup { get; }
-    public string Time { get; }
-    public string FullTime { get; }
-    public string TimeGroup { get; }
-    public string Author => IsOutgoing ? L10n.ChatRoleYou() : L10n.ChatRoleAssistant();
-
-    public override string ToString() => $"{Author}: {Text}. {FullTime}";
-}
-
-// WinUI's XAML compiler generates setters for record structs. Expose read-only
-// presentation properties without changing the generated Rust value types.
-public sealed class ConversationRow(ChatSummary summary, string preview) : INotifyPropertyChanged
-{
-    public string Id => summary.Id;
-    public string Title => summary.Title;
-    public string Preview => preview;
-    public event PropertyChangedEventHandler? PropertyChanged;
-
-    // Keep the native item container and its focus when a title or preview changes.
-    internal void Update(ChatSummary next, string nextPreview)
-    {
-        var titleChanged = summary.Title != next.Title;
-        var previewChanged = preview != nextPreview;
-        summary = next;
-        preview = nextPreview;
-        if (titleChanged)
-            PropertyChanged?.Invoke(this, new(nameof(Title)));
-        if (previewChanged)
-            PropertyChanged?.Invoke(this, new(nameof(Preview)));
-    }
-
-    public override string ToString() => Title;
 }

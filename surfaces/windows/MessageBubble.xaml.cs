@@ -1,6 +1,5 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
-using Microsoft.UI.Xaml.Media.Animation;
 
 namespace Arut.Surface.Windows;
 
@@ -22,6 +21,7 @@ public sealed partial class MessageBubble : UserControl
     {
         InitializeComponent();
         Loaded += (_, _) => RevealReply();
+        Unloaded += (_, _) => StopReveal();
     }
 
     internal FrameworkElement TransitionElement => Root;
@@ -42,6 +42,7 @@ public sealed partial class MessageBubble : UserControl
 
     private void Refresh()
     {
+        StopReveal();
         if (Message is not { } message)
             return;
         MessageText.Text = message.Text;
@@ -63,10 +64,8 @@ public sealed partial class MessageBubble : UserControl
         if (!IsLoaded || Message is not { RevealOnLoad: true } message)
             return;
         message.RevealOnLoad = false;
-        var fade = new FadeInThemeAnimation();
-        Storyboard.SetTarget(fade, Bubble);
-        var storyboard = new Storyboard();
-        storyboard.Children.Add(fade);
-        storyboard.Begin();
+        ReplyReveal.Begin();
     }
+
+    internal void StopReveal() => ReplyReveal.Stop();
 }

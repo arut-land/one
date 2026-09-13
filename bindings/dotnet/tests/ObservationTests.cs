@@ -1,11 +1,52 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using Arut.Bindings;
 using Xunit;
 
 public class ObservationTests
 {
+    [Fact]
+    public void StructuralComparerKeepsEqualDecodedCollectionsAndNotifiesRealChanges()
+    {
+        var values = new[] { 1, 2 };
+        using var observer = new ObservableState<int[]>(
+            () => values.ToArray(),
+            _ => new Cleanup(() => { }),
+            comparer: new ArrayComparer()
+        );
+        var initial = observer.Value;
+        int changes = 0;
+        observer.Changed += () => changes++;
+
+        observer.RefreshNow();
+        Assert.Same(initial, observer.Value);
+        Assert.Equal(0, changes);
+
+        values = new[] { 2, 1 };
+        observer.RefreshNow();
+        Assert.Equal(values, observer.Value);
+        Assert.Equal(1, changes);
+        observer.RefreshNow();
+        Assert.Equal(1, changes);
+    }
+
+    private sealed class ArrayComparer : IEqualityComparer<int[]>
+    {
+        public bool Equals(int[]? left, int[]? right) =>
+            ReferenceEquals(left, right)
+            || (left is not null && right is not null && left.SequenceEqual(right));
+
+        public int GetHashCode(int[] value)
+        {
+            var hash = new HashCode();
+            foreach (var item in value)
+                hash.Add(item);
+            return hash.ToHashCode();
+        }
+    }
+
     [Fact]
     public void StoppingObservationDiscardsQueuedReadsAndCanResume()
     {

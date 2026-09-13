@@ -1,43 +1,35 @@
 using System.Collections.ObjectModel;
 using Arut.Bindings;
+using CommunityToolkit.WinUI;
 using global::Windows.ApplicationModel.DataTransfer;
 using global::Windows.System;
 using global::Windows.UI.Core;
+using global::Windows.UI.ViewManagement;
 using Microsoft.UI.Input;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Automation.Peers;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
-using Microsoft.UI.Xaml.Media;
 
 namespace Arut.Surface.Windows;
 
 public sealed partial class ChatView : UserControl, IAsyncDisposable
 {
-    private const double TranscriptClearance = 16;
     private readonly ProductSessionHandle session;
     private readonly ConversationsHandle list;
     private readonly ObservableState<ChatSummary[]> history;
     private readonly List<ConversationModel> conversations = new();
     private ConversationModel current;
-    private bool updatingHistory;
     private bool disposed;
     private bool composing;
-    private bool scrollPending;
-    private bool scrollDirty;
-    private bool restoringPosition;
-    private bool realizingReadingAnchor;
-    private double? restoringOffset;
-    private ScrollViewer? transcriptScroll;
-    private readonly global::Windows.UI.ViewManagement.UISettings settings = new();
+    private readonly UISettings settings = new();
     private SendMotion? sendMotion;
-    private double motionScrollOffset;
 
     public ObservableCollection<ConversationRow> Summaries { get; } = new();
     public string NewConversationLabel => L10n.ActionNewConversation();
     public string SearchLabel => L10n.ConversationSearchPlaceholder();
     public string HistoryLabel => L10n.LabelConversations();
     public string HistoryEmptyLabel => L10n.ChatHistoryEmpty();
-    public string SessionLabel => L10n.ChatLocalSession();
     public string TranscriptLabel => L10n.LabelTranscript();
     public string EmptyTitle => L10n.ChatEmptyTitle();
     public string EmptyHint => L10n.ChatEmptyHint();
@@ -59,10 +51,15 @@ public sealed partial class ChatView : UserControl, IAsyncDisposable
         history = new(
             list.State,
             list.ListChanges,
-            action => DispatcherQueue.TryEnqueue(() => action())
+            action => DispatcherQueue.TryEnqueue(() => action()),
+            EqualityComparer<ChatSummary[]>.Create(
+                (left, right) => left.AsSpan().SequenceEqual(right)
+            )
         );
-        history.Changed += RefreshHistory;
+        history.Changed += QueueHistoryRefresh;
         RefreshHistory();
+        if (OperatingSystem.IsWindowsVersionAtLeast(10, 0, 19041))
+            settings.AnimationsEnabledChanged += AnimationsEnabledChanged;
         Composer.TextCompositionStarted += (_, _) => composing = true;
         Composer.TextCompositionEnded += (_, _) => composing = false;
         Transcript.ContainerContentChanging += (_, args) =>
@@ -92,21 +89,25 @@ public sealed partial class ChatView : UserControl, IAsyncDisposable
         };
         model.Messages.CollectionChanged += (_, change) =>
         {
-            if (model == current && !disposed)
-            {
-                if (
-                    sendMotion is { Destination: null, HasStarted: false } motion
-                    && change.NewItems is not null
-                )
-                    foreach (MessageRow row in change.NewItems)
-                        if (row.IsOutgoing)
-                        {
-                            motion.Destination = row;
-                            break;
-                        }
-                QueueScroll();
-                RefreshHistory();
-            }
+            if (model != current || disposed)
+                return;
+            if (sendMotion is { Destination: null, HasStarted: false } motion)
+                motion.Destination = change
+                    .NewItems?.OfType<MessageRow>()
+                    .FirstOrDefault(row => row.IsOutgoing);
+            QueueScroll();
+            if (restoringPosition || change.NewItems is null)
+                return;
+            foreach (MessageRow row in change.NewItems)
+                if (!row.IsOutgoing)
+                    FrameworkElementAutomationPeer
+                        .CreatePeerForElement(Transcript)
+                        ?.RaiseNotificationEvent(
+                            AutomationNotificationKind.Other,
+                            AutomationNotificationProcessing.CurrentThenMostRecent,
+                            $"{row.Author}: {row.Text}",
+                            "IncomingMessage"
+                        );
         };
         return model;
     }
@@ -130,55 +131,6 @@ public sealed partial class ChatView : UserControl, IAsyncDisposable
         QueueScroll();
     }
 
-    private void RefreshHistory()
-    {
-        if (disposed)
-            return;
-        updatingHistory = true;
-        try
-        {
-            var rows = history
-                .Value.Where(row =>
-                    row.Title.Contains(Search.Text, StringComparison.CurrentCultureIgnoreCase)
-                )
-                .ToArray();
-            for (var i = 0; i < rows.Length; i++)
-            {
-                var existing = Summaries.FirstOrDefault(row => row.Id == rows[i].Id);
-                if (existing is null)
-                    Summaries.Insert(i, new(rows[i], Preview(rows[i].Id)));
-                else
-                {
-                    var index = Summaries.IndexOf(existing);
-                    if (index != i)
-                        Summaries.Move(index, i);
-                    existing.Update(rows[i], Preview(rows[i].Id));
-                }
-            }
-            while (Summaries.Count > rows.Length)
-                Summaries.RemoveAt(Summaries.Count - 1);
-            History.SelectedItem = Summaries.FirstOrDefault(row => row.Id == current.Id);
-            HistoryEmpty.Text =
-                Search.Text.Length == 0 ? HistoryEmptyLabel : L10n.ConversationSearchEmpty();
-            HistoryEmpty.Visibility =
-                Summaries.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
-            ConversationTitle.Text =
-                history.Value.FirstOrDefault(row => row.Id == current.Id).Title
-                ?? NewConversationLabel;
-        }
-        finally
-        {
-            updatingHistory = false;
-        }
-    }
-
-    private string Preview(string id) =>
-        conversations
-            .FirstOrDefault(model => model.Id == id)
-            ?.Messages.LastOrDefault()
-            ?.Text.ReplaceLineEndings(" ")
-        ?? "";
-
     private void UpdatePresentation()
     {
         EmptyState.Visibility = current.IsEmpty ? Visibility.Visible : Visibility.Collapsed;
@@ -198,7 +150,7 @@ public sealed partial class ChatView : UserControl, IAsyncDisposable
         if (
             settings.AnimationsEnabled
             && ComposerCard.IsLoaded
-            && Descendant<ScrollViewer>(Composer) is { ScrollableHeight: <= 1 }
+            && Composer.FindDescendant<ScrollViewer>() is { ScrollableHeight: <= 1 }
         )
         {
             ComposerCard.UpdateLayout();
@@ -210,9 +162,7 @@ public sealed partial class ChatView : UserControl, IAsyncDisposable
                 motion =>
                 {
                     if (sendMotion == motion)
-                    {
                         sendMotion = null;
-                    }
                     model.ReleaseReplies(
                         motion.Completed && model == current && settings.AnimationsEnabled
                     );
@@ -220,15 +170,14 @@ public sealed partial class ChatView : UserControl, IAsyncDisposable
             );
         }
         model.FollowLatest = true;
+        Composer.Focus(FocusState.Programmatic);
         await model.SendAsync();
         if (disposed || model != current)
             return;
         if (model.HasError)
             CancelSendMotion();
         history.RefreshNow();
-        RefreshHistory();
         QueueScroll();
-        Composer.Focus(FocusState.Programmatic);
     }
 
     private void NewChat(XamlUICommand sender, ExecuteRequestedEventArgs args)
@@ -356,269 +305,21 @@ public sealed partial class ChatView : UserControl, IAsyncDisposable
             false
         );
 
-    private static T? Descendant<T>(DependencyObject parent)
-        where T : DependencyObject
+    private void AnimationsEnabledChanged(
+        UISettings sender,
+        UISettingsAnimationsEnabledChangedEventArgs args
+    )
     {
-        for (var i = 0; i < VisualTreeHelper.GetChildrenCount(parent); i++)
+        DispatcherQueue.TryEnqueue(() =>
         {
-            var child = VisualTreeHelper.GetChild(parent, i);
-            if (child is T match)
-                return match;
-            if (Descendant<T>(child) is { } nested)
-                return nested;
-        }
-        return null;
-    }
-
-    private void TranscriptLoaded(object sender, RoutedEventArgs args)
-    {
-        if (transcriptScroll is not null)
-            return;
-        transcriptScroll = Descendant<ScrollViewer>(Transcript);
-        if (transcriptScroll is null)
-            return;
-        transcriptScroll.ViewChanged += (_, change) =>
-        {
-            if (disposed)
+            if (disposed || settings.AnimationsEnabled)
                 return;
-            UpdateScrollAffordances();
-            if (restoringPosition)
-            {
-                if (change.IsIntermediate)
-                    return;
-                if (realizingReadingAnchor)
-                {
-                    realizingReadingAnchor = false;
-                    RestoreReadingPosition();
-                }
-                else if (
-                    restoringOffset is { } offset
-                    && Math.Abs(transcriptScroll.VerticalOffset - offset) < 1
-                )
-                {
-                    restoringPosition = false;
-                    restoringOffset = null;
-                }
-                return;
-            }
-            if (scrollPending)
-                return;
-            var movedDuringSend =
-                sendMotion is { HasStarted: true }
-                && Math.Abs(transcriptScroll.VerticalOffset - motionScrollOffset) > 1;
-            if (change.IsIntermediate && !movedDuringSend)
-                return;
-            // Record the user's position before cancellation releases replies and
-            // queues another layout pass. That pass must respect the new position.
-            current.FollowLatest =
-                transcriptScroll.ScrollableHeight - transcriptScroll.VerticalOffset < 48;
-            SaveReadingPosition();
-            UpdateScrollMode();
-            UpdateScrollAffordances();
-            if (movedDuringSend)
-                CancelSendMotion();
-        };
-        QueueScroll();
-    }
-
-    private void TranscriptSizeChanged(object sender, SizeChangedEventArgs args)
-    {
-        if (
-            args.PreviousSize.Width != args.NewSize.Width
-            || (
-                args.PreviousSize.Height != args.NewSize.Height
-                && sendMotion is { HasStarted: true }
-            )
-        )
             CancelSendMotion();
-        if (IsLoaded)
-            QueueScroll();
-    }
-
-    private void ComposerAreaSizeChanged(object sender, SizeChangedEventArgs args)
-    {
-        if (args.PreviousSize.Height == args.NewSize.Height)
-            return;
-        if (sendMotion is { HasStarted: true })
-            CancelSendMotion();
-        // A scrolling footer keeps the final message above the floating editor.
-        // The viewport itself extends behind it, including its native scrollbar.
-        TranscriptEndSpace.Height = args.NewSize.Height + TranscriptClearance;
-        BottomScrollFade.Height = args.NewSize.Height + 40;
-        LatestArea.Margin = new(24, 0, 24, args.NewSize.Height + 8);
-        EmptyState.Margin = new(24, 24, 24, args.NewSize.Height + 24);
-        if (IsLoaded)
-            QueueScroll();
-    }
-
-    private void QueueScroll()
-    {
-        if (disposed)
-            return;
-        scrollDirty = true;
-        if (scrollPending)
-            return;
-        scrollPending = DispatcherQueue.TryEnqueue(
-            Microsoft.UI.Dispatching.DispatcherQueuePriority.Normal,
-            () =>
-            {
-                scrollDirty = false;
-                if (disposed || transcriptScroll is null)
-                {
-                    scrollPending = false;
-                    return;
-                }
-                Transcript.UpdateLayout();
-                UpdateScrollMode();
-                if (current.FollowLatest && current.Messages.LastOrDefault() is { } last)
-                {
-                    Transcript.ScrollIntoView(last);
-                    Transcript.UpdateLayout();
-                }
-                if (current.FollowLatest)
-                    transcriptScroll.ChangeView(
-                        null,
-                        transcriptScroll.ScrollableHeight,
-                        null,
-                        true
-                    );
-                else if (restoringPosition && !realizingReadingAnchor && restoringOffset is null)
-                    RestoreReadingPosition();
-                if (current.FollowLatest)
-                    restoringPosition = false;
-                if (sendMotion is { HasStarted: false, Destination: { } destination })
-                {
-                    // Scroll/layout first, then resolve the exact item. The nested
-                    // UserControl has its own namescope, so use its named elements.
-                    if (
-                        Transcript.ContainerFromItem(destination) is { } container
-                        && Descendant<MessageBubble>(container) is { } bubble
-                        && bubble.Message == destination
-                        && bubble.CanAnimateWithin(Transcript, ComposerArea.ActualHeight)
-                    )
-                    {
-                        motionScrollOffset = transcriptScroll.VerticalOffset;
-                        _ = sendMotion.StartAsync(bubble);
-                    }
-                    else
-                        CancelSendMotion();
-                }
-                scrollPending = false;
-                UpdateScrollAffordances();
-                if (scrollDirty)
-                    QueueScroll();
-            }
-        );
-    }
-
-    private void UpdateScrollAffordances()
-    {
-        var hasMessages = !current.IsEmpty;
-        TopScrollFade.Visibility =
-            hasMessages && transcriptScroll?.VerticalOffset > 1
-                ? Visibility.Visible
-                : Visibility.Collapsed;
-        BottomScrollFade.Visibility =
-            hasMessages
-            && transcriptScroll is { } scroll
-            && scroll.ScrollableHeight - scroll.VerticalOffset > TranscriptClearance
-                ? Visibility.Visible
-                : Visibility.Collapsed;
-        LatestSurface.Visibility =
-            hasMessages && !current.FollowLatest ? Visibility.Visible : Visibility.Collapsed;
-    }
-
-    private global::Windows.UI.Color TransparentColor(global::Windows.UI.Color color)
-    {
-        // Preserve the theme RGB while fading alpha; Transparent interpolates white.
-        color.A = 0;
-        return color;
-    }
-
-    private void RestoreReadingPosition()
-    {
-        if (disposed || transcriptScroll is null)
-            return;
-        double offset = 0;
-        if (!current.ReadingAtTop && current.ReadingAnchor is { } anchor)
-        {
-            if (Transcript.ContainerFromItem(anchor) is not FrameworkElement container)
-            {
-                // Native realization must finish before applying the local offset.
-                realizingReadingAnchor = true;
-                Transcript.ScrollIntoView(anchor, ScrollIntoViewAlignment.Leading);
-                return;
-            }
-            offset =
-                container
-                    .TransformToVisual((UIElement)transcriptScroll.Content)
-                    .TransformPoint(new())
-                    .Y - current.ReadingAnchorOffset;
-        }
-        restoringOffset = Math.Clamp(offset, 0, transcriptScroll.ScrollableHeight);
-        if (!transcriptScroll.ChangeView(null, restoringOffset, null, true))
-        {
-            restoringPosition = false;
-            restoringOffset = null;
-        }
-    }
-
-    private void UpdateScrollMode()
-    {
-        if (Transcript.ItemsPanelRoot is ItemsStackPanel panel)
-            panel.ItemsUpdatingScrollMode = current.FollowLatest
-                ? ItemsUpdatingScrollMode.KeepLastItemInView
-                : ItemsUpdatingScrollMode.KeepItemsInView;
-    }
-
-    private void SaveReadingPosition()
-    {
-        if (
-            restoringPosition
-            || current.FollowLatest
-            || transcriptScroll is null
-            || Transcript.ItemsPanelRoot is not ItemsStackPanel panel
-        )
-            return;
-        current.ReadingAtTop = transcriptScroll.VerticalOffset < 1;
-        if (current.ReadingAtTop)
-        {
-            current.ReadingAnchor = null;
-            current.ReadingAnchorOffset = 0;
-            return;
-        }
-        // Virtualized rows have estimated heights. Preserve the first visible
-        // message and its local offset instead of a global estimated scroll offset.
-        var first = panel
-            .Children.OfType<FrameworkElement>()
-            .Select(element =>
-                (
-                    Element: element,
-                    Top: element
-                        .TransformToVisual((UIElement)transcriptScroll.Content)
-                        .TransformPoint(new())
-                        .Y - transcriptScroll.VerticalOffset
-                )
-            )
-            .Where(item =>
-                item.Top + item.Element.ActualHeight > 0 && item.Top < Transcript.ActualHeight
-            )
-            .OrderBy(item => item.Top)
-            .FirstOrDefault();
-        if (
-            first.Element is not null
-            && Transcript.ItemFromContainer(first.Element) is MessageRow row
-        )
-        {
-            current.ReadingAnchor = row;
-            current.ReadingAnchorOffset = first.Top;
-        }
-    }
-
-    private void ScrollToLatest(object sender, RoutedEventArgs args)
-    {
-        current.FollowLatest = true;
-        QueueScroll();
+            foreach (var model in conversations)
+                model.StopReplyMotion();
+            foreach (var bubble in Transcript.FindDescendants().OfType<MessageBubble>())
+                bubble.StopReveal();
+        });
     }
 
     private void CancelSendMotion()
@@ -632,6 +333,8 @@ public sealed partial class ChatView : UserControl, IAsyncDisposable
         if (disposed)
             return;
         disposed = true;
+        if (OperatingSystem.IsWindowsVersionAtLeast(10, 0, 19041))
+            settings.AnimationsEnabledChanged -= AnimationsEnabledChanged;
         CancelSendMotion();
         history.Dispose();
         await Task.WhenAll(conversations.Select(model => model.DisposeAsync().AsTask()));

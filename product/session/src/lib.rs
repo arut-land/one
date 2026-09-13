@@ -20,7 +20,7 @@ pub mod chat {
 pub use arut_watch::Subscription;
 pub mod scopes;
 use arut_feature_chat::ports::IdSource;
-use arut_feature_chat::{ChatClient, ChatClients, ChatStarted};
+use arut_feature_chat::{ChatClient, ChatClients, ChatObserver};
 use arut_protocol::capability::v1::CapabilityServiceClient;
 use arut_protocol::capability::v1::{GetCapabilitiesRequest, ServiceCapability};
 use arut_protocol::capability_manifest::capability_client;
@@ -59,6 +59,8 @@ struct SessionChats {
 pub struct ChatSummary {
     pub id: String,
     pub title: String,
+    /// Latest accepted message, normalized and bounded for navigation lists.
+    pub preview: String,
 }
 
 /// Registration is weak: an established chat holds the callback that registered it.
@@ -74,12 +76,13 @@ impl RegisterChat {
         })
     }
 }
-impl ChatStarted for RegisterChat {
+impl ChatObserver for RegisterChat {
     fn chat_started(&self, chat_id: String, chat: ChatClient) {
         let Some(established) = self.established.upgrade() else {
             return;
         };
         let title = title_of(&chat);
+        let preview = preview_of(&chat);
         established
             .lock()
             .expect("chat registry poisoned")
@@ -91,25 +94,43 @@ impl ChatStarted for RegisterChat {
                     ChatSummary {
                         id: chat_id.clone(),
                         title,
+                        preview,
                     },
                 );
             }
         });
     }
+
+    fn chat_updated(&self, chat_id: &str, chat: &ChatClient) {
+        let preview = preview_of(chat);
+        self.conversations.update(|summaries| {
+            if let Some(summary) = summaries.iter_mut().find(|summary| summary.id == chat_id) {
+                summary.preview = preview;
+            }
+        });
+    }
+}
+
+fn single_line(text: &str, limit: usize) -> String {
+    text.split_whitespace()
+        .flat_map(|word| std::iter::once(' ').chain(word.chars()))
+        .skip(1)
+        .take(limit)
+        .collect()
 }
 
 fn title_of(chat: &ChatClient) -> String {
     chat.read_first_message(|message| {
         message
-            .map(|message| {
-                message
-                    .text
-                    .split_whitespace()
-                    .flat_map(|word| std::iter::once(' ').chain(word.chars()))
-                    .skip(1)
-                    .take(48)
-                    .collect()
-            })
+            .map(|message| single_line(&message.text, 48))
+            .unwrap_or_default()
+    })
+}
+
+fn preview_of(chat: &ChatClient) -> String {
+    chat.read_last_message(|message| {
+        message
+            .map(|message| single_line(&message.text, 160))
             .unwrap_or_default()
     })
 }
@@ -208,7 +229,8 @@ impl ProductSession {
                 conversation.messages,
                 self.chats.ids.clone(),
                 self.chats.workspace.conversation_cancellation(),
-            );
+            )
+            .with_observer(registration.clone());
             registration.chat_started(conversation.id, client);
         }
         Ok(())
@@ -441,6 +463,77 @@ mod tests {
             titles(&session),
             ["second conversation", "first conversation"]
         );
+    }
+
+    #[test]
+    fn summaries_follow_messages_without_surface_observers() {
+        let session = session();
+        let first = session.chat();
+        let first_id = block_on(first.send("first\n  conversation".into()))
+            .id
+            .unwrap();
+        block_on(session.new_chat().send("second".into()));
+        let changes = session.conversations_changes();
+        let revision = block_on(changes.changed()).unwrap();
+
+        block_on(first.send("latest\n  message".into()));
+
+        let summaries = session.chat_summaries();
+        let first = summaries
+            .iter()
+            .find(|summary| summary.id == first_id)
+            .unwrap();
+        assert_eq!(first.title, "first conversation");
+        assert_eq!(first.preview, "You said: latest message");
+        assert_eq!(summaries[0].preview, "You said: second");
+        assert!(block_on(changes.changed()).unwrap() > revision);
+    }
+
+    #[test]
+    fn initialized_unvisited_chats_have_previews_and_keep_updating() {
+        let existing = session();
+        let id = block_on(existing.chat().send("stored\n message".into()))
+            .id
+            .unwrap();
+        let restored = ProductSession::new(
+            ChatClients {
+                chat: existing.chats.workspace.chat_service(),
+                composer: existing.chats.workspace.composer_service(),
+            },
+            existing.capability_service.clone(),
+            SessionScope {
+                node_id: "local".into(),
+                workspace_id: "default".into(),
+                pending_scope_id: "restored".into(),
+            },
+            Arc::new(TestIds),
+        );
+        block_on(restored.initialize()).unwrap();
+
+        assert_eq!(
+            restored.chat_summaries()[0].preview,
+            "You said: stored message"
+        );
+        let chat = restored.select_chat(&id).unwrap();
+        block_on(chat.send("updated".into()));
+        assert_eq!(restored.chat_summaries()[0].preview, "You said: updated");
+
+        let registry = Arc::downgrade(&restored.chats.established);
+        drop(restored);
+        assert!(
+            registry.upgrade().is_none(),
+            "a retained chat must not retain its session"
+        );
+    }
+
+    #[test]
+    fn preview_text_is_bounded_without_splitting_unicode_scalars() {
+        let session = session();
+        block_on(session.chat().send("🦀".repeat(200)));
+        let summary = session.chat_summaries().remove(0);
+        assert_eq!(summary.title.chars().count(), 48);
+        assert_eq!(summary.preview.chars().count(), 160);
+        assert!(summary.preview.starts_with("You said: 🦀"));
     }
 
     #[test]

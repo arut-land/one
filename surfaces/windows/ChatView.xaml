@@ -124,7 +124,7 @@
       <TitleBar.Content>
         <TextBlock
           x:Name="ConversationTitle"
-          Style="{ThemeResource CaptionTextBlockStyle}"
+          Style="{StaticResource CaptionTextBlockStyle}"
           IsHitTestVisible="False"
           TextWrapping="NoWrap"
           VerticalAlignment="Center"
@@ -168,11 +168,10 @@
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
-            <RowDefinition Height="Auto" />
           </Grid.RowDefinitions>
           <TextBlock
             Text="{x:Bind HistoryLabel}"
-            Style="{ThemeResource SubtitleTextBlockStyle}"
+            Style="{StaticResource SubtitleTextBlockStyle}"
             Margin="12,0"
           />
           <AutoSuggestBox
@@ -230,7 +229,7 @@
                       <TextBlock
                         Text="{x:Bind Preview, Mode=OneWay}"
                         TextWrapping="NoWrap"
-                        Style="{ThemeResource CaptionTextBlockStyle}"
+                        Style="{StaticResource CaptionTextBlockStyle}"
                         Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                         TextTrimming="CharacterEllipsis"
                       />
@@ -248,18 +247,6 @@
               IsHitTestVisible="False"
             />
           </Grid>
-          <StackPanel Grid.Row="3" Orientation="Horizontal" Spacing="8" Margin="12,4">
-            <FontIcon
-              Glyph="&#xE770;"
-              FontSize="12"
-              Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-            />
-            <TextBlock
-              Text="{x:Bind SessionLabel}"
-              Style="{ThemeResource CaptionTextBlockStyle}"
-              Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-            />
-          </StackPanel>
         </Grid>
       </SplitView.Pane>
       <Border
@@ -390,7 +377,7 @@
               </Border>
               <TextBlock
                 Text="{x:Bind EmptyTitle}"
-                Style="{ThemeResource TitleTextBlockStyle}"
+                Style="{StaticResource TitleTextBlockStyle}"
                 TextWrapping="Wrap"
                 TextAlignment="Center"
               />
@@ -508,7 +495,7 @@
                   Padding="0"
                   CornerRadius="18"
                   VerticalAlignment="Bottom"
-                  Style="{ThemeResource AccentButtonStyle}"
+                  Style="{StaticResource AccentButtonStyle}"
                   IsEnabled="{Binding CanSend}"
                   Click="Send"
                   AutomationProperties.Name="{x:Bind SendLabel}"

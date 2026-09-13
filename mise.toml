@@ -188,8 +188,8 @@ depends = ["build:windows"]
 run = "dotnet run --project surfaces/windows/Arut.Windows.csproj --no-build"
 
 [tasks."check:windows"]
-description = "Build WinUI and run .NET binding tests"
-depends = ["build:windows", "check:observers-dotnet", "check:format-dotnet"]
+description = "Build WinUI, test .NET observation, and check formatting and shared contracts"
+depends = ["build:windows", "check:observers-dotnet", "check:format-dotnet", "check:bindings", "check:i18n", "check:layers"]
 
 [tasks."tools:dotnet"]
 extends = "dotnet"

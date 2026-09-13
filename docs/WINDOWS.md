@@ -21,7 +21,7 @@ The app targets Windows x64, .NET 10, and Windows App SDK 2.4. It runs unpackage
 mise run check:windows
 ```
 
-This builds the generated bindings and WinUI app, checks formatting, and runs the .NET observation tests. `mise run check:observers-dotnet` runs those tests without WinUI or a native library. Close the running app before rebuilding so Windows can replace its DLLs.
+This builds the generated bindings and WinUI app, checks formatting, and runs the .NET observation tests. It also checks generated string resources, binding facades, and shared architectural boundaries. `mise run check:observers-dotnet` runs those tests without WinUI or a native library. Close the running app before rebuilding so Windows can replace its DLLs.
 
 ## Formatting
 

@@ -80,7 +80,7 @@ internal sealed class SendMotion : IDisposable
 
     public async Task StartAsync(MessageBubble target)
     {
-        if (disposed)
+        if (disposed || HasStarted)
             return;
         HasStarted = true;
         transition = new()
@@ -136,10 +136,16 @@ internal sealed class SendMotion : IDisposable
         expiry.Stop();
         expiry.Tick -= Expired;
         lifetime.Cancel();
-        transition?.Reset(toInitialState: false);
-        lifetime.Dispose();
-        layer.Children.Remove(source);
-        Destination = null;
-        finished(this);
+        try
+        {
+            transition?.Reset(toInitialState: false);
+        }
+        finally
+        {
+            lifetime.Dispose();
+            layer.Children.Remove(source);
+            Destination = null;
+            finished(this);
+        }
     }
 }
