@@ -97,7 +97,7 @@ impl ComposerClient {
     }
 
     pub(crate) async fn replace_unlocked(&self, text: String) -> ComposerState {
-        if self.state().status == ComposerStatus::Connecting {
+        if self.state.read(|state| state.status) == ComposerStatus::Connecting {
             let initialized = self.initialize_unlocked().await;
             if initialized.error.is_some() {
                 return initialized;
@@ -237,7 +237,8 @@ impl ComposerClient {
         let epoch = self.authority_epoch.load(Ordering::Acquire);
         if kind != SnapshotKind::Promotion
             && (snapshot.authority_epoch < epoch
-                || (snapshot.authority_epoch == epoch && snapshot.revision < self.state().revision))
+                || (snapshot.authority_epoch == epoch
+                    && snapshot.revision < self.state.read(|state| state.revision)))
         {
             return self.state();
         }

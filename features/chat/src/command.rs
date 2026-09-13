@@ -74,7 +74,7 @@ impl ChatCommand {
                 message(
                     next + 2,
                     ChatRole::Assistant,
-                    crate::domain::respond(&text),
+                    format!("You said: {text}"),
                     accepted_at_ms,
                 ),
             ],

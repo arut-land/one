@@ -1,7 +1,7 @@
 //! Chat commands, transcript projections, composer drafts, and services.
 //! `compose` requires the IdSource, Persist, Drafts, and Clock capability bundle.
 //!
-//! Accepted mock exchanges append message and operation lifecycle facts atomically,
+//! Commands format mock replies and append message and operation lifecycle facts atomically,
 //! stamped by the Clock port inside the authority transaction.
 //! UUIDv7 command IDs deduplicate retries; projections replay on restart. Clients
 //! keep immutable messages keyed by ID and expose exclusive range reads separately
@@ -16,7 +16,6 @@ mod authority;
 mod client;
 mod command;
 pub mod composer;
-mod domain;
 pub mod errors;
 mod facts;
 pub mod ports;

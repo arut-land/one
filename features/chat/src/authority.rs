@@ -22,9 +22,12 @@ impl ChatAuthority {
         ids: Arc<R>,
     ) -> Result<Self, StorageError> {
         let authority = Authority::<ChatCommand>::open(log, 1)?;
-        for (scope, revision) in &authority.projection().consumed_drafts {
-            composer.recover_pending(scope, *revision)?;
-        }
+        authority.read_projection(|projection| {
+            projection
+                .consumed_drafts
+                .iter()
+                .try_for_each(|(scope, revision)| composer.recover_pending(scope, *revision))
+        })?;
         Ok(Self {
             clock: ids.clone(),
             ids,
@@ -133,11 +136,11 @@ impl ChatAuthority {
                 &chat_id,
                 || self.commit(command),
             )? {
-                Ok((fact, _)) => fact,
-                Err(PromoteError::RevisionConflict(_)) => {
+                Ok(fact) => fact,
+                Err(PromoteError::RevisionConflict) => {
                     return Err(CommitError::PendingRevisionConflict);
                 }
-                Err(PromoteError::TextMismatch(_)) => return Err(CommitError::PendingTextMismatch),
+                Err(PromoteError::TextMismatch) => return Err(CommitError::PendingTextMismatch),
             }
         };
         let snapshot = self
