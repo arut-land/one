@@ -18,8 +18,14 @@ internal static class L10n
     /// <summary><c>action-collapse-sidebar</c></summary>
     public static string ActionCollapseSidebar() => Resources.GetString("action_collapse_sidebar");
 
+    /// <summary><c>action-copy-message</c></summary>
+    public static string ActionCopyMessage() => Resources.GetString("action_copy_message");
+
     /// <summary><c>action-expand-sidebar</c></summary>
     public static string ActionExpandSidebar() => Resources.GetString("action_expand_sidebar");
+
+    /// <summary><c>action-focus-composer</c></summary>
+    public static string ActionFocusComposer() => Resources.GetString("action_focus_composer");
 
     /// <summary><c>action-new-chat</c></summary>
     public static string ActionNewChat() => Resources.GetString("action_new_chat");
@@ -33,8 +39,20 @@ internal static class L10n
     /// <summary><c>action-new-conversation-shortcut</c></summary>
     public static string ActionNewConversationShortcut(string shortcut) => string.Format(Resources.GetString("action_new_conversation_shortcut"), shortcut);
 
+    /// <summary><c>action-next-conversation</c></summary>
+    public static string ActionNextConversation() => Resources.GetString("action_next_conversation");
+
     /// <summary><c>action-open-history</c></summary>
     public static string ActionOpenHistory() => Resources.GetString("action_open_history");
+
+    /// <summary><c>action-previous-conversation</c></summary>
+    public static string ActionPreviousConversation() => Resources.GetString("action_previous_conversation");
+
+    /// <summary><c>action-scroll-to-latest</c></summary>
+    public static string ActionScrollToLatest() => Resources.GetString("action_scroll_to_latest");
+
+    /// <summary><c>action-search-conversations</c></summary>
+    public static string ActionSearchConversations() => Resources.GetString("action_search_conversations");
 
     /// <summary><c>action-send</c></summary>
     public static string ActionSend() => Resources.GetString("action_send");
@@ -135,11 +153,17 @@ internal static class L10n
     /// <summary><c>composer-error-snapshot-missing</c></summary>
     public static string ComposerErrorSnapshotMissing() => Resources.GetString("composer_error_snapshot_missing");
 
+    /// <summary><c>composer-hint-command-return</c></summary>
+    public static string ComposerHintCommandReturn() => Resources.GetString("composer_hint_command_return");
+
     /// <summary><c>composer-hint-enter</c></summary>
     public static string ComposerHintEnter() => Resources.GetString("composer_hint_enter");
 
     /// <summary><c>composer-hint-multiline</c></summary>
     public static string ComposerHintMultiline() => Resources.GetString("composer_hint_multiline");
+
+    /// <summary><c>composer-hint-option-return</c></summary>
+    public static string ComposerHintOptionReturn() => Resources.GetString("composer_hint_option_return");
 
     /// <summary><c>composer-placeholder</c></summary>
     public static string ComposerPlaceholder() => Resources.GetString("composer_placeholder");
@@ -149,6 +173,12 @@ internal static class L10n
 
     /// <summary><c>composer-status-failed</c></summary>
     public static string ComposerStatusFailed() => Resources.GetString("composer_status_failed");
+
+    /// <summary><c>conversation-search-empty</c></summary>
+    public static string ConversationSearchEmpty() => Resources.GetString("conversation_search_empty");
+
+    /// <summary><c>conversation-search-placeholder</c></summary>
+    public static string ConversationSearchPlaceholder() => Resources.GetString("conversation_search_placeholder");
 
     /// <summary><c>label-chat-history</c></summary>
     public static string LabelChatHistory() => Resources.GetString("label_chat_history");

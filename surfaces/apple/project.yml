@@ -1,6 +1,8 @@
 name: Arut
 options:
   bundleIdPrefix: dev.arut
+settings:
+  GENERATE_INFOPLIST_FILE: YES
 packages:
   ArutBindings:
     path: ../../bindings/swift
@@ -30,3 +32,22 @@ targets:
     settings:
       PRODUCT_BUNDLE_IDENTIFIER: dev.arut.ios
       TARGETED_DEVICE_FAMILY: "1,2"
+  ArutMacUITests:
+    type: bundle.ui-testing
+    platform: macOS
+    deploymentTarget: "14.0"
+    sources:
+      - tests
+    dependencies:
+      - target: ArutMac
+    settings:
+      PRODUCT_BUNDLE_IDENTIFIER: dev.arut.macos.uitests
+schemes:
+  ArutMac:
+    build:
+      targets:
+        ArutMac: all
+        ArutMacUITests: [test]
+    test:
+      targets:
+        - ArutMacUITests

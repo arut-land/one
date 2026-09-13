@@ -1,4 +1,5 @@
 import ArutBindings
+import ArutSurface
 import SwiftUI
 
 @main
@@ -10,6 +11,14 @@ struct ArutApp: App {
     var body: some Scene {
         WindowGroup {
             ContentView(session: session)
+                #if os(macOS)
+                .frame(minWidth: 740, minHeight: 520)
+                #endif
         }
+        #if os(macOS)
+        .defaultSize(width: 1080, height: 740)
+        .windowToolbarStyle(.unified)
+        .commands { ConversationCommands() }
+        #endif
     }
 }

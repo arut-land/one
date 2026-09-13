@@ -23,6 +23,17 @@
         }
       }
     },
+    "action-copy-message": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Copy message"
+          }
+        }
+      }
+    },
     "action-expand-sidebar": {
       "extractionState": "manual",
       "localizations": {
@@ -30,6 +41,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Expand sidebar"
+          }
+        }
+      }
+    },
+    "action-focus-composer": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Focus message field"
           }
         }
       }
@@ -78,6 +100,17 @@
         }
       }
     },
+    "action-next-conversation": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Next conversation"
+          }
+        }
+      }
+    },
     "action-open-history": {
       "extractionState": "manual",
       "localizations": {
@@ -85,6 +118,39 @@
           "stringUnit": {
             "state": "translated",
             "value": "Open chat history"
+          }
+        }
+      }
+    },
+    "action-previous-conversation": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Previous conversation"
+          }
+        }
+      }
+    },
+    "action-scroll-to-latest": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Scroll to latest message"
+          }
+        }
+      }
+    },
+    "action-search-conversations": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Search conversations"
           }
         }
       }
@@ -452,6 +518,17 @@
         }
       }
     },
+    "composer-hint-command-return": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "⌘ Return to send"
+          }
+        }
+      }
+    },
     "composer-hint-enter": {
       "extractionState": "manual",
       "localizations": {
@@ -470,6 +547,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Enter to send, Shift+Enter for a new line"
+          }
+        }
+      }
+    },
+    "composer-hint-option-return": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Return to send, Option+Return for a new line"
           }
         }
       }
@@ -503,6 +591,28 @@
           "stringUnit": {
             "state": "translated",
             "value": "Could not synchronize the draft. Check the node connection."
+          }
+        }
+      }
+    },
+    "conversation-search-empty": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No matching conversations"
+          }
+        }
+      }
+    },
+    "conversation-search-placeholder": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Search conversations"
           }
         }
       }

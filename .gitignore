@@ -12,6 +12,8 @@ node_modules/
 
 # Apple
 DerivedData/
+/surfaces/apple/Arut.xcodeproj/
+.build/
 /.DS_Store
 
 # .NET

@@ -15,5 +15,6 @@ let package = Package(
             name: "ArutBindings",
             dependencies: [.product(name: "ArutFfi", package: "ArutFfi")]
         ),
+        .testTarget(name: "ArutBindingsTests", dependencies: ["ArutBindings"]),
     ]
 )

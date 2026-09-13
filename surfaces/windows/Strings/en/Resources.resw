@@ -19,8 +19,14 @@
   <data name="action_collapse_sidebar" xml:space="preserve">
     <value>Collapse sidebar</value>
   </data>
+  <data name="action_copy_message" xml:space="preserve">
+    <value>Copy message</value>
+  </data>
   <data name="action_expand_sidebar" xml:space="preserve">
     <value>Expand sidebar</value>
+  </data>
+  <data name="action_focus_composer" xml:space="preserve">
+    <value>Focus message field</value>
   </data>
   <data name="action_new_chat" xml:space="preserve">
     <value>New chat</value>
@@ -34,8 +40,20 @@
   <data name="action_new_conversation_shortcut" xml:space="preserve">
     <value>New conversation ({0})</value>
   </data>
+  <data name="action_next_conversation" xml:space="preserve">
+    <value>Next conversation</value>
+  </data>
   <data name="action_open_history" xml:space="preserve">
     <value>Open chat history</value>
+  </data>
+  <data name="action_previous_conversation" xml:space="preserve">
+    <value>Previous conversation</value>
+  </data>
+  <data name="action_scroll_to_latest" xml:space="preserve">
+    <value>Scroll to latest message</value>
+  </data>
+  <data name="action_search_conversations" xml:space="preserve">
+    <value>Search conversations</value>
   </data>
   <data name="action_send" xml:space="preserve">
     <value>Send</value>
@@ -136,11 +154,17 @@
   <data name="composer_error_snapshot_missing" xml:space="preserve">
     <value>Your node didn't send back the draft, so it may be out of sync.</value>
   </data>
+  <data name="composer_hint_command_return" xml:space="preserve">
+    <value>⌘ Return to send</value>
+  </data>
   <data name="composer_hint_enter" xml:space="preserve">
     <value>Enter to send</value>
   </data>
   <data name="composer_hint_multiline" xml:space="preserve">
     <value>Enter to send, Shift+Enter for a new line</value>
+  </data>
+  <data name="composer_hint_option_return" xml:space="preserve">
+    <value>Return to send, Option+Return for a new line</value>
   </data>
   <data name="composer_placeholder" xml:space="preserve">
     <value>Message Arut</value>
@@ -150,6 +174,12 @@
   </data>
   <data name="composer_status_failed" xml:space="preserve">
     <value>Could not synchronize the draft. Check the node connection.</value>
+  </data>
+  <data name="conversation_search_empty" xml:space="preserve">
+    <value>No matching conversations</value>
+  </data>
+  <data name="conversation_search_placeholder" xml:space="preserve">
+    <value>Search conversations</value>
   </data>
   <data name="label_chat_history" xml:space="preserve">
     <value>Chat history</value>

@@ -4,10 +4,13 @@ import SwiftUI
 public struct ChatView: View {
     private let session: ProductSessionHandle
     @State private var selected: ChatHandle
+    @State private var selection: String? = "pending"
+    @State private var search = ""
+    @State private var focusRequest = 0
+    @State private var readingPositions: [String: UInt64] = [:]
+    @FocusState private var searchFocused: Bool
     @StateObject private var conversations: ObservableState<[ChatSummary]>
 
-    // The session is constructed by the composition root and handed to this
-    // view (ADR 0007); it is never created here.
     public init(session: ProductSessionHandle) {
         self.session = session
         _selected = State(initialValue: session.chat())
@@ -17,62 +20,110 @@ public struct ChatView: View {
             return { subscription.cancel() }
         }))
     }
+
+    private var matches: [ChatSummary] {
+        let query = search.trimmingCharacters(in: .whitespacesAndNewlines)
+        return conversations.state.filter { query.isEmpty || $0.title.localizedStandardContains(query) }
+    }
+
+    private func newConversation() {
+        search = ""
+        selected = session.newChat()
+        selection = "pending"
+        focusRequest += 1
+    }
+
+    private func moveConversation(_ direction: Int) {
+        guard !matches.isEmpty else { return }
+        let current = matches.firstIndex { $0.id == selection }
+        let next = current.map { min(max($0 + direction, 0), matches.count - 1) } ?? 0
+        selection = matches[next].id
+    }
+
+    private var readingPosition: Binding<UInt64?> {
+        let id = selected.state().id ?? "pending"
+        return Binding(get: { readingPositions[id] }, set: { readingPositions[id] = $0 })
+    }
+
     public var body: some View {
         NavigationSplitView {
-            List {
-                Button(L10n.actionNewConversation()) { selected = session.newChat() }
-                ForEach(conversations.state, id: \.id) { summary in
-                    Button(summary.title) { if let chat = session.selectChat(id: summary.id) { selected = chat } }
+            List(selection: $selection) {
+                Section {
+                    Label(L10n.actionNewConversation(), systemImage: "square.and.pencil")
+                        .tag("pending")
+                }
+                Section(L10n.labelRecent()) {
+                    if matches.isEmpty {
+                        Text(search.isEmpty ? L10n.chatHistoryEmpty() : L10n.conversationSearchEmpty())
+                            .foregroundStyle(.secondary)
+                    }
+                    ForEach(matches, id: \.id) { summary in
+                        Label {
+                            Text(summary.title)
+                                .lineLimit(2)
+                        } icon: {
+                            Image(systemName: "bubble.left")
+                                .foregroundStyle(.secondary)
+                        }
+                        .tag(summary.id)
+                        .help(summary.title)
+                    }
                 }
             }
+            .listStyle(.sidebar)
+            .searchable(text: $search, placement: .sidebar, prompt: L10n.conversationSearchPlaceholder())
+            .modifier(ConversationSearchFocus(focus: $searchFocused))
+            .navigationTitle(L10n.appName())
+            .navigationSplitViewColumnWidth(min: 210, ideal: 250, max: 340)
+            .safeAreaInset(edge: .bottom) {
+                Label(L10n.chatLocalSession(), systemImage: "desktopcomputer")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding()
+            }
         } detail: {
-            ConversationView(chat: selected).id(ObjectIdentifier(selected))
+            ConversationView(chat: selected, focusRequest: focusRequest, readingPosition: readingPosition)
+                .id(ObjectIdentifier(selected))
+                .navigationTitle(conversations.state.first(where: { $0.id == selected.state().id })?.title ?? L10n.actionNewConversation())
+                .toolbar {
+                    ToolbarItem(placement: .primaryAction) {
+                        Button(action: newConversation) {
+                            Label(L10n.actionNewConversation(), systemImage: "square.and.pencil")
+                        }
+                        .help(L10n.actionNewConversationShortcut(shortcut: "⌘N"))
+                    }
+                }
         }
+        .navigationSplitViewStyle(.balanced)
+        .onChange(of: selection) { id in
+            if id == "pending", selected.state().id != nil {
+                newConversation()
+            } else if let id, id != selected.state().id, let chat = session.selectChat(id: id) {
+                selected = chat
+            }
+        }
+        .onChange(of: conversations.state.map(\.id)) { _ in
+            selection = selected.state().id ?? "pending"
+        }
+        #if os(macOS)
+        .focusedSceneValue(\.newConversation, newConversation)
+        .focusedSceneValue(\.focusComposer, { focusRequest += 1 })
+        .focusedSceneValue(\.searchConversations, { searchFocused = true })
+        .focusedSceneValue(\.moveConversation, moveConversation)
+        #endif
     }
 }
 
-private struct ConversationView: View {
-    let chat: ChatHandle
-    let composer: ComposerHandle
-    @StateObject private var transcript: ObservableState<(state: ChatState, messages: [ChatMessage])>
-    @StateObject private var draft: ObservableState<ComposerState>
-    init(chat: ChatHandle) {
-        self.chat = chat
-        let composer = chat.composer()
-        self.composer = composer
-        var messages: [ChatMessage] = []
-        _transcript = StateObject(wrappedValue: ObservableState(read: {
-            messages += chat.messagesAfter(afterId: messages.last?.id ?? 0)
-            return (state: chat.state(), messages: messages)
-        }, subscribe: { callback in
-            let subscription = chat.chatChanges(callback: callback)
-            return { subscription.cancel() }
-        }))
-        _draft = StateObject(wrappedValue: ObservableState(read: composer.state, subscribe: { callback in
-            let subscription = composer.composerChanges(callback: callback)
-            return { subscription.cancel() }
-        }))
-    }
-    // The chat's own error takes precedence; a composer-only failure (a
-    // background resync, say) still needs to reach the person even when the
-    // chat itself is idle.
-    private var errorMessage: String? {
-        if let error = transcript.state.state.error { return describe(error) }
-        if let error = draft.state.error { return describe(error) }
-        return nil
-    }
-    var body: some View {
-        VStack {
-            List(transcript.state.messages, id: \.id) { Text($0.text) }
-            if let errorMessage {
-                Label(errorMessage, systemImage: "exclamationmark.triangle")
-                    .foregroundStyle(.red)
-                    .font(.footnote)
-            }
-            HStack {
-                TextField(L10n.composerPlaceholder(), text: Binding(get: { draft.state.text }, set: { text in Task { _ = await composer.replace(text: text) } }))
-                Button(L10n.actionSend()) { Task { _ = await chat.send(text: composer.state().text) } }
-            }
-        }.task { _ = await composer.initialize(); await composer.follow() }
+private struct ConversationSearchFocus: ViewModifier {
+    var focus: FocusState<Bool>.Binding
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if #available(macOS 15.0, iOS 18.0, *) {
+            content.searchFocused(focus)
+        } else {
+            content
+        }
     }
 }

@@ -117,7 +117,7 @@ jobs:
   macos:
     name: macOS
     runs-on: macos-latest
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: github.event_name == 'pull_request' || startsWith(github.ref, 'refs/tags/v')
     steps:
       - uses: actions/checkout@v4
 
@@ -128,11 +128,5 @@ jobs:
       - name: Install toolchains
         run: mise install
 
-      - name: Generate Xcode project
-        run: mise run surface:apple-project
-
-      # Speculative: this step has not been run on this machine (no Xcode
-      # available here), so the scheme name and build settings are inferred
-      # from surfaces/apple/project.yml rather than verified end to end.
-      - name: Build ArutMac
-        run: xcodebuild -project surfaces/apple/Arut.xcodeproj -scheme ArutMac build CODE_SIGNING_ALLOWED=NO
+      - name: Build ArutMac and test Swift bindings
+        run: mise run check:apple
