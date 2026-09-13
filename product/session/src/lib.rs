@@ -1,4 +1,4 @@
-//! Sessions compose typed node and workspace scopes with chat service clients.
+//! Sessions own typed scopes over feature clients supplied by composition roots.
 //!
 //! The session owns pending and established chats, conversation summaries, and
 //! availability. A weak registration callback avoids a cycle between the registry
@@ -11,19 +11,20 @@ pub use failure::SessionError;
 pub mod chat {
     pub use arut_feature_chat::composer::{ComposerClient, ComposerState, ComposerStatus};
     pub use arut_feature_chat::errors::{ChatError, ComposerError, NodeFailure};
-    pub use arut_feature_chat::{ChatClient, ChatMessage, ChatRole, ChatState, ChatStatus};
+    pub use arut_feature_chat::{
+        ChatClient, ChatClients, ChatMessage, ChatRole, ChatState, ChatStatus,
+    };
 }
 /// Observation contract shared by the session and its feature handles.
 pub use arut_watch::Subscription;
 pub mod scopes;
 use arut_feature_chat::ports::IdSource;
-use arut_feature_chat::{ChatClient, ChatStarted};
-use arut_protocol::capability::v1::{
-    CapabilityServiceClient, GetCapabilitiesRequest, ServiceCapability,
-};
-use arut_protocol::chat::composer::v1::{COMPOSER_SERVICE_DESCRIPTOR, ComposerServiceClient};
-use arut_protocol::chat::v1::ChatServiceClient;
-use arut_rpc::{Cancellation, Request, RpcChannel};
+use arut_feature_chat::{ChatClient, ChatClients, ChatStarted};
+pub use arut_protocol::capability::v1::CapabilityServiceClient;
+use arut_protocol::capability::v1::{GetCapabilitiesRequest, ServiceCapability};
+pub use arut_protocol::capability_manifest::capability_client;
+use arut_protocol::chat::composer::v1::COMPOSER_SERVICE_DESCRIPTOR;
+use arut_rpc::{Cancellation, Request};
 use arut_watch::Watch;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, Weak};
@@ -38,7 +39,7 @@ pub struct SessionScope {
 pub struct ProductSession {
     workspace: Arc<scopes::Workspace<scopes::Services>>,
     chats: SessionChats,
-    capability_service: Option<CapabilityServiceClient>,
+    capability_service: CapabilityServiceClient,
     availability: Watch<SessionAvailability>,
 }
 
@@ -185,26 +186,13 @@ impl ProductSession {
         Ok(())
     }
 
-    pub fn remote(
-        channel: Arc<dyn RpcChannel>,
-        scope: SessionScope,
-        ids: Arc<dyn IdSource>,
-    ) -> Self {
-        Self::new(
-            ChatServiceClient::remote(channel.clone()),
-            ComposerServiceClient::remote(channel.clone()),
-            scope,
-            ids,
-        )
-        .with_capability_service(CapabilityServiceClient::remote(channel))
-    }
-
     pub fn new(
-        chat: ChatServiceClient,
-        composer: ComposerServiceClient,
+        clients: ChatClients,
+        capabilities: CapabilityServiceClient,
         scope: SessionScope,
         ids: Arc<dyn IdSource>,
     ) -> Self {
+        let ChatClients { chat, composer } = clients;
         let pending_scope_id = scope.pending_scope_id;
         assert!(
             !pending_scope_id.is_empty(),
@@ -234,9 +222,9 @@ impl ProductSession {
         Self {
             workspace,
             chats,
-            capability_service: None,
+            capability_service: capabilities,
             availability: Watch::new(SessionAvailability {
-                composer: FeatureAvailability::Available,
+                composer: FeatureAvailability::Unknown,
             }),
         }
     }
@@ -249,14 +237,6 @@ impl ProductSession {
     /// Cancelling it stops the whole session's outstanding work.
     pub fn cancellation(&self) -> &Cancellation {
         self.workspace.node().cancellation()
-    }
-
-    pub fn with_capability_service(mut self, service: CapabilityServiceClient) -> Self {
-        self.capability_service = Some(service);
-        self.availability.set(SessionAvailability {
-            composer: FeatureAvailability::Unknown,
-        });
-        self
     }
 
     pub fn chat(&self) -> ChatClient {
@@ -297,9 +277,7 @@ impl ProductSession {
     }
 
     pub async fn refresh_capabilities(&self) -> SessionAvailability {
-        let Some(service) = &self.capability_service else {
-            return self.availability.get();
-        };
+        let service = &self.capability_service;
         let composer = match service
             .get_capabilities(Request::new(GetCapabilitiesRequest {}))
             .await
@@ -341,22 +319,14 @@ mod tests {
     use futures_executor::block_on;
 
     fn session() -> ProductSession {
-        use arut_feature_chat::{
-            ChatServiceImpl,
-            composer::{ComposerAuthority, ComposerServiceImpl},
-        };
         let ids: Arc<dyn IdSource> = Arc::new(NativeIds);
-        let authority = Arc::new(ComposerAuthority::default());
+        let feature = arut_feature_chat::compose(Arc::new(
+            arut_feature_chat::test_support::MemoryPorts::new(ids.clone()),
+        ))
+        .unwrap();
         ProductSession::new(
-            ChatServiceClient::direct(Arc::new(
-                ChatServiceImpl::new(
-                    authority.clone(),
-                    Arc::new(arut_storage::MemoryLog::default()),
-                    ids.clone(),
-                )
-                .unwrap(),
-            )),
-            ComposerServiceClient::direct(Arc::new(ComposerServiceImpl::new(authority))),
+            feature.clients(),
+            capability_client(feature.registrations()),
             SessionScope {
                 node_id: "local".into(),
                 workspace_id: "default".into(),

@@ -1,9 +1,18 @@
+//! Daemon composition root: choose native ports, list features, serve their routers.
 use std::{env, path::PathBuf};
 #[tokio::main]
 async fn main() {
     let data = PathBuf::from(env::var("ARUT_DATA").unwrap_or_else(|_| "arut-chat.pb".into()));
-    let app = arut_runtime_local::app_with(data, arut_runtime_local::NodeStorage::from_env())
-        .expect("initialize local node");
+    let runtime = std::sync::Arc::new(
+        arut_runtime_local::LocalRuntime::open(
+            data,
+            arut_runtime_local::NodeStorage::from_env(),
+            "chat",
+        )
+        .expect("initialize local ports"),
+    );
+    let chat = arut_feature_chat::compose(runtime.clone()).expect("compose chat");
+    let app = arut_runtime_local::Node::serve(runtime, chat.routers()).expect("assemble node");
     #[cfg(unix)]
     if let Ok(socket) = env::var("ARUT_SOCKET") {
         use std::os::unix::fs::PermissionsExt;

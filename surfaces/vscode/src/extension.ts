@@ -12,7 +12,7 @@ export async function activate(context: ExtensionContext): Promise<void> {
       await workspace.fs.readFile(Uri.joinPath(context.extensionUri, "locales", ...file.split("/"))),
     ),
   });
-  const session = await createSession("vscode-demo", { newId: uuidV7 });
+  const session = await createSession("vscode-demo", { newId: uuidV7, now: () => BigInt(Date.now()) });
   context.subscriptions.push(session);
   registerChat(context, session);
 }

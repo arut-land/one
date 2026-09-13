@@ -1,4 +1,4 @@
-//! Parent-owned node and workspace construction with compile-time chat capabilities.
+//! Parent-owned node and workspace construction with supplied chat clients.
 //!
 //! Cancellation follows the ownership tree. Workspaces create child cancellation
 //! scopes for conversations; cancelling a parent cancels its descendants.
@@ -7,8 +7,8 @@ use arut_protocol::chat::{composer::v1::ComposerServiceClient, v1::ChatServiceCl
 use arut_rpc::Cancellation;
 use std::sync::Arc;
 
-/// The capability bundle chat needs. A node without it has no chat scopes.
-pub trait ChatRuntime: Send + Sync + 'static {
+/// Client access for product scopes; feature runtime ports live in the feature.
+pub trait ChatServices: Send + Sync + 'static {
     fn chat_service(&self) -> ChatServiceClient;
     fn composer_service(&self) -> ComposerServiceClient;
 }
@@ -18,7 +18,7 @@ pub(crate) struct Services {
     pub(crate) chat: ChatServiceClient,
     pub(crate) composer: ComposerServiceClient,
 }
-impl ChatRuntime for Services {
+impl ChatServices for Services {
     fn chat_service(&self) -> ChatServiceClient {
         self.chat.clone()
     }
@@ -75,7 +75,7 @@ impl<R> Workspace<R> {
         Arc::new(self.cancellation.child())
     }
 }
-impl<R: ChatRuntime> Workspace<R> {
+impl<R: ChatServices> Workspace<R> {
     pub fn chat_service(&self) -> ChatServiceClient {
         self.node.runtime.chat_service()
     }

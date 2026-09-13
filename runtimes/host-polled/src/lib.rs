@@ -1,9 +1,9 @@
-//! A thread-local [`arut_rpc::LocalSpawner`] over `async_executor::LocalExecutor`.
+//! Memory ports with injected IDs and clock, plus a thread-local [`arut_rpc::LocalSpawner`] over `async_executor::LocalExecutor`.
 //!
 //! Hosts drive ready tasks through bounded [`HostPolledSpawner::tick`] calls or
 //! run a future through [`HostPolledSpawner::block_on`]. No threads, reactor, or
 //! wasm-bindgen are required. This port implementation is tested independently;
-//! composition roots do not yet connect it to browser or Android host callbacks.
+//! composition roots own the feature list and hand its clients to product sessions.
 
 use arut_rpc::LocalSpawner;
 use async_executor::LocalExecutor;
@@ -143,6 +143,6 @@ mod ids;
 mod observation;
 mod session;
 #[cfg(not(target_arch = "wasm32"))]
-pub use ids::NativeIds;
+pub use ids::{NativeClock, NativeIds};
 pub use observation::observe;
-pub use session::{in_memory_session, native_session};
+pub use session::MemoryRuntime;

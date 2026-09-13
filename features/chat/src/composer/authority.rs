@@ -9,7 +9,7 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-pub struct ComposerAuthority {
+pub(crate) struct ComposerAuthority {
     inner: Mutex<HashMap<ComposerScope, ScopeState>>,
     store: Arc<dyn KeyValue>,
 }

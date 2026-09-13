@@ -1,3 +1,4 @@
+//! Derives capability clients and routers from composed service registrations.
 use crate::capability::v1::{
     CapabilityManifest, CapabilityService, GetCapabilitiesRequest, GetCapabilitiesResponse,
     MethodCapability, RpcStreamingKind, ServiceCapability,
@@ -73,6 +74,25 @@ fn streaming_kind(kind: StreamingKind) -> RpcStreamingKind {
         StreamingKind::Client => RpcStreamingKind::Client,
         StreamingKind::Bidirectional => RpcStreamingKind::Bidirectional,
     }
+}
+
+/// Direct manifest client for a root's composed feature list.
+pub fn capability_client(
+    registrations: impl IntoIterator<Item = ServiceRegistration>,
+) -> crate::capability::v1::CapabilityServiceClient {
+    crate::capability::v1::CapabilityServiceClient::direct(std::sync::Arc::new(
+        CapabilityServiceImpl::new(registrations),
+    ))
+}
+
+/// Adds the manifest service after the root's feature routers have been registered.
+pub fn with_capabilities(
+    registry: arut_rpc::RpcRegistry,
+) -> Result<arut_rpc::RpcRegistry, arut_rpc::Status> {
+    let service = std::sync::Arc::new(CapabilityServiceImpl::new(registry.registrations()));
+    registry.register(std::sync::Arc::new(
+        crate::capability::v1::CapabilityServiceRouter::new(service),
+    ))
 }
 
 #[cfg(test)]

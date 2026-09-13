@@ -9,12 +9,20 @@ use arut_protocol::chat::composer::v1::{
 use arut_rpc::{Code, Request, Response, RpcFuture, RpcStream, Status};
 use std::sync::Arc;
 
-pub struct ComposerServiceImpl {
+pub(crate) struct ComposerServiceImpl {
     authority: Arc<ComposerAuthority>,
+    runtime: Option<Arc<dyn Send + Sync>>,
 }
 impl ComposerServiceImpl {
     pub fn new(authority: Arc<ComposerAuthority>) -> Self {
-        Self { authority }
+        Self {
+            authority,
+            runtime: None,
+        }
+    }
+    pub(crate) fn with_runtime(mut self, runtime: Arc<dyn Send + Sync>) -> Self {
+        self.runtime = Some(runtime);
+        self
     }
 }
 

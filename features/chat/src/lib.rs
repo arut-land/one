@@ -24,10 +24,18 @@ mod service;
 pub use client::{ChatClient, ChatStarted};
 pub use facts::ChatProjection;
 pub use projection::{ChatMessage, ChatRole, ChatState, ChatStatus};
-pub use service::ChatServiceImpl;
+#[cfg(test)]
+pub(crate) use service::ChatServiceImpl;
 
 mod compose;
 pub use compose::{ChatClients, ChatFeature, ComposeError, compose};
 pub use ports::ChatRuntime;
 #[cfg(any(test, feature = "test-support"))]
 pub mod test_support;
+
+#[cfg(test)]
+#[path = "tests/recovery.rs"]
+mod recovery_tests;
+#[cfg(test)]
+#[path = "tests/send.rs"]
+mod send_tests;

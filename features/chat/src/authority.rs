@@ -1,7 +1,9 @@
 //! Serializes chat acceptance, retry identity, and durable draft promotion.
 use crate::command::{ChatCommand, PendingDraft, Rejection};
 use crate::composer::{ComposerAuthority, ComposerScope, PromoteError};
-use crate::{facts::ChatProjection, ports::IdSource};
+#[cfg(test)]
+use crate::facts::ChatProjection;
+use crate::ports::IdSource;
 use arut_authority::{Authority, Outcome};
 use arut_protocol::chat::v1::ChatFact;
 use arut_storage::{FactLog, StorageError};
@@ -29,6 +31,7 @@ impl ChatAuthority {
             start_gate: Mutex::new(()),
         })
     }
+    #[cfg(test)]
     pub(crate) fn projection(&self) -> ChatProjection {
         self.authority.projection()
     }

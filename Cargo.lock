@@ -131,7 +131,6 @@ dependencies = [
  "arut-feature-chat",
  "arut-protocol",
  "arut-rpc",
- "arut-storage",
  "arut-watch",
  "boltffi",
  "futures-executor",
@@ -172,8 +171,6 @@ name = "arut-runtime-host-polled"
 version = "0.1.0"
 dependencies = [
  "arut-feature-chat",
- "arut-product-session",
- "arut-protocol",
  "arut-rpc",
  "arut-storage",
  "arut-watch",

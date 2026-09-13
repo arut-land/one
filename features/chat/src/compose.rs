@@ -44,9 +44,9 @@ pub fn compose<R: ChatRuntime>(runtime: Arc<R>) -> Result<ChatFeature, ComposeEr
     let chat = Arc::new(ChatServiceImpl::new(
         authority.clone(),
         runtime.log("chat")?,
-        runtime,
+        runtime.clone(),
     )?);
-    let composer = Arc::new(ComposerServiceImpl::new(authority));
+    let composer = Arc::new(ComposerServiceImpl::new(authority).with_runtime(runtime));
     Ok(ChatFeature {
         clients: ChatClients {
             chat: ChatServiceClient::direct(chat.clone()),
@@ -57,6 +57,16 @@ pub fn compose<R: ChatRuntime>(runtime: Arc<R>) -> Result<ChatFeature, ComposeEr
             Arc::new(ComposerServiceRouter::new(composer)),
         ],
     })
+}
+
+impl ChatClients {
+    /// Bind this feature's generated clients to the route chosen by the root.
+    pub fn remote(channel: Arc<dyn arut_rpc::RpcChannel>) -> Self {
+        Self {
+            chat: ChatServiceClient::remote(channel.clone()),
+            composer: ComposerServiceClient::remote(channel),
+        }
+    }
 }
 
 #[cfg(test)]
