@@ -1,3 +1,12 @@
+# Every tool this repository needs, pinned. Nothing here depends on a globally
+# installed tool. Platform toolchains that only some tasks need (dotnet, java,
+# gradle, xcodegen) are scoped to those tasks so they are not installed for
+# everyone. Machine-specific tuning goes in mise.local.toml (gitignored), for
+# example `[env] CARGO_BUILD_JOBS = "4"` on a memory-constrained laptop.
+
+[settings]
+lockfile = true
+
 [tools]
 rust = { version = "1.98.0", components = ["rustfmt", "clippy"], targets = ["wasm32-unknown-unknown"] }
 node = "26.8.2"
@@ -8,59 +17,24 @@ buf = "1.72.0"
 "cargo:cargo-machete" = "0.9.2"
 "cargo:cargo-deny" = "0.20.2"
 
-[tasks.install]
-description = "Generate the wasm bindings and install the JavaScript workspace"
-depends = ["ffi:wasm"]
-run = "pnpm install"
-
-[tasks.i18n]
-description = "Generate every surface's string resources from product/i18n/locales"
-run = "cargo run --quiet -p arut-i18n-gen"
-
-[tasks.check]
-description = "Check Rust, protocols, and TypeScript"
-depends = ["install"]
-run = [
-  "cargo fmt --all --check",
-  "cargo clippy --workspace --all-targets -- -D warnings",
-  "cargo nextest run --workspace",
-  "cargo test --doc --workspace",
-  "cargo machete",
-  "cargo check -p arut_ffi --target wasm32-unknown-unknown",
-  "cargo check -p arut-i18n --target wasm32-unknown-unknown",
-  "mise run check:wasm-graph",
-  "buf lint",
-  "buf breaking --against '.git#branch=master'",
-  "pnpm check",
-  # ADR 0022: the .ftl files are the source, so a generated resource that
-  # disagrees with them is a change nobody made on purpose.
-  "cargo run --quiet -p arut-i18n-gen -- --check",
-]
-
-[tasks.build]
-description = "Build the surfaces this machine can build"
-depends = ["install"]
-run = [
-  "cargo build -p arut-linux-gtk -p arut-runtime-local",
-  "pnpm build",
-]
-
-[tasks."protocol:breaking"]
-description = "Check protobuf changes for breakage against master"
-run = "buf breaking --against '.git#branch=master'"
+# ---------------------------------------------------------------------------
+# Generation. Each task declares its sources and outputs so mise skips it when
+# nothing changed; `mise run --force <task>` overrides.
 
 [tasks."ffi:wasm"]
 description = "Generate and package the wasm bindings"
 dir = "{{config_root}}/bindings/ffi"
+sources = ["boltffi.toml", "src/**/*.rs", "../../features/**/*.rs", "../../product/**/*.rs", "../../substrates/**/*.rs", "../../protocols/**/*", "../../Cargo.lock"]
+outputs = ["../generated/wasm/pkg/package.json"]
 run = "rm -rf ../generated/wasm && boltffi pack wasm --deny-skipped"
 
 [tasks."ffi:apple"]
-description = "Generate and package the Apple bindings"
+description = "Generate and package the Apple bindings (needs Xcode)"
 dir = "{{config_root}}/bindings/ffi"
 run = "rm -rf ../generated/apple && boltffi pack apple --deny-skipped"
 
 [tasks."ffi:android"]
-description = "Generate and package the Android bindings"
+description = "Generate and package the Android bindings (needs the NDK)"
 dir = "{{config_root}}/bindings/ffi"
 run = "rm -rf ../generated/android && boltffi pack android --deny-skipped"
 
@@ -72,17 +46,99 @@ run = "rm -rf ../generated/csharp && boltffi pack csharp --deny-skipped"
 [tasks."ffi:csharp".tools]
 dotnet = "10"
 
+[tasks.i18n]
+description = "Generate every surface's string resources and typed accessors from product/i18n/locales"
+sources = ["product/i18n/locales/**/*.ftl", "tools/i18n/src/**/*.rs"]
+outputs = ["product/i18n/src/generated.rs", "bindings/typescript/src/generated/l10n.ts"]
+run = "cargo run --quiet -p arut-i18n-gen"
+
+[tasks.install]
+description = "Install the JavaScript workspace (regenerates the wasm package first if stale)"
+depends = ["ffi:wasm"]
+sources = ["pnpm-lock.yaml", "pnpm-workspace.yaml", "package.json", "bindings/typescript/package.json", "surfaces/*/package.json", "bindings/generated/wasm/pkg/package.json"]
+outputs = ["node_modules/.modules.yaml"]
+run = "pnpm install"
+
+# ---------------------------------------------------------------------------
+# Checks. `check` fans out to the parts, which mise runs concurrently; CI and
+# humans call the same entry point.
+
+[tasks."check:rust"]
+description = "Format, lint, test, and prune the Rust workspace"
+run = [
+  "cargo fmt --all --check",
+  "cargo clippy --workspace --all-targets -- -D warnings",
+  "cargo nextest run --workspace",
+  "cargo test --doc --workspace",
+  "cargo machete",
+]
+
+[tasks."check:wasm"]
+description = "Build the isolated wasm core crates and reject wasm-bindgen in their graphs"
+run = '''
+set -eu
+cargo check -p arut_ffi -p arut-i18n --target wasm32-unknown-unknown
+graph="$(cargo tree -p arut_ffi -p arut-i18n --target wasm32-unknown-unknown --prefix none --format '{p}')"
+case "$graph" in
+  *"wasm-bindgen v"*) echo 'wasm-bindgen reached an isolated wasm graph' >&2; exit 1 ;;
+esac
+'''
+
+[tasks."check:proto"]
+description = "Lint Protobuf contracts and reject breaking changes against master"
+run = ["buf lint", "buf breaking --against '.git#branch=master'"]
+
+[tasks."check:i18n"]
+description = "Fail if a generated string resource disagrees with product/i18n/locales (ADR 0022)"
+run = "cargo run --quiet -p arut-i18n-gen -- --check"
+
+[tasks."check:deps"]
+description = "Licenses, advisories, and duplicate versions across the Rust graph"
+run = "cargo deny check"
+
+[tasks."check:ts"]
+description = "Type-check the TypeScript workspace"
+depends = ["install"]
+run = "pnpm check"
+
+[tasks.check]
+description = "Everything CI checks, in one command"
+depends = ["check:rust", "check:wasm", "check:proto", "check:i18n", "check:deps", "check:ts"]
+
+# ---------------------------------------------------------------------------
+# Build and run.
+
+[tasks.build]
+description = "Build what this machine can build: the Linux surface, the daemon, and the web surfaces"
+depends = ["install"]
+run = [
+  "cargo build -p arut-linux-gtk -p arut-runtime-local",
+  "pnpm build",
+]
+
+[tasks.fmt]
+description = "Format Rust and Protobuf sources in place"
+run = ["cargo fmt --all", "buf format -w"]
+
+[tasks.test]
+description = "Run the Rust tests"
+run = "cargo nextest run --workspace"
+
+[tasks."node:local"]
+description = "Run the local node daemon"
+run = "cargo run -p arut-runtime-local --bin arutd"
+
 [tasks."surface:linux"]
 description = "Run the Linux GTK4 surface"
 run = "cargo run -p arut-linux-gtk"
 
 [tasks."surface:web"]
-description = "Run the web surface"
+description = "Run the web surface with hot reload"
 depends = ["install"]
 run = "pnpm --filter @arut/surface-web dev"
 
 [tasks."surface:android"]
-description = "Build the Android surface"
+description = "Build the Android surface (needs the Android SDK and NDK)"
 depends = ["ffi:android"]
 run = "gradle -p surfaces/android assembleDebug"
 
@@ -91,21 +147,13 @@ java = "21"
 gradle = "8.9"
 
 [tasks."surface:apple-project"]
-description = "Generate the Apple Xcode project"
+description = "Generate the Apple Xcode project (needs Xcode)"
 depends = ["ffi:apple"]
 run = "xcodegen generate --spec surfaces/apple/project.yml"
 
 [tasks."surface:apple-project".tools]
 xcodegen = "2.46.0"
 
-[tasks."node:local"]
-description = "Run the local node daemon"
-run = "cargo run -p arut-runtime-local --bin arutd"
-
-[tasks."check:wasm-graph"]
-description = "Reject wasm-bindgen in the isolated core graphs"
-run = '''graph="$(cargo tree -p arut_ffi -p arut-i18n --target wasm32-unknown-unknown --prefix none --format '{p}')" || exit "$?"
-case "$graph" in
-  *"wasm-bindgen v"*) echo 'wasm-bindgen reached an isolated wasm graph'; exit 1 ;;
-esac
-'''
+[tasks.clean]
+description = "Remove every build output and generated package; the next task regenerates what it needs"
+run = "cargo clean && rm -rf bindings/generated node_modules surfaces/*/dist surfaces/*/node_modules bindings/typescript/node_modules"
