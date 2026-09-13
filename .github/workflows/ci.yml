@@ -10,23 +10,24 @@ jobs:
   linux:
     name: Linux
     runs-on: ubuntu-latest
+    # The Linux surface needs GTK >= 4.20 (ADR 0013, ADR 0020) for the portal
+    # color-scheme reading; Ubuntu 24.04 ships 4.14, so the job runs in a
+    # Fedora container, which tracks current GTK.
+    container: fedora:latest
     steps:
+      - name: Install GTK4 and build prerequisites
+        run: dnf install -y gtk4-devel gcc gcc-c++ pkgconf-pkg-config git curl tar gzip xz unzip which
+
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
       - name: Prepare protocol baseline
         run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
           if ! git show-ref --verify --quiet refs/heads/master; then
             git branch master origin/master
           fi
-
-      # The Linux surface links against GTK4 (ADR 0013), so its dev headers
-      # must be present before any cargo command touches the workspace.
-      - name: Install GTK4 development packages
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libgtk-4-dev build-essential pkg-config
 
       - uses: Swatinem/rust-cache@v2
 
@@ -64,9 +65,18 @@ jobs:
       - name: Install toolchains
         run: mise install
 
+      # BoltFFI packs four Android targets; mise only installs wasm32 for the
+      # workspace, so the Android targets are added here, and the NDK that
+      # setup-android installed is exported for the linker.
+      - name: Add Android Rust targets
+        run: rustup target add aarch64-linux-android armv7-linux-androideabi x86_64-linux-android i686-linux-android
+
       # This machine has no Android emulator or device, so only the build
       # itself is verified here, not the app running.
       - name: Build Android surface
+        env:
+          ANDROID_NDK_HOME: ${{ env.ANDROID_HOME }}/ndk/26.1.10909125
+          ANDROID_NDK_ROOT: ${{ env.ANDROID_HOME }}/ndk/26.1.10909125
         run: mise run surface:android
 
   macos:
