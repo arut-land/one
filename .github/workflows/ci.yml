@@ -106,12 +106,6 @@ jobs:
       - name: Install toolchains
         run: mise install
 
-      # BoltFFI packs four Android targets; mise only installs wasm32 for the
-      # workspace, so the Android targets are added here, and the NDK that
-      # setup-android installed is exported for the linker.
-      - name: Add Android Rust targets
-        run: rustup target add aarch64-linux-android armv7-linux-androideabi x86_64-linux-android i686-linux-android
-
       # This machine has no Android emulator or device, so only the build
       # itself is verified here, not the app running.
       - name: Build Android surface
@@ -133,9 +127,6 @@ jobs:
 
       - name: Install toolchains
         run: mise install
-
-      - name: Generate Apple bindings
-        run: mise run ffi:apple
 
       - name: Generate Xcode project
         run: mise run surface:apple-project

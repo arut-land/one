@@ -1,4 +1,5 @@
 //! Repository development commands for localization, layering, and binding facades.
+//! Localization resources and accessors share their platform key naming.
 //! Each subcommand supports `--check`; layers always checks without writing.
 mod bindings;
 mod i18n;
