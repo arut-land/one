@@ -81,7 +81,7 @@ anything -> a global service locator
 native view -> raw capability identifiers
 ```
 
-These rules are enforced, not just written: `check:layers` (in `tools/layers`) reads `cargo metadata` and fails the gate on any edge the lists above forbid, on Tokio's `rt` feature or `wasm-bindgen` anywhere in an isolated core graph, and on any crate that weakens the workspace `unsafe_code` deny. `check:bindings` (in `tools/bindings`) generates the per-language binding facades and fails if a native surface imports a generated FFI package directly. Four allowances are encoded in the tool with their reason and are the only ones: the chat feature depends on the i18n derive macro for compile-time message-key validation (ADR 0022); the IPC transport reuses the Connect framing crate rather than duplicating it; the FFI crate forwards to the host-polled runtime to preserve the session-factory ABI until host injection replaces it; and the FFI crate uses `futures-executor` in tests only. Adding a fifth is a decision, not a config change.
+These rules are enforced, not just written: `check:layers` (in `tools/layers`) reads `cargo metadata` and fails the gate on any edge the lists above forbid, on Tokio's `rt` feature or `wasm-bindgen` anywhere in an isolated core graph, and on any crate that weakens the workspace `unsafe_code` deny. It also rejects `ServiceImpl` identifiers in runtimes and product code, and `Authority` identifiers in runtimes, including aliases and macro bodies. These source checks include tests. `check:bindings` (in `tools/bindings`) generates the per-language binding facades and fails if a native surface imports a generated FFI package directly. Four allowances are encoded in the tool with their reason and are the only ones: the chat feature depends on the i18n derive macro for compile-time message-key validation (ADR 0022); the IPC transport reuses the Connect framing crate rather than duplicating it; the FFI factory root uses host-polled memory ports and observation while preserving its exported factories; and the FFI crate uses `futures-executor` in tests only. Adding a fifth is a decision, not a config change.
 
 ## Scopes
 
@@ -96,18 +96,27 @@ pub struct Operation                   { conversation_id: ConversationId, id: Op
 
 A child holds an `Arc` to its parent and is constructed by the parent. Configuration resolves through the chain global → node → workspace → conversation, which is where skills, connectors, and provider settings attach at the level a person expects.
 
-Feature dependencies are capability bundles:
+Feature dependencies are capability bundles. The chat feature defines these ports in `features/chat/src/ports.rs`:
 
 ```rust
-pub trait Clock { fn now(&self) -> Timestamp; }
-pub trait Persist<F> { type Log: FactLog<F>; fn log(&self) -> &Self::Log; }
-pub trait ModelProvider { fn respond(&self, req: ModelRequest) -> BoxStream<'_, Result<Token, ModelError>>; }
+pub trait IdSource: Send + Sync + 'static { fn new_id(&self) -> String; }
+pub trait Persist<F: Fact> {
+    fn log(&self, namespace: &str) -> Result<Arc<dyn FactLog<F>>, StorageError>;
+}
+pub trait Drafts { fn drafts(&self) -> Arc<dyn KeyValue>; }
+pub trait Clock { fn now(&self) -> u64; } // Unix milliseconds
 
-pub trait ChatRuntime: Clock + Persist<ChatFact> + ModelProvider + Send + Sync + 'static {}
-impl<R: Clock + Persist<ChatFact> + ModelProvider + Send + Sync + 'static> ChatRuntime for R {}
+pub trait ChatRuntime: IdSource + Persist<ChatFact> + Drafts + Clock + Send + Sync + 'static {}
+impl<R: IdSource + Persist<ChatFact> + Drafts + Clock + Send + Sync + 'static> ChatRuntime for R {}
 ```
 
-A runtime that lacks a port cannot construct that feature. That is the compile-time half of capabilities; the manifest is the runtime half.
+`compose(runtime: Arc<R>) -> Result<ChatFeature, ComposeError>` requires `R: ChatRuntime`. It builds the authority and services inside the feature. `ChatFeature::clients()` returns generated direct clients as `ChatClients`; `routers()` returns erased RPC services. Its registrations derive from those routers' descriptors, so the direct manifest and the remotely served manifest describe the same feature. Service implementation and authority types are crate-private. Clock is supplied today for deterministic tests; chat acceptance does not yet read it.
+
+`LocalRuntime` implements the ports with native IDs and time, directory or redb storage, and an exclusive node lease. Its generic `Node::serve` registers the root's feature routers and derives the capability service. The runtime's blocking RPC driver polls dispatch away from async workers and retains the runtime during active calls. The root assigns the legacy `node.redb` log to the `chat` namespace; additional namespaces use separate databases. `MemoryRuntime` supplies named memory logs, draft recovery, injected IDs, and an injected clock without a feature list or executor creation.
+
+Roots list features with `compose`, then hand clients to `ProductSession` or routers to `Node::serve`. The GTK root binds `ChatClients::remote` to its child-process route; its daemon owns the corresponding feature composition. FFI factories compose the same feature over memory ports for native and browser hosts. `ProductSession` receives feature clients and a required capability client, and only constructs product scopes. Its tests use the feature's `test-support` memory ports through the same `compose`; product-to-runtime development edges remain forbidden. The product scope's `ChatServices` trait is client access, separate from the feature's runtime port bundle.
+
+A runtime that lacks a port cannot compose the feature. That is the compile-time half of capabilities; the derived manifest is the runtime half. Adding a feature adds its composition to each hosting root's feature list and its clients to each consuming root. Runtime drivers and node assembly contain no per-service construction.
 
 ## Reactivity and scope handles
 
@@ -227,7 +236,7 @@ Sharing a conversation copies explicitly shareable history and grants nothing el
 
 ## Repository layout
 
-The current workspace has 20 Rust crates. The tree below names each crate beside its directory; planned implementations are added when they exist.
+The current workspace has 20 Rust crates. Features own their port bundles and `compose` functions. Runtimes implement ports and drive RPC and observation; deployable roots list features. Product sessions consume feature clients. The tree below names each crate beside its directory; planned implementations are added when they exist.
 
 ```text
 /
@@ -242,17 +251,17 @@ The current workspace has 20 Rust crates. The tree below names each crate beside
 |   |-- watch/                      arut-watch: revisioned cells and subscriptions
 |   |-- authority/                  arut-authority: commands, reducers, machines
 |   `-- storage/                    arut-storage: memory, directory, optional redb
-|-- features/chat/                  arut-feature-chat: transcript and composer
+|-- features/chat/                  arut-feature-chat: ports, compose, transcript and composer
 |-- product/
-|   |-- session/                    arut-product-session: scopes, registry, availability
+|   |-- session/                    arut-product-session: supplied clients, scopes, availability
 |   `-- i18n/                       arut-i18n: Fluent locales and Rust localization
 |       `-- macros/                 arut-i18n-macros: checked error message keys
 |-- transports/
 |   |-- connect-http/               arut-transport-connect-http: Connect framing
 |   `-- ipc/                        arut-transport-ipc: Unix sockets over Connect
 |-- runtimes/
-|   |-- local/                      arut-runtime-local: Tokio host and arutd
-|   |-- host-polled/                arut-runtime-host-polled: host-driven executor and in-memory composition
+|   |-- local/                      arut-runtime-local: native ports, generic node driver, arutd root
+|   |-- host-polled/                arut-runtime-host-polled: memory ports, host-polled spawner and observation
 |   `-- browser/                    TypeScript host time and entropy callbacks
 |-- bindings/
 |   |-- ffi/                        arut_ffi: explicit exports and watch bridge
@@ -266,7 +275,7 @@ The current workspace has 20 Rust crates. The tree below names each crate beside
     |-- bindings/                   arut-binding-exports: native public aliases and factory forwarding
     |-- conformance/                arut-conformance: shared port suites
     |-- i18n/                       arut-i18n-gen: native resources and typed accessors
-    `-- layers/                     arut-layers: dependency directions, isolated graphs, unsafe lints
+    `-- layers/                     arut-layers: dependency directions, composition ownership, isolated graphs, unsafe lints
 ```
 
 Do not add generic `shared`, `common`, `utils`, or `services` buckets. The existing `surfaces/apple/shared` is a Swift package shared by the Apple application targets. Rust crates document themselves with `//!` comments at their entry point. Repository prose lives in `CONTEXT.md`, `ARCHITECTURE.md`, and `docs/`; no `README.md` files are maintained.

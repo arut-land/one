@@ -11,8 +11,12 @@ async fn main() {
         )
         .expect("initialize local ports"),
     );
-    let chat = arut_feature_chat::compose(runtime.clone()).expect("compose chat");
-    let app = arut_runtime_local::Node::serve(runtime, chat.routers()).expect("assemble node");
+    let features = [arut_feature_chat::compose(runtime.clone())
+        .expect("compose chat")
+        .routers()
+        .collect::<Vec<_>>()];
+    let app = arut_runtime_local::Node::serve(runtime, features.into_iter().flatten())
+        .expect("assemble node");
     #[cfg(unix)]
     if let Ok(socket) = env::var("ARUT_SOCKET") {
         use std::os::unix::fs::PermissionsExt;
