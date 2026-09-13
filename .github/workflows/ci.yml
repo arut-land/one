@@ -30,7 +30,7 @@ jobs:
           if [[ -z "$ARUT_DIFF_BASE" || "$ARUT_DIFF_BASE" =~ ^0+$ ]]; then
             git ls-tree -r --name-only "$ARUT_DIFF_HEAD" > changed-paths
           else
-            git diff --name-only "$ARUT_DIFF_BASE" "$ARUT_DIFF_HEAD" > changed-paths
+            git diff --no-renames --name-only "$ARUT_DIFF_BASE" "$ARUT_DIFF_HEAD" > changed-paths
           fi
           android=false
           while IFS= read -r path; do
