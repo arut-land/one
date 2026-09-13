@@ -80,12 +80,6 @@ impl Theme {
             };
             // Subscribe before reading so an appearance change cannot fall between them.
             let changes = portal.receive_setting_changed().await;
-            if let Ok(layout) = portal
-                .read::<String>("org.gnome.desktop.wm.preferences", "button-layout")
-                .await
-            {
-                portal_settings.set_gtk_decoration_layout(Some(&layout));
-            }
             let accent = portal
                 .read::<(f64, f64, f64)>(APPEARANCE_NAMESPACE, ACCENT_COLOR_SCHEME_KEY)
                 .await
@@ -108,19 +102,6 @@ impl Theme {
             };
             futures_util::pin_mut!(changes);
             while let Some(change) = changes.next().await {
-                if change.namespace() == "org.gnome.desktop.wm.preferences"
-                    && change.key() == "button-layout"
-                {
-                    if let Some(layout) = change
-                        .value()
-                        .try_clone()
-                        .ok()
-                        .and_then(|v| String::try_from(v).ok())
-                    {
-                        portal_settings.set_gtk_decoration_layout(Some(&layout));
-                    }
-                    continue;
-                }
                 if change.namespace() != APPEARANCE_NAMESPACE {
                     continue;
                 }

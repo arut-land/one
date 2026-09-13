@@ -6,7 +6,14 @@
 //! plus gtk-rs's child waker source, with no timer or per-invalidation task.
 //! A keyed gio::ListModel fetches only transcript additions; GtkListView recycles
 //! message and conversation widgets. The sidebar filters its model with SearchEntry.
-//! A desktop-configured HeaderBar and ShortcutController expose gio actions.
+//! Decoration policy lives in decorations.rs. An unmapped ordinary GTK window
+//! reveals GTK's compositor preference without forcing client decorations.
+//! Server frames win; portal button-layout then gtk-decoration-layout determine
+//! client button positions. Tilers ignore compatibility GNOME portal defaults.
+//! Hyprland/Sway/river/niri and empty layouts use a real toolbar with no window
+//! controls. KDE uses compositor frames when offered and never gets an invented
+//! GNOME or Breeze layout. Only GNOME has a GNOME fallback. Settings and toplevel
+//! changes re-evaluate the policy. ShortcutController exposes gio actions.
 //! The split collapses below 720 logical pixels; the reading column caps at 880.
 //! Composer buffers and ordered command consumers survive conversation switches,
 //! as do transcript reading positions. Only navigation is persisted here, under
@@ -29,6 +36,8 @@ mod composer;
 mod conversation_model;
 #[cfg(target_os = "linux")]
 mod conversations;
+#[cfg(target_os = "linux")]
+mod decorations;
 #[cfg(target_os = "linux")]
 mod layout;
 #[cfg(target_os = "linux")]

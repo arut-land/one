@@ -31,6 +31,7 @@ pub struct Shell {
     error: String,
     _tasks: Tasks,
     _theme: crate::theme::Theme,
+    _decorations: Option<crate::decorations::Decorations>,
 }
 
 #[derive(Debug, Clone)]
@@ -65,6 +66,7 @@ impl Component for Shell {
                 set_spacing: 8,
                 #[name = "header"]
                 gtk::HeaderBar {
+                    #[name = "toolbar"]
                     pack_start = &gtk::Box {
                     set_spacing: 6,
                     gtk::Button {
@@ -136,7 +138,7 @@ impl Component for Shell {
         tasks.spawn(async move {
             let _ = input.send(Msg::Initialized(initialize.initialize().await));
         });
-        let model = Self {
+        let mut model = Self {
             session,
             navigation: Navigation::load(),
             conversations,
@@ -153,20 +155,18 @@ impl Component for Shell {
             error: String::new(),
             _tasks: tasks,
             _theme: crate::theme::Theme::install(&root),
+            _decorations: None,
         };
         let conversations = model.conversations.widget();
         let availability = model.availability.widget();
         let transcript = model.transcript.widget();
         let composer = model.composer.widget();
         let widgets = view_output!();
-        let header_parent = widgets
-            .header
-            .parent()
-            .unwrap()
-            .downcast::<gtk::Box>()
-            .unwrap();
-        header_parent.remove(&widgets.header);
-        root.set_titlebar(Some(&widgets.header));
+        model._decorations = Some(crate::decorations::Decorations::install(
+            &root,
+            &widgets.header,
+            &widgets.toolbar,
+        ));
         let body_parent = widgets
             .body
             .parent()
