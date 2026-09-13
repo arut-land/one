@@ -74,7 +74,7 @@ fn main() {
             std::process::exit(1);
         }
     };
-    eprintln!("arut-linux-gtk: arutd ready over IPC");
+    eprintln!("arut-linux: arutd ready over IPC");
     let session = Rc::new(ProductSession::new(
         arut_product_session::chat::ChatClients::remote(channel.clone()),
         arut_product_session::CapabilityServiceClient::remote(channel),

@@ -268,7 +268,7 @@ The current workspace has 20 Rust crates. Features own their port bundles and `c
 |   |-- swift/, kotlin/, dotnet/    native observation adapters
 |   `-- typescript/                 observations, wasm bootstrap, React hook
 |-- surfaces/
-|   |-- linux-gtk/                  arut-linux-gtk: relm4 composition root and views
+|   |-- linux/                  arut-linux: relm4 composition root and views
 |   |-- apple/, android/, windows/
 |   `-- web/, chromium/, vscode/
 `-- tools/
