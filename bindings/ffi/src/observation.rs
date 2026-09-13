@@ -45,7 +45,7 @@ impl ArcWake for Observer {
     }
 }
 
-pub fn observe(
+pub(super) fn observe(
     source: Arc<Subscription<u64>>,
     callback: impl Fn(u64) -> bool + Send + Sync + 'static,
 ) {

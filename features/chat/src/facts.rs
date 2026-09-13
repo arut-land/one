@@ -1,6 +1,6 @@
-use arut_protocol::chat::v1::{
-    ChatFact, ChatMessage, ChatRole, Conversation, OperationFact, OperationPhase,
-};
+//! Pure reduction of accepted chat facts into the durable projection.
+use arut_authority::Projection;
+use arut_protocol::chat::v1::{ChatFact, Conversation, OperationPhase};
 
 /// The durable projection of accepted chat facts; snapshots persist it as a row.
 #[derive(Clone, PartialEq, prost::Message)]
@@ -44,44 +44,16 @@ impl ChatProjection {
                 .map(|operation| operation.operation_id.clone()),
         );
     }
-    /// One command commits an atomic batch of transcript and operation facts.
-    pub fn exchange(
-        &self,
-        chat_id: String,
-        pending: Option<crate::command::PendingDraft>,
-        text: String,
-        operation_id: String,
-    ) -> ChatFact {
-        let next = self
-            .conversation(&chat_id)
-            .map_or(0, |conversation| conversation.messages.len()) as u64;
-        ChatFact {
-            chat_id,
-            pending_revision: pending.as_ref().map(|pending| pending.revision),
-            pending_scope_id: pending.map_or_else(String::new, |pending| pending.scope_id),
-            messages: vec![
-                message(next + 1, ChatRole::User, text.clone()),
-                message(next + 2, ChatRole::Assistant, crate::domain::respond(&text)),
-            ],
-            operations: vec![
-                operation(&operation_id, OperationPhase::Started),
-                operation(&operation_id, OperationPhase::Completed),
-            ],
-        }
-    }
 }
 
-fn message(id: u64, role: ChatRole, text: String) -> ChatMessage {
-    ChatMessage {
-        id,
-        role: role as i32,
-        text,
+impl Projection for ChatProjection {
+    type Fact = ChatFact;
+    type Scope = String;
+    fn reduce(&mut self, fact: &ChatFact) {
+        self.apply(fact);
     }
-}
-
-fn operation(id: &str, phase: OperationPhase) -> OperationFact {
-    OperationFact {
-        operation_id: id.to_owned(),
-        phase: phase as i32,
+    fn revision(&self, scope: &String) -> u64 {
+        self.conversation(scope)
+            .map_or(0, |conversation| conversation.messages.len() as u64 / 2)
     }
 }

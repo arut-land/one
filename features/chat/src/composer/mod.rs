@@ -1,6 +1,14 @@
-pub mod authority;
-pub mod product;
-pub mod service;
+//! Composer domain values and public scope contracts.
+mod authority;
+mod client;
+mod projection;
+mod service;
+mod wire;
+pub use authority::ComposerAuthority;
+pub(crate) use authority::PromoteError;
+pub use client::ComposerClient;
+pub use projection::{ComposerState, ComposerStatus};
+pub use service::ComposerServiceImpl;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum ComposerScope {

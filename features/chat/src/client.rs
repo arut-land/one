@@ -1,7 +1,9 @@
+//! Chat intent handling over the generated service contract.
+use crate::composer::ComposerClient;
 use crate::composer::ComposerScope;
-use crate::composer::product::ComposerClient;
 use crate::errors::{ChatError, ComposerError};
 use crate::ports::IdSource;
+use crate::projection::{ChatMessage, ChatRole, ChatState, ChatStatus};
 use arut_protocol::chat::composer::v1::ComposerServiceClient;
 use arut_protocol::chat::v1::{
     ChatMessage as WireMessage, ChatRole as WireRole, ChatServiceClient, SendMessageRequest,
@@ -14,41 +16,6 @@ use std::{
     ops::Bound::{Excluded, Unbounded},
     sync::{Arc, Mutex},
 };
-
-#[boltffi::data]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ChatRole {
-    User,
-    Assistant,
-}
-
-#[boltffi::data]
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ChatMessage {
-    pub id: u64,
-    pub role: ChatRole,
-    pub text: String,
-}
-
-#[boltffi::data]
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub enum ChatStatus {
-    #[default]
-    Idle,
-    Sending,
-    Failed,
-}
-
-#[boltffi::data]
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct ChatState {
-    pub id: Option<String>,
-    /// Immutable messages through this key are available from `messages_after`.
-    pub last_message_id: u64,
-    pub status: ChatStatus,
-    /// Set exactly when `status` is `Failed`; a surface reads the variant.
-    pub error: Option<ChatError>,
-}
 
 /// The session learns here that a pending chat became a conversation.
 pub trait ChatStarted: Send + Sync {

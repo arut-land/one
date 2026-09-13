@@ -1,4 +1,4 @@
-use arut_feature_chat::{composer::service::ComposerServiceImpl, service::ChatServiceImpl};
+use arut_feature_chat::{ChatServiceImpl, composer::ComposerServiceImpl};
 use arut_protocol::chat::{
     composer::v1::{
         ComposerService, GetComposerRequest, GetComposerResponse, ReplaceComposerRequest,

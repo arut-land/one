@@ -1,4 +1,4 @@
-use super::service::scope_from_wire;
+use super::wire::scope_from_wire;
 use super::{ComposerScope, ComposerSnapshot, ReplaceComposer, ReplaceOutcome};
 use arut_protocol::chat::composer::v1::ComposerSnapshot as WireSnapshot;
 use arut_storage::{KeyValue, MemoryStore, StorageError};
@@ -23,7 +23,7 @@ impl Default for ComposerAuthority {
     }
 }
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum PromoteError {
+pub(crate) enum PromoteError {
     RevisionConflict(ComposerSnapshot),
     TextMismatch(ComposerSnapshot),
 }
@@ -117,7 +117,11 @@ impl ComposerAuthority {
         })
     }
     /// Repairs recovery state using the revision consumed by a durable start fact.
-    pub fn recover_pending(&self, pending_id: &str, consumed: u64) -> Result<(), StorageError> {
+    pub(crate) fn recover_pending(
+        &self,
+        pending_id: &str,
+        consumed: u64,
+    ) -> Result<(), StorageError> {
         let scope = ComposerScope::pending(pending_id);
         let mut scopes = self.inner.lock().unwrap();
         if !scopes.contains_key(&scope) {
@@ -139,7 +143,7 @@ impl ComposerAuthority {
     }
 
     /// The committed fact records the consumed revision so cleanup can resume after a crash.
-    pub fn promote_pending<T, E: From<StorageError>>(
+    pub(crate) fn promote_pending<T, E: From<StorageError>>(
         &self,
         pending_id: &str,
         revision: u64,
@@ -213,9 +217,9 @@ mod tests {
         let service = super::super::service::ComposerServiceImpl::new(Arc::new(
             ComposerAuthority::with_store(Arc::new(FailedStore)),
         ));
-        let scope = Some(super::super::service::scope_to_wire(
-            &ComposerScope::pending("pending"),
-        ));
+        let scope = Some(super::super::wire::scope_to_wire(&ComposerScope::pending(
+            "pending",
+        )));
         assert_eq!(
             block_on(service.get_composer(Request::new(GetComposerRequest {
                 scope: scope.clone()

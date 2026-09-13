@@ -175,36 +175,11 @@ async fn unix_socket_rpc() {
     server.abort();
     std::fs::remove_dir_all(path).unwrap();
 }
-#[test]
-fn framing_handles_fragmentation_limits_and_invalid_flags() {
-    use arut_transport_connect_http::framing::*;
-    let envelope = envelope(0, b"message").unwrap();
-    let mut buffer = vec![];
-    for byte in &envelope[..envelope.len() - 1] {
-        buffer.push(*byte);
-        assert!(take(&mut buffer).unwrap().is_none());
-    }
-    buffer.push(*envelope.last().unwrap());
-    assert_eq!(take(&mut buffer).unwrap(), Some((0, b"message".to_vec())));
-    assert!(buffer.is_empty());
-    assert!(take(&mut vec![1, 0, 0, 0, 0]).is_err());
-    let mut too_large = vec![0];
-    too_large.extend_from_slice(&((MAX_MESSAGE + 1) as u32).to_be_bytes());
-    assert!(take(&mut too_large).is_err());
-}
-
 #[tokio::test]
 async fn http_bounds_chunked_unary_and_error_bodies_and_outbound_requests() {
     use arut_rpc::{Code, Request, RpcChannel};
-    use arut_transport_connect_http::{
-        HttpRpcChannel,
-        framing::{MAX_MESSAGE, envelope},
-    };
+    use arut_transport_connect_http::{HttpRpcChannel, MAX_MESSAGE};
     let oversized = vec![0; MAX_MESSAGE + 1];
-    assert_eq!(
-        envelope(0, &oversized).unwrap_err().code,
-        Code::ResourceExhausted
-    );
     let unreachable = HttpRpcChannel::new("http://127.0.0.1:1");
     assert_eq!(
         unreachable

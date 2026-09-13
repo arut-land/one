@@ -5,11 +5,11 @@
 //! even with `--deny-skipped`. Keep exports visible; share watch bridging through
 //! `ffi_subscription`. Chat metadata and keyed message ranges cross FFI separately.
 
-pub use arut_feature_chat::composer::product::{ComposerState, ComposerStatus};
+pub use arut_feature_chat::composer::{ComposerState, ComposerStatus};
 pub use arut_feature_chat::errors::{ChatError, ComposerError, NodeFailure};
 use arut_feature_chat::ports::IdSource;
-pub use arut_feature_chat::product::{ChatMessage, ChatRole, ChatState, ChatStatus};
-use arut_feature_chat::{composer::product::ComposerClient, product::ChatClient};
+use arut_feature_chat::{ChatClient, composer::ComposerClient};
+pub use arut_feature_chat::{ChatMessage, ChatRole, ChatState, ChatStatus};
 use arut_product_session::ProductSession;
 pub use arut_product_session::{ChatSummary, FeatureAvailability, SessionAvailability};
 mod observation;

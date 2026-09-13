@@ -1,7 +1,7 @@
 use arut_feature_chat::{
-    composer::{ComposerScope, ReplaceComposer, authority::ComposerAuthority},
+    ChatServiceImpl,
+    composer::{ComposerAuthority, ComposerScope, ReplaceComposer},
     ports::NativeIds,
-    service::ChatServiceImpl,
 };
 use arut_protocol::chat::v1::{ChatService, SendMessageRequest, StartChatRequest};
 use arut_rpc::Request;
