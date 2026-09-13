@@ -21,6 +21,12 @@ mise run --skip-deps surface:macos
 
 Regenerate `surfaces/apple/Arut.xcodeproj` with `mise run surface:apple-project` when changing `project.yml`. Generated Xcode projects, derived data, Swift build products, and FFI packages are ignored by Git. All new labels originate in `product/i18n/locales/en/ui.ftl`; `mise run i18n` regenerates the native resources and accessors for every platform.
 
+## Observation
+
+`ObservableState` uses one main-actor consumer task per subscription and an `AsyncStream` buffer containing at most one pending invalidation. A notification burst therefore does not allocate a task for every callback. The consumer reads the latest Rust projection; message retrieval still fetches every accepted message after the last key, so coalescing invalidations does not drop transcript entries or draft edits. Subscription replacement and deinitialization cancel the consumer and unsubscribe from Rust.
+
+The bridge subscribes before its final initial read, closing the gap where a state change could otherwise be missed. Tests cover a 10,000-notification burst, cancellation, subscription replacement, initial reads, and deinitialization. `ObservableObject` remains the SwiftUI adapter because the app supports macOS 13 and iOS 16. Using SwiftUI's newer Observation integration would require higher deployment targets or a second compatibility implementation.
+
 ## Interaction conventions
 
 - The sidebar uses native selection, search, resizing, and collapse behavior. Cmd-N opens the session's pending conversation. A pending draft remains shared until its first message establishes a conversation.
@@ -36,7 +42,7 @@ The reference is Messages on macOS Tahoe, alongside Apple's [Messages keyboard s
 
 ## Validation
 
-On macOS 26.6.2 with Xcode 26.6, the macOS app builds and launches, the Swift integration tests pass, and the binding export, architecture, and localization checks pass. The full `mise run check` gate passes, including 116 Rust tests, and `mise run build` passes.
+On macOS 26.6.2 with Xcode 26.6, the macOS app builds and launches, the Swift integration tests pass, and the binding export, architecture, and localization checks pass. The full `mise run check` gate passes, including 115 Rust tests, and `mise run build` passes.
 
 `ArutMacUITests` covers keyboard sending, multiline input beyond seven lines, and conversation draft restoration. Run it from the ArutMac scheme in Xcode with a signing setup allowed by the machine's security policy. On the development machine used for this change, macOS rejects both the unsigned and ad hoc signed XCTest UI runner before test execution. The UI target can be compiled with `build-for-testing`; its automated runtime result is not verified here. App interactions are checked separately through macOS accessibility automation. Direct checks verified Shift-Return, Option-Return, a 12-line draft capped at seven visible lines, Cmd-Return sending with exact line breaks, and responsive layout at 740, 1,200, and 1,800 point window widths.
 

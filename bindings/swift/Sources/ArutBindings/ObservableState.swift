@@ -1,16 +1,11 @@
 import Combine
 
 @MainActor
-public class ObservableState<Value>: ObservableObject {
+public final class ObservableState<Value>: ObservableObject {
     @Published public private(set) var state: Value
-    // `deinit` is always nonisolated, even on a @MainActor class, so it
-    // cannot touch actor-isolated storage under Swift 6 strict concurrency.
-    // `cancel` only ever unsubscribes a closure and is never read concurrently
-    // with the isolated methods below, so it is safe to exempt from isolation.
+    // Deinitialization may run off the main actor. This closure only cancels
+    // the thread-safe stream, consumer task, and generated FFI subscription.
     nonisolated(unsafe) private var cancel: (() -> Void)?
-    private var observing = false
-    private var refreshPending = false
-    private var generation: UInt64 = 0
 
     public init(_ state: Value) {
         self.state = state
@@ -28,23 +23,23 @@ public class ObservableState<Value>: ObservableObject {
         read: @escaping () -> Value,
         subscribe: (@escaping (UInt64) -> Void) -> (() -> Void)
     ) {
-        cancel?()
-        generation &+= 1
-        let generation = generation
-        observing = true
-        refreshPending = false
-        cancel = subscribe { [weak self] _ in
-            Task { @MainActor [weak self] in
-                guard let self,
-                      self.generation == generation,
-                      !self.refreshPending else { return }
-                self.refreshPending = true
-                await Task.yield()
-                if self.observing, self.generation == generation {
-                    self.state = read()
-                }
-                self.refreshPending = false
+        stopObserving()
+        // Notifications invalidate a snapshot; only the newest pending signal
+        // matters. Buffer before hopping to the main actor, not one task per signal.
+        let (stream, continuation) = AsyncStream<UInt64>.makeStream(bufferingPolicy: .bufferingNewest(1))
+        let unsubscribe = subscribe { continuation.yield($0) }
+        // Close the read/subscribe gap even if subscription emits no initial event.
+        state = read()
+        let task = Task { @MainActor [weak self] in
+            for await _ in stream {
+                guard !Task.isCancelled, let self else { break }
+                self.state = read()
             }
+        }
+        cancel = {
+            task.cancel()
+            continuation.finish()
+            unsubscribe()
         }
     }
 
@@ -53,13 +48,9 @@ public class ObservableState<Value>: ObservableObject {
     }
 
     public func stopObserving() {
-        observing = false
-        generation &+= 1
         cancel?()
         cancel = nil
     }
 
-    deinit {
-        cancel?()
-    }
+    deinit { cancel?() }
 }

@@ -30,12 +30,10 @@ struct ConversationView: View {
             messages += chat.messagesAfter(afterId: messages.last?.id ?? 0)
             return (state: chat.state(), messages: messages)
         }, subscribe: { callback in
-            let subscription = chat.chatChanges(callback: callback)
-            return { subscription.cancel() }
+            chat.chatChanges(callback: callback).cancel
         }))
         _draft = StateObject(wrappedValue: ObservableState(read: composer.state, subscribe: { callback in
-            let subscription = composer.composerChanges(callback: callback)
-            return { subscription.cancel() }
+            composer.composerChanges(callback: callback).cancel
         }))
     }
 

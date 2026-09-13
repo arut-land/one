@@ -17,7 +17,8 @@ struct TranscriptView: View {
         ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(spacing: 0) {
-                    ForEach(Array(messages.enumerated()), id: \.element.id) { index, message in
+                    ForEach(messages.indices, id: \.self) { index in
+                        let message = messages[index]
                         VStack {
                             if startsTimeGroup(at: index), message.acceptedAtMs > 0 {
                                 Text(Date(timeIntervalSince1970: Double(message.acceptedAtMs) / 1_000),

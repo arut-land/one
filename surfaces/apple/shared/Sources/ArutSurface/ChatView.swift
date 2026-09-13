@@ -16,8 +16,7 @@ public struct ChatView: View {
         _selected = State(initialValue: session.chat())
         let list = session.conversations()
         _conversations = StateObject(wrappedValue: ObservableState(read: list.state, subscribe: { callback in
-            let subscription = list.listChanges(callback: callback)
-            return { subscription.cancel() }
+            list.listChanges(callback: callback).cancel
         }))
     }
 
