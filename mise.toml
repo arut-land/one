@@ -1,5 +1,6 @@
-# Every tool this repository needs, pinned. Nothing here depends on a globally
-# installed tool. Platform toolchains that only some tasks need (dotnet, java,
+# Repository tools are pinned below. Linux also needs system GTK >= 4.20,
+# C/C++ compilers and pkg-config; CI lists the Fedora packages.
+# Platform toolchains that only some tasks need (dotnet, java,
 # gradle, xcodegen) are scoped to those tasks so they are not installed for
 # everyone. Machine-specific tuning goes in mise.local.toml (gitignored), for
 # example `[env] CARGO_BUILD_JOBS = "4"` on a memory-constrained laptop.

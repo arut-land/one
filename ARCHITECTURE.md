@@ -148,7 +148,7 @@ Phase 2 adds conversation/operation ownership structs, explicit hand-off, harnes
 
 ## Repository layout
 
-The workspace contains 18 Rust crates. This lists all maintained crate and surface roots; `src`, tests, resources, and generated build output are omitted below those roots.
+The workspace contains 18 Rust crates. The inventory below lists every crate and surface root; implementation files, resources, and generated build output are omitted.
 
 ```text
 /
@@ -170,7 +170,7 @@ The workspace contains 18 Rust crates. This lists all maintained crate and surfa
 |   |-- authority/                  arut-authority
 |   |-- storage/                    arut-storage
 |   `-- watch/                      arut-watch
-|-- features/chat/                  arut-feature-chat
+|-- features/chat/                  arut-feature-chat: commands, projections, drafts
 |-- product/
 |   |-- session/                    arut-product-session
 |   `-- i18n/                       arut-i18n
@@ -202,10 +202,10 @@ Foreign generated packages live under ignored `bindings/generated`. No README fi
 
 Mise owns the pinned toolchains and task graph. Cargo builds Rust, pnpm builds and checks the TypeScript workspace, buf checks Protobuf, and BoltFFI packages foreign bindings. Gradle and XcodeGen are scoped to platform tasks. Machine-specific tuning belongs in ignored `mise.local.toml`.
 
-`tools/dev` is one binary crate, `arut-dev`, with `i18n`, `layers`, and `bindings` subcommands. Each accepts `--check`; layers always checks without writing. Mise calls these commands, and CI calls the same mise tasks. `tools/conformance` remains a test crate.
+`tools/dev` is one binary crate, `arut-dev`, with `i18n`, `layers`, and `bindings` subcommands. Each accepts `--check`; layers always checks without writing. Mise calls these commands, and CI calls the same mise tasks. Platform tasks own Android target installation and Apple binding generation. Localization resource emitters and typed accessors share platform key naming. `tools/conformance` remains a test crate.
 
 `mise run check` runs formatting, Clippy, nextest, doctests, cargo-machete, cargo-deny, isolated wasm builds, buf lint/breaking, localization and binding generation checks, layer checks, and TypeScript checks. `mise run build` builds GTK, `arutd`, and web/Chromium/VS Code bundles. Both gates run before every commit with `CARGO_BUILD_JOBS=4 NEXTEST_TEST_THREADS=4`.
 
 CI cancels superseded runs per branch. Linux runs on every push and pull request; Android runs only when `surfaces/android`, `bindings/kotlin`, `bindings/ffi`, `features`, `product`, `substrates`, `protocols`, `runtimes`, or `Cargo.lock` changes. macOS builds on version tags. Native Android, Apple, and Windows compilation remains unverified on this Linux machine.
 
-The consolidation verified 116 nextest tests, all doctests, both gates, and the separately invoked display-backed GTK chat test. Conformance covers registry/HTTP/IPC RPC, memory/redb logs and key-value storage, and memory blobs. The generated wasm package passes a Node smoke test for draft/start/send/list, transcript ranges, and timestamps; TypeScript checks pass. Native regeneration and compilation must verify the additive transcript timestamp in Swift, Kotlin, and C#.
+The simplification pass verified 115 nextest tests, all doctests, both gates, and the separately invoked display-backed GTK chat test. Conformance covers registry/HTTP/IPC RPC, memory/redb logs and key-value storage, and memory blobs. The generated wasm package passes a Node smoke test for draft/start/send/list, transcript ranges, and timestamps; TypeScript checks pass. No Swift, Kotlin, or C# source changed in this pass. Native regeneration and compilation must still verify the additive transcript timestamp in those bindings.

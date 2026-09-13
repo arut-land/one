@@ -13,11 +13,11 @@ The implemented foundation and its remaining platform work:
 5. **Connect framing and streaming.** Registry, HTTP, and IPC channels share conformance. `WatchComposer` is a server stream; request streaming is unsupported by HTTP/IPC. The WebSocket route remains Phase 5 work.
 6. **Fact log and storage ports.** `FactLog`, `BlobStore`, and `KeyValue`; redb is the native node default under ADR 0023, with memory for tests and wasm. Directory storage and its selector are removed. Persistent blobs remain Phase 1 work.
 7. **Generic authority and projections.** One transaction per decision, canonical command IDs, pure transcript reduction, and authority-clock timestamps preserved through Protobuf and FFI. Drafts recover through `KeyValue`, not transcript facts.
-8. **Tooling and conformance.** One `arut-dev` binary owns `i18n`, `layers`, and `bindings` checks; `tools/conformance` remains a test crate. Browser callbacks are a workspace package. CI cancels superseded runs and filters Android builds by their inputs.
+8. **Tooling and conformance.** One `arut-dev` binary owns `i18n`, `layers`, and `bindings` checks; `tools/conformance` remains a test crate. Browser callbacks are a workspace package. CI cancels superseded runs and filters Android builds by their inputs. Mise owns Android Rust target installation and Apple binding generation. Localization emitters share resource-key naming.
 
 Exit: the existing chat behavior runs on Linux, macOS, and Android through these ports, and the web surface receives updates. Android and macOS still need on-device verification.
 
-- [x] `mise run check`: 116 nextest tests, doctests, Rust/wasm/TypeScript, protocol compatibility, localization, binding, dependency, and layer checks pass.
+- [x] `mise run check`: 115 nextest tests, doctests, Rust/wasm/TypeScript, protocol compatibility, localization, binding, dependency, and layer checks pass.
 - [x] `mise run build`: GTK, `arutd`, and web/Chromium/VS Code bundles build.
 - [x] GTK over child IPC verifies sending, independent drafts, and preserved widgets; generated wasm verifies draft/start/send/list, ranges, and timestamps; conformance passes.
 - [ ] Regenerate and compile Swift, Kotlin, and C# bindings with `accepted_at_ms`; verify native apps on their platforms.
