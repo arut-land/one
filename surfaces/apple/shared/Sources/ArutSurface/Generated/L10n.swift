@@ -16,9 +16,17 @@ enum L10n {
     static func actionCollapseSidebar() -> String {
         String(localized: "action-collapse-sidebar", table: "Localizable", bundle: .module)
     }
+    /// `action-copy-message`
+    static func actionCopyMessage() -> String {
+        String(localized: "action-copy-message", table: "Localizable", bundle: .module)
+    }
     /// `action-expand-sidebar`
     static func actionExpandSidebar() -> String {
         String(localized: "action-expand-sidebar", table: "Localizable", bundle: .module)
+    }
+    /// `action-focus-composer`
+    static func actionFocusComposer() -> String {
+        String(localized: "action-focus-composer", table: "Localizable", bundle: .module)
     }
     /// `action-new-chat`
     static func actionNewChat() -> String {
@@ -36,9 +44,25 @@ enum L10n {
     static func actionNewConversationShortcut(shortcut: String) -> String {
         String(format: String(localized: "action-new-conversation-shortcut", table: "Localizable", bundle: .module), shortcut)
     }
+    /// `action-next-conversation`
+    static func actionNextConversation() -> String {
+        String(localized: "action-next-conversation", table: "Localizable", bundle: .module)
+    }
     /// `action-open-history`
     static func actionOpenHistory() -> String {
         String(localized: "action-open-history", table: "Localizable", bundle: .module)
+    }
+    /// `action-previous-conversation`
+    static func actionPreviousConversation() -> String {
+        String(localized: "action-previous-conversation", table: "Localizable", bundle: .module)
+    }
+    /// `action-scroll-to-latest`
+    static func actionScrollToLatest() -> String {
+        String(localized: "action-scroll-to-latest", table: "Localizable", bundle: .module)
+    }
+    /// `action-search-conversations`
+    static func actionSearchConversations() -> String {
+        String(localized: "action-search-conversations", table: "Localizable", bundle: .module)
     }
     /// `action-send`
     static func actionSend() -> String {
@@ -172,6 +196,10 @@ enum L10n {
     static func composerErrorSnapshotMissing() -> String {
         String(localized: "composer-error-snapshot-missing", table: "Localizable", bundle: .module)
     }
+    /// `composer-hint-command-return`
+    static func composerHintCommandReturn() -> String {
+        String(localized: "composer-hint-command-return", table: "Localizable", bundle: .module)
+    }
     /// `composer-hint-enter`
     static func composerHintEnter() -> String {
         String(localized: "composer-hint-enter", table: "Localizable", bundle: .module)
@@ -179,6 +207,10 @@ enum L10n {
     /// `composer-hint-multiline`
     static func composerHintMultiline() -> String {
         String(localized: "composer-hint-multiline", table: "Localizable", bundle: .module)
+    }
+    /// `composer-hint-option-return`
+    static func composerHintOptionReturn() -> String {
+        String(localized: "composer-hint-option-return", table: "Localizable", bundle: .module)
     }
     /// `composer-placeholder`
     static func composerPlaceholder() -> String {
@@ -191,6 +223,14 @@ enum L10n {
     /// `composer-status-failed`
     static func composerStatusFailed() -> String {
         String(localized: "composer-status-failed", table: "Localizable", bundle: .module)
+    }
+    /// `conversation-search-empty`
+    static func conversationSearchEmpty() -> String {
+        String(localized: "conversation-search-empty", table: "Localizable", bundle: .module)
+    }
+    /// `conversation-search-placeholder`
+    static func conversationSearchPlaceholder() -> String {
+        String(localized: "conversation-search-placeholder", table: "Localizable", bundle: .module)
     }
     /// `label-chat-history`
     static func labelChatHistory() -> String {

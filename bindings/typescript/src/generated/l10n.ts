@@ -13,12 +13,18 @@ export interface L10nBundle {
 export const keys = {
   actionCloseHistory: "action-close-history",
   actionCollapseSidebar: "action-collapse-sidebar",
+  actionCopyMessage: "action-copy-message",
   actionExpandSidebar: "action-expand-sidebar",
+  actionFocusComposer: "action-focus-composer",
   actionNewChat: "action-new-chat",
   actionNewChatShortcut: "action-new-chat-shortcut",
   actionNewConversation: "action-new-conversation",
   actionNewConversationShortcut: "action-new-conversation-shortcut",
+  actionNextConversation: "action-next-conversation",
   actionOpenHistory: "action-open-history",
+  actionPreviousConversation: "action-previous-conversation",
+  actionScrollToLatest: "action-scroll-to-latest",
+  actionSearchConversations: "action-search-conversations",
   actionSend: "action-send",
   actionSendMessage: "action-send-message",
   actionToggleHistory: "action-toggle-history",
@@ -52,11 +58,15 @@ export const keys = {
   composerErrorScopeMismatch: "composer-error-scope-mismatch",
   composerErrorScopeMissing: "composer-error-scope-missing",
   composerErrorSnapshotMissing: "composer-error-snapshot-missing",
+  composerHintCommandReturn: "composer-hint-command-return",
   composerHintEnter: "composer-hint-enter",
   composerHintMultiline: "composer-hint-multiline",
+  composerHintOptionReturn: "composer-hint-option-return",
   composerPlaceholder: "composer-placeholder",
   composerStatusConnecting: "composer-status-connecting",
   composerStatusFailed: "composer-status-failed",
+  conversationSearchEmpty: "conversation-search-empty",
+  conversationSearchPlaceholder: "conversation-search-placeholder",
   labelChatHistory: "label-chat-history",
   labelConversations: "label-conversations",
   labelDraft: "label-draft",
@@ -96,8 +106,12 @@ export const t = {
   actionCloseHistory: (bundle: L10nBundle): string => bundle.format(keys.actionCloseHistory),
   /** `action-collapse-sidebar` */
   actionCollapseSidebar: (bundle: L10nBundle): string => bundle.format(keys.actionCollapseSidebar),
+  /** `action-copy-message` */
+  actionCopyMessage: (bundle: L10nBundle): string => bundle.format(keys.actionCopyMessage),
   /** `action-expand-sidebar` */
   actionExpandSidebar: (bundle: L10nBundle): string => bundle.format(keys.actionExpandSidebar),
+  /** `action-focus-composer` */
+  actionFocusComposer: (bundle: L10nBundle): string => bundle.format(keys.actionFocusComposer),
   /** `action-new-chat` */
   actionNewChat: (bundle: L10nBundle): string => bundle.format(keys.actionNewChat),
   /** `action-new-chat-shortcut` */
@@ -108,8 +122,16 @@ export const t = {
   /** `action-new-conversation-shortcut` */
   actionNewConversationShortcut: (bundle: L10nBundle, args: { shortcut: string }): string =>
     bundle.format(keys.actionNewConversationShortcut, { shortcut: args.shortcut }),
+  /** `action-next-conversation` */
+  actionNextConversation: (bundle: L10nBundle): string => bundle.format(keys.actionNextConversation),
   /** `action-open-history` */
   actionOpenHistory: (bundle: L10nBundle): string => bundle.format(keys.actionOpenHistory),
+  /** `action-previous-conversation` */
+  actionPreviousConversation: (bundle: L10nBundle): string => bundle.format(keys.actionPreviousConversation),
+  /** `action-scroll-to-latest` */
+  actionScrollToLatest: (bundle: L10nBundle): string => bundle.format(keys.actionScrollToLatest),
+  /** `action-search-conversations` */
+  actionSearchConversations: (bundle: L10nBundle): string => bundle.format(keys.actionSearchConversations),
   /** `action-send` */
   actionSend: (bundle: L10nBundle): string => bundle.format(keys.actionSend),
   /** `action-send-message` */
@@ -180,16 +202,24 @@ export const t = {
   composerErrorScopeMissing: (bundle: L10nBundle): string => bundle.format(keys.composerErrorScopeMissing),
   /** `composer-error-snapshot-missing` */
   composerErrorSnapshotMissing: (bundle: L10nBundle): string => bundle.format(keys.composerErrorSnapshotMissing),
+  /** `composer-hint-command-return` */
+  composerHintCommandReturn: (bundle: L10nBundle): string => bundle.format(keys.composerHintCommandReturn),
   /** `composer-hint-enter` */
   composerHintEnter: (bundle: L10nBundle): string => bundle.format(keys.composerHintEnter),
   /** `composer-hint-multiline` */
   composerHintMultiline: (bundle: L10nBundle): string => bundle.format(keys.composerHintMultiline),
+  /** `composer-hint-option-return` */
+  composerHintOptionReturn: (bundle: L10nBundle): string => bundle.format(keys.composerHintOptionReturn),
   /** `composer-placeholder` */
   composerPlaceholder: (bundle: L10nBundle): string => bundle.format(keys.composerPlaceholder),
   /** `composer-status-connecting` */
   composerStatusConnecting: (bundle: L10nBundle): string => bundle.format(keys.composerStatusConnecting),
   /** `composer-status-failed` */
   composerStatusFailed: (bundle: L10nBundle): string => bundle.format(keys.composerStatusFailed),
+  /** `conversation-search-empty` */
+  conversationSearchEmpty: (bundle: L10nBundle): string => bundle.format(keys.conversationSearchEmpty),
+  /** `conversation-search-placeholder` */
+  conversationSearchPlaceholder: (bundle: L10nBundle): string => bundle.format(keys.conversationSearchPlaceholder),
   /** `label-chat-history` */
   labelChatHistory: (bundle: L10nBundle): string => bundle.format(keys.labelChatHistory),
   /** `label-conversations` */

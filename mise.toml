@@ -34,7 +34,14 @@ run = "rm -rf ../generated/wasm && boltffi pack wasm --deny-skipped"
 [tasks."ffi:apple"]
 description = "Generate and package the Apple bindings (needs Xcode)"
 dir = "{{config_root}}/bindings/ffi"
-run = "rm -rf ../generated/apple && boltffi pack apple --deny-skipped"
+run = [
+  "rustup target add aarch64-apple-darwin x86_64-apple-darwin aarch64-apple-ios aarch64-apple-ios-sim x86_64-apple-ios",
+  "rm -rf ../generated/apple && boltffi pack apple --deny-skipped",
+]
+
+[tasks."ffi:apple".env]
+MACOSX_DEPLOYMENT_TARGET = "13.0"
+IPHONEOS_DEPLOYMENT_TARGET = "16.0"
 
 [tasks."ffi:android"]
 description = "Generate and package the Android bindings (needs the NDK; ANDROID_NDK_HOME must be set)"
@@ -165,6 +172,31 @@ run = "xcodegen generate --spec surfaces/apple/project.yml"
 [tasks."surface:apple-project".tools]
 xcodegen = "2.46.0"
 
+[tasks."surface:macos"]
+description = "Build the macOS app without signing (needs Xcode)"
+depends = ["surface:apple-project"]
+run = "xcodebuild -project surfaces/apple/Arut.xcodeproj -scheme ArutMac -configuration Debug -destination 'platform=macOS' -derivedDataPath surfaces/apple/DerivedData build CODE_SIGNING_ALLOWED=NO"
+
+[tasks."check:apple"]
+description = "Build the macOS app and test the Swift bindings (needs Xcode)"
+depends = ["surface:macos"]
+run = "swift test --package-path bindings/swift"
+
 [tasks.clean]
 description = "Remove every build output and generated package; the next task regenerates what it needs"
 run = "cargo clean && rm -rf bindings/generated node_modules surfaces/*/dist surfaces/*/node_modules bindings/typescript/node_modules"
+
+[tasks."check:observers-kotlin"]
+description = "Test Kotlin observation without the Android SDK or native FFI package"
+run = "gradle -p bindings/kotlin/observer-tests test"
+
+[tasks."check:observers-kotlin".tools]
+java = "temurin-17.0.20+101"
+gradle = "8.12.1"
+
+[tasks."check:observers-dotnet"]
+description = "Test .NET observation without WinUI or the native FFI package"
+run = "dotnet test bindings/dotnet/tests/Arut.Observer.Tests.csproj"
+
+[tasks."check:observers-dotnet".tools]
+dotnet = "8.0.425"

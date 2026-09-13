@@ -9,9 +9,13 @@ node_modules/
 /surfaces/android/build/
 /surfaces/android/*/build/
 .gradle/
+.kotlin/
+/bindings/kotlin/observer-tests/build/
 
 # Apple
 DerivedData/
+/surfaces/apple/Arut.xcodeproj/
+.build/
 /.DS_Store
 
 # .NET

@@ -15,8 +15,12 @@ pub enum Message {
     ActionCloseHistory,
     /// `action-collapse-sidebar`
     ActionCollapseSidebar,
+    /// `action-copy-message`
+    ActionCopyMessage,
     /// `action-expand-sidebar`
     ActionExpandSidebar,
+    /// `action-focus-composer`
+    ActionFocusComposer,
     /// `action-new-chat`
     ActionNewChat,
     /// `action-new-chat-shortcut`
@@ -25,8 +29,16 @@ pub enum Message {
     ActionNewConversation,
     /// `action-new-conversation-shortcut`
     ActionNewConversationShortcut { shortcut: String },
+    /// `action-next-conversation`
+    ActionNextConversation,
     /// `action-open-history`
     ActionOpenHistory,
+    /// `action-previous-conversation`
+    ActionPreviousConversation,
+    /// `action-scroll-to-latest`
+    ActionScrollToLatest,
+    /// `action-search-conversations`
+    ActionSearchConversations,
     /// `action-send`
     ActionSend,
     /// `action-send-message`
@@ -93,16 +105,24 @@ pub enum Message {
     ComposerErrorScopeMissing,
     /// `composer-error-snapshot-missing`
     ComposerErrorSnapshotMissing,
+    /// `composer-hint-command-return`
+    ComposerHintCommandReturn,
     /// `composer-hint-enter`
     ComposerHintEnter,
     /// `composer-hint-multiline`
     ComposerHintMultiline,
+    /// `composer-hint-option-return`
+    ComposerHintOptionReturn,
     /// `composer-placeholder`
     ComposerPlaceholder,
     /// `composer-status-connecting`
     ComposerStatusConnecting,
     /// `composer-status-failed`
     ComposerStatusFailed,
+    /// `conversation-search-empty`
+    ConversationSearchEmpty,
+    /// `conversation-search-placeholder`
+    ConversationSearchPlaceholder,
     /// `label-chat-history`
     LabelChatHistory,
     /// `label-conversations`
@@ -170,12 +190,18 @@ impl Message {
         match self {
             Self::ActionCloseHistory => "action-close-history",
             Self::ActionCollapseSidebar => "action-collapse-sidebar",
+            Self::ActionCopyMessage => "action-copy-message",
             Self::ActionExpandSidebar => "action-expand-sidebar",
+            Self::ActionFocusComposer => "action-focus-composer",
             Self::ActionNewChat => "action-new-chat",
             Self::ActionNewChatShortcut { .. } => "action-new-chat-shortcut",
             Self::ActionNewConversation => "action-new-conversation",
             Self::ActionNewConversationShortcut { .. } => "action-new-conversation-shortcut",
+            Self::ActionNextConversation => "action-next-conversation",
             Self::ActionOpenHistory => "action-open-history",
+            Self::ActionPreviousConversation => "action-previous-conversation",
+            Self::ActionScrollToLatest => "action-scroll-to-latest",
+            Self::ActionSearchConversations => "action-search-conversations",
             Self::ActionSend => "action-send",
             Self::ActionSendMessage => "action-send-message",
             Self::ActionToggleHistory => "action-toggle-history",
@@ -209,11 +235,15 @@ impl Message {
             Self::ComposerErrorScopeMismatch => "composer-error-scope-mismatch",
             Self::ComposerErrorScopeMissing => "composer-error-scope-missing",
             Self::ComposerErrorSnapshotMissing => "composer-error-snapshot-missing",
+            Self::ComposerHintCommandReturn => "composer-hint-command-return",
             Self::ComposerHintEnter => "composer-hint-enter",
             Self::ComposerHintMultiline => "composer-hint-multiline",
+            Self::ComposerHintOptionReturn => "composer-hint-option-return",
             Self::ComposerPlaceholder => "composer-placeholder",
             Self::ComposerStatusConnecting => "composer-status-connecting",
             Self::ComposerStatusFailed => "composer-status-failed",
+            Self::ConversationSearchEmpty => "conversation-search-empty",
+            Self::ConversationSearchPlaceholder => "conversation-search-placeholder",
             Self::LabelChatHistory => "label-chat-history",
             Self::LabelConversations => "label-conversations",
             Self::LabelDraft => "label-draft",
