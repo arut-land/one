@@ -8,6 +8,74 @@ using Xunit;
 public class ObservationTests
 {
     [Fact]
+    public void SupersededRefreshDoesNotAcknowledgeAnOlderDraft()
+    {
+        var queue = new Queue<Action>();
+        Action<ulong> notify = _ => { };
+        Action? duringRead = null;
+        var nativeDraft = "before";
+        using var observer = new ObservableState<string>(
+            () =>
+            {
+                var snapshot = nativeDraft;
+                var action = duringRead;
+                duringRead = null;
+                action?.Invoke();
+                return snapshot;
+            },
+            callback =>
+            {
+                notify = callback;
+                return new Cleanup(() => { });
+            },
+            action =>
+            {
+                queue.Enqueue(action);
+                return true;
+            }
+        );
+        var editorDraft = "edited in the middle";
+        nativeDraft = editorDraft;
+        int replacements = 0;
+        void Reconcile()
+        {
+            if (editorDraft != observer.Value)
+            {
+                editorDraft = observer.Value;
+                replacements++;
+            }
+        }
+        observer.Changed += Reconcile;
+        // Acceptance can publish a revision while the completion read is in flight.
+        duringRead = () => notify(1);
+        var refreshed = observer.RefreshNow();
+        if (refreshed)
+            Reconcile();
+
+        Assert.False(refreshed);
+        Assert.Equal("before", observer.Value);
+        Assert.Equal("edited in the middle", editorDraft);
+        queue.Dequeue()();
+        Assert.Equal(editorDraft, observer.Value);
+        Assert.Equal(0, replacements);
+    }
+
+    [Fact]
+    public void UnchangedRefreshStillAllowsCompletionReconciliation()
+    {
+        using var observer = new ObservableState<string>(
+            () => "accepted",
+            _ => new Cleanup(() => { })
+        );
+        int changes = 0;
+        observer.Changed += () => changes++;
+        Assert.True(observer.RefreshNow());
+        Assert.Equal(0, changes);
+        observer.Dispose();
+        Assert.False(observer.RefreshNow());
+    }
+
+    [Fact]
     public void StructuralComparerKeepsEqualDecodedCollectionsAndNotifiesRealChanges()
     {
         var values = new[] { 1, 2 };

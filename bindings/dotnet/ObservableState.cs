@@ -48,18 +48,19 @@ public sealed class ObservableState<T> : IDisposable, INotifyPropertyChanged
     public event Action? Changed;
     public event PropertyChangedEventHandler? PropertyChanged;
 
-    public void RefreshNow()
+    // Returns whether this read was accepted, including an unchanged value.
+    public bool RefreshNow()
     {
         Func<T> reader;
         long observedGeneration;
         lock (gate)
         {
             if (disposed)
-                return;
+                return false;
             reader = read;
             observedGeneration = generation;
         }
-        Set(observedGeneration, Volatile.Read(ref requestedRevision), reader());
+        return Set(observedGeneration, Volatile.Read(ref requestedRevision), reader());
     }
 
     public void Observe(Func<T> read, Func<Action<ulong>, IDisposable> subscribe)
@@ -161,7 +162,7 @@ public sealed class ObservableState<T> : IDisposable, INotifyPropertyChanged
         }
     }
 
-    private void Set(long observedGeneration, long revision, T next)
+    private bool Set(long observedGeneration, long revision, T next)
     {
         Action? changed;
         lock (gate)
@@ -169,14 +170,15 @@ public sealed class ObservableState<T> : IDisposable, INotifyPropertyChanged
             // A read may run on the thread pool without a UI context. Do not
             // publish it if replacement or disposal happened during that read.
             if (disposed || observedGeneration != generation || revision != requestedRevision)
-                return;
+                return false;
             if (comparer.Equals(value, next))
-                return;
+                return true;
             value = next;
             changed = Changed;
         }
         changed?.Invoke();
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Value)));
+        return true;
     }
 
     public void Dispose()

@@ -224,9 +224,9 @@ public sealed class ConversationModel : INotifyPropertyChanged, IAsyncDisposable
                     // Read after completion, independently of callback delivery timing.
                     if (!edit)
                         state.RefreshNow();
-                    draftState.RefreshNow();
-                    // A callback may have cached this value while the edit was pending.
-                    RefreshDraft();
+                    // Reconcile unchanged snapshots too, but never a rejected read's cache.
+                    if (draftState.RefreshNow())
+                        RefreshDraft();
                 }
             }
         }
