@@ -5,7 +5,12 @@ set -euo pipefail
 cd "$(dirname "$0")/../.."
 for command in hyprctl grim jq gdbus rg; do command -v "$command" >/dev/null; done
 : "${WAYLAND_DISPLAY:?A reachable Wayland display is required}"
-export CARGO_BUILD_JOBS=4 NEXTEST_TEST_THREADS=4
+export CARGO_BUILD_JOBS=4 NEXTEST_TEST_THREADS=4 G_DEBUG=fatal-criticals
+debugger=
+if [[ ${ARUT_REVIEW_GDB:-0} == 1 ]]; then
+  command -v gdb >/dev/null
+  debugger="gdb -batch -ex run -ex bt --args"
+fi
 cargo build -q -p arut-linux -p arut-runtime-local
 binary="${CARGO_TARGET_DIR:-$PWD/target}/debug/arut-linux"
 output=arut-review
@@ -39,6 +44,8 @@ if hyprctl monitors -j | jq -e --arg output "$output" '.[] | select(.name==$outp
 fi
 hyprctl output create headless "$output" >/dev/null
 created=true
+# Component windows are realized but never mapped onto a desktop workspace.
+GSK_RENDERER=cairo cargo test -q -p arut-linux -- --ignored --test-threads=1
 # Rename the new output's already-visible workspace. Switching to a silent
 # workspace would leave it hidden; activating it would steal the user's focus.
 workspace=$(hyprctl monitors -j | jq -er --arg output "$output" '.[] | select(.name==$output) | .activeWorkspace.id')
@@ -67,8 +74,8 @@ for size in 1280x800 1920x1080 800x600; do
   data="$run_dir/$size"
   mkdir -p "$data"
   log="$data/app.log"
-  printf -v command 'env ARUT_REVIEW=1 ARUT_LINUX_APP_ID=%q XDG_DATA_HOME=%q XDG_STATE_HOME=%q TMPDIR=%q timeout 90s %q > %q 2>&1' \
-    "$app" "$data/data" "$data/state" "$data" "$binary" "$log"
+  printf -v command 'env G_DEBUG=fatal-criticals ARUT_REVIEW=1 ARUT_LINUX_APP_ID=%q XDG_DATA_HOME=%q XDG_STATE_HOME=%q TMPDIR=%q timeout 90s %s %q > %q 2>&1' \
+    "$app" "$data/data" "$data/state" "$data" "$debugger" "$binary" "$log"
   hyprctl eval "hl.exec_cmd([[$command]], {workspace=\"name:arut-review silent\",no_initial_focus=true})" >/dev/null
   for _ in {1..200}; do
     if rg -q 'first frame painted' "$log" 2>/dev/null; then break; fi
@@ -78,8 +85,22 @@ for size in 1280x800 1920x1080 800x600; do
   capture cold
   fixture seed
   capture transcript
+  shortcut k
+  for key in h e l l o Return; do
+    hyprctl eval "hl.dispatch(hl.dsp.send_shortcut({mods=\"\",key=\"$key\",window=\"class:$app\"}))" >/dev/null
+    sleep 0.1
+  done
   fixture one
   capture composer-one
+  fixture send
+  fixture switch-away
+  sleep 0.2
+  fixture switch-back
+  sleep 0.2
+  fixture groups
+  sleep 0.2
+  fixture latest
+  capture groups
   fixture many
   capture composer-many
   fixture scroll-up

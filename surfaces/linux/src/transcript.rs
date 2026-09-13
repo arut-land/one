@@ -179,11 +179,16 @@ fn message_factory(messages: &Messages) -> gtk::SignalListItemFactory {
     let factory = gtk::SignalListItemFactory::new();
     factory.connect_setup(|_, item| {
         let item = item.downcast_ref::<gtk::ListItem>().unwrap();
+        let container = gtk::Box::new(gtk::Orientation::Vertical, 8);
+        container.set_margin_start(12);
+        container.set_margin_end(12);
+        container.set_margin_bottom(4);
         let row = gtk::Box::new(gtk::Orientation::Vertical, 4);
         row.add_css_class("arut-message");
         let timestamp = gtk::Label::new(None);
         timestamp.add_css_class("dim-label");
-        row.append(&timestamp);
+        container.append(&timestamp);
+        container.append(&row);
         let role = gtk::Label::new(None);
         role.set_xalign(0.0);
         role.add_css_class("heading");
@@ -191,6 +196,7 @@ fn message_factory(messages: &Messages) -> gtk::SignalListItemFactory {
         let text = gtk::Label::new(None);
         text.set_xalign(0.0);
         text.set_wrap(true);
+        text.set_max_width_chars(72);
         text.set_wrap_mode(gtk::pango::WrapMode::WordChar);
         text.set_selectable(true);
         let menu = gio::Menu::new();
@@ -210,7 +216,7 @@ fn message_factory(messages: &Messages) -> gtk::SignalListItemFactory {
         actions.add_action(&copy);
         text.insert_action_group("message", Some(&actions));
         row.append(&text);
-        item.set_child(Some(&row));
+        item.set_child(Some(&container));
     });
     factory.connect_bind({
         let messages = messages.clone();
@@ -222,13 +228,14 @@ fn message_factory(messages: &Messages) -> gtk::SignalListItemFactory {
                 .downcast::<glib::BoxedAnyObject>()
                 .unwrap();
             let message = object.borrow::<ChatMessage>();
-            let row = item.child().unwrap().downcast::<gtk::Box>().unwrap();
-            let time = row.first_child().unwrap().downcast::<gtk::Label>().unwrap();
-            let role = time
-                .next_sibling()
+            let container = item.child().unwrap().downcast::<gtk::Box>().unwrap();
+            let time = container
+                .first_child()
                 .unwrap()
                 .downcast::<gtk::Label>()
                 .unwrap();
+            let row = time.next_sibling().unwrap().downcast::<gtk::Box>().unwrap();
+            let role = row.first_child().unwrap().downcast::<gtk::Label>().unwrap();
             let text = role
                 .next_sibling()
                 .unwrap()
@@ -252,7 +259,7 @@ fn message_factory(messages: &Messages) -> gtk::SignalListItemFactory {
             let formatted = i64::try_from(message.accepted_at_ms / 1000)
                 .ok()
                 .and_then(|seconds| glib::DateTime::from_unix_local(seconds).ok())
-                .and_then(|date| date.format("%x %X").ok())
+                .and_then(|date| date.format("%b %e, %H:%M").ok())
                 .unwrap_or_default();
             time.set_label(&formatted);
             time.set_visible(starts_time && message.accepted_at_ms > 0);
@@ -260,16 +267,21 @@ fn message_factory(messages: &Messages) -> gtk::SignalListItemFactory {
             role.set_visible(starts_speaker);
             text.set_label(&message.text);
             text.set_tooltip_text((message.accepted_at_ms > 0).then_some(formatted.as_str()));
-            row.set_margin_top(if starts_speaker { 12 } else { 2 });
-            row.set_margin_start(if message.role == ChatRole::User {
-                60
+            container.set_margin_top(if starts_speaker { 12 } else { 0 });
+            row.set_halign(if message.role == ChatRole::User {
+                gtk::Align::End
             } else {
-                12
+                gtk::Align::Start
+            });
+            row.set_margin_start(if message.role == ChatRole::User {
+                48
+            } else {
+                0
             });
             row.set_margin_end(if message.role == ChatRole::User {
-                12
+                0
             } else {
-                60
+                48
             });
             if message.role == ChatRole::User {
                 row.add_css_class("arut-outgoing");

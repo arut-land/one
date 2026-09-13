@@ -58,6 +58,7 @@ fn recycled_models_search_and_ordered_drafts_work_over_ipc() {
         child::ChildHost,
         hosting::{TokioSpawner, desktop_executor},
     };
+    glib::log_set_always_fatal(glib::LogLevels::LEVEL_ERROR | glib::LogLevels::LEVEL_CRITICAL);
     let _app = relm4::RelmApp::<()>::new("dev.arut.ComponentTest");
     let wrapped = gtk::Label::new(Some(
         &"A paragraph that must wrap when the sidebar opens. ".repeat(20),

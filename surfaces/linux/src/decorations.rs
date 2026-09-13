@@ -98,6 +98,9 @@ impl State {
         WidgetExt::realize(&probe);
         let server = !probe.has_css_class("csd") && !probe.has_css_class("solid-csd");
         probe.destroy();
+        // Read the typed property, not DisplayExtManual::get_setting: gtk-rs
+        // 0.11.4 passes an uninitialized GValue to GDK, whose Wayland string
+        // setting reader requires G_TYPE_STRING (fatal g_value_set_string).
         // GtkSettings includes the backend and settings.ini overrides. Exclude its
         // compiled default: only the desktop fallback may invent button positions.
         let settings = gtk::Settings::for_display(&display);

@@ -207,8 +207,8 @@ fn refresh(
     }
     // Every style color is a palette name; none is a hard-coded RGB value.
     // Themes may omit a name. In that case retain the native widget styling.
-    css.push_str(".arut-message { padding: 10px; border-radius: 12px; margin: 4px 12px; } .arut-composer { border-radius: 18px; } .arut-composer textview, .arut-composer textview text { background-color: transparent; }\n");
-    css.push_str(".arut-transcript, .arut-transcript > row { background-color: transparent; } .arut-error { padding: 12px; border-radius: 8px; }\n");
+    css.push_str(".arut-message { padding: 10px; border-radius: 12px;  } .arut-composer { border-radius: 18px; } .arut-composer textview, .arut-composer textview text { background-color: transparent; }\n");
+    css.push_str(".arut-transcript, .arut-transcript > row { background-color: transparent; } .arut-transcript > row { padding: 0; } .arut-error { padding: 12px; border-radius: 8px; }\n");
     for (required, rule) in [
         (
             &["background", "foreground"][..],
@@ -231,8 +231,8 @@ fn refresh(
             ".arut-message, .arut-error { border: 1px solid @arut_border; }",
         ),
         (
-            &["accent"][..],
-            ".arut-availability { border-bottom: 2px solid @arut_accent; padding: 4px; }",
+            &["muted_foreground"][..],
+            ".arut-availability { color: @arut_muted_foreground; font-size: smaller; padding: 4px; }",
         ),
     ] {
         if required.iter().all(|name| defined.contains(name)) {

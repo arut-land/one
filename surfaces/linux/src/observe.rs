@@ -127,6 +127,48 @@ mod tests {
     }
 
     #[test]
+    fn string_properties_keep_their_type_across_binding_fanout() {
+        use gtk::prelude::*;
+        glib::log_set_always_fatal(glib::LogLevels::LEVEL_ERROR | glib::LogLevels::LEVEL_CRITICAL);
+        let source = ViewState::default();
+        let target = ViewState::default();
+        for property in ["draft", "status"] {
+            assert_eq!(
+                source.find_property(property).unwrap().value_type(),
+                String::static_type()
+            );
+            source
+                .bind_property(property, &target, property)
+                .bidirectional()
+                .sync_create()
+                .build();
+        }
+        source
+            .bind_property("draft", &target, "enabled")
+            .transform_to(|_, text: String| Some(!text.is_empty()))
+            .sync_create()
+            .build();
+        source
+            .bind_property("status", &target, "can-send")
+            .transform_to(|_, text: String| Some(!text.is_empty()))
+            .sync_create()
+            .build();
+        for index in 0..100 {
+            let text = format!("Draft {index}\nSecond line");
+            source.set_draft(text.as_str());
+            source.set_status(text.as_str());
+            assert_eq!(target.draft(), text);
+            assert_eq!(target.status(), text);
+            assert!(target.enabled() && target.can_send());
+            target.set_draft("");
+            target.set_status("");
+            assert_eq!(source.draft(), "");
+            assert_eq!(source.status(), "");
+            assert!(!target.enabled() && !target.can_send());
+        }
+    }
+
+    #[test]
     fn burst_refreshes_once_and_cancellation_rejects_queued_updates() {
         let context = glib::MainContext::new();
         context

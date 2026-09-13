@@ -30,6 +30,12 @@
 //! and headless Hyprland output. ARUT_REVIEW=1 enables fixture actions only for
 //! this run; real node messages and native TextBuffers exercise the normal UI.
 //! The error fixture injects SessionError::Unavailable through Fluent accessors.
+//! Review runs with G_DEBUG=fatal-criticals, exercises native typing/send/search
+//! and draft switches, and runs the unmapped GTK component test. ARUT_REVIEW_GDB=1
+//! records a native backtrace on failure. Group continuations are display-only
+//! fixtures after the real echo-node transcript, never persisted product data.
+//! Transcript timestamps sit outside bubbles, with one heading per speaker group,
+//! four-pixel continuation spacing and naturally sized, opposite-aligned bubbles.
 //! Non-Linux builds have no UI dependencies and run an empty main.
 
 #[cfg(target_os = "linux")]
