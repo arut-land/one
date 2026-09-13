@@ -40,3 +40,10 @@ impl<
 > ChatRuntime for R
 {
 }
+
+#[cfg(test)]
+impl Clock for NativeIds {
+    fn now(&self) -> u64 {
+        123
+    }
+}

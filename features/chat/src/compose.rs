@@ -114,5 +114,11 @@ mod tests {
             .unwrap()
             .message;
         assert_eq!(first, retry);
+        assert!(
+            first
+                .messages
+                .iter()
+                .all(|message| message.accepted_at_ms == 123)
+        );
     }
 }

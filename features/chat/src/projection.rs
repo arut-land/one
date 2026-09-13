@@ -14,6 +14,8 @@ pub struct ChatMessage {
     pub id: u64,
     pub role: ChatRole,
     pub text: String,
+    /// Authority acceptance time in Unix milliseconds; zero for older facts.
+    pub accepted_at_ms: u64,
 }
 
 #[boltffi::data]

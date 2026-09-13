@@ -75,6 +75,12 @@ fn restart_recovers_transcript_operations_drafts_and_send_deduplication() {
         Arc::new(NativeIds),
     )
     .unwrap();
+    assert!(
+        recovered.projection().conversations[0]
+            .messages
+            .iter()
+            .all(|message| message.accepted_at_ms == 123)
+    );
     assert_eq!(transcript(&recovered, &first.chat_id), 4);
     assert_eq!(recovered.projection().completed_operations.len(), 2);
     assert_eq!(

@@ -3,7 +3,7 @@ use crate::command::{ChatCommand, PendingDraft, Rejection};
 use crate::composer::{ComposerAuthority, ComposerScope, PromoteError};
 #[cfg(test)]
 use crate::facts::ChatProjection;
-use crate::ports::IdSource;
+use crate::ports::{Clock, IdSource};
 use arut_authority::{Authority, Outcome};
 use arut_protocol::chat::v1::ChatFact;
 use arut_storage::{FactLog, StorageError};
@@ -13,18 +13,20 @@ pub(crate) struct ChatAuthority {
     authority: Authority<ChatCommand>,
     start_gate: Mutex<()>,
     ids: Arc<dyn IdSource>,
+    clock: Arc<dyn Clock + Send + Sync>,
 }
 impl ChatAuthority {
-    pub(crate) fn new(
+    pub(crate) fn new<R: IdSource + Clock + Send + Sync>(
         composer: Arc<ComposerAuthority>,
         log: Arc<dyn FactLog<ChatFact>>,
-        ids: Arc<dyn IdSource>,
+        ids: Arc<R>,
     ) -> Result<Self, StorageError> {
         let authority = Authority::<ChatCommand>::open(log, 1)?;
         for (scope, revision) in &authority.projection().consumed_drafts {
             composer.recover_pending(scope, *revision)?;
         }
         Ok(Self {
+            clock: ids.clone(),
             ids,
             composer,
             authority,
@@ -41,7 +43,10 @@ impl ChatAuthority {
             .pending_scope
             .as_ref()
             .map(|pending| pending.scope_id.clone());
-        match self.authority.execute(command)? {
+        match self
+            .authority
+            .execute_with_clock(command, || self.clock.now())?
+        {
             Outcome::Applied(record) | Outcome::Duplicate(record) => {
                 if (pending_scope.is_none()
                     && (record.fact.chat_id != chat_id || !record.fact.pending_scope_id.is_empty()))

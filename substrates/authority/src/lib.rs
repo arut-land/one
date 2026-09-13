@@ -52,7 +52,7 @@ pub trait Command: Send + 'static {
     fn expires_at(&self) -> Option<u64> {
         None
     }
-    fn apply(self, current: &Self::Projection) -> Result<Self::Fact, Self::Rejection>;
+    fn apply(self, current: &Self::Projection, now: u64) -> Result<Self::Fact, Self::Rejection>;
 }
 #[derive(Debug)]
 pub enum Outcome<F, E> {
@@ -116,6 +116,14 @@ impl<C: Command> Authority<C> {
         command: C,
         now: u64,
     ) -> Result<Outcome<C::Fact, C::Rejection>, StorageError> {
+        self.execute_with_clock(command, || now)
+    }
+    /// Reads time inside the transaction after deduplication, before application.
+    pub fn execute_with_clock(
+        &self,
+        command: C,
+        now: impl Fn() -> u64,
+    ) -> Result<Outcome<C::Fact, C::Rejection>, StorageError> {
         let commit = tracing::debug_span!(
             "authority.commit",
             command_id = command.command_id(),
@@ -147,7 +155,7 @@ impl<C: Command> Authority<C> {
                 }
                 match self.apply(
                     command.take().expect("log decides once"),
-                    now,
+                    now(),
                     &state.projection,
                 ) {
                     Ok(fact) => Ok(Some(fact)),
@@ -202,7 +210,7 @@ impl<C: Command> Authority<C> {
             }
             _ => {}
         }
-        command.apply(projection).map_err(Outcome::Rejected)
+        command.apply(projection, now).map_err(Outcome::Rejected)
     }
     pub fn checkpoint(&self, compact: bool) -> Result<(), StorageError> {
         let state = self.state.lock().unwrap();
@@ -274,7 +282,7 @@ mod tests {
         fn expires_at(&self) -> Option<u64> {
             self.expiry
         }
-        fn apply(self, _: &Counter) -> Result<Tick, ()> {
+        fn apply(self, _: &Counter, _: u64) -> Result<Tick, ()> {
             Ok(Tick { amount: 1 })
         }
     }
@@ -287,6 +295,26 @@ mod tests {
             expiry: None,
         }
     }
+    #[test]
+    fn retries_do_not_read_the_acceptance_clock() {
+        let authority =
+            Authority::<Add>::open(Arc::new(arut_storage::MemoryLog::default()), 1).unwrap();
+        let reads = std::cell::Cell::new(0);
+        let clock = || {
+            reads.set(reads.get() + 1);
+            123
+        };
+        assert!(matches!(
+            authority.execute_with_clock(add("one", 0), clock).unwrap(),
+            Outcome::Applied(_)
+        ));
+        assert!(matches!(
+            authority.execute_with_clock(add("one", 0), clock).unwrap(),
+            Outcome::Duplicate(_)
+        ));
+        assert_eq!(reads.get(), 1);
+    }
+
     #[test]
     fn fences_deduplicates_checks_preconditions_and_replays_after_compaction() {
         let log = Arc::new(arut_storage::MemoryLog::default());

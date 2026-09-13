@@ -4,7 +4,7 @@ use crate::ChatProjection;
 use crate::authority::{ChatAuthority, CommitError};
 use crate::command::Rejection;
 use crate::composer::ComposerAuthority;
-use crate::ports::IdSource;
+use crate::ports::{Clock, IdSource};
 use arut_protocol::chat::v1::{
     ChatFact, ChatService, ListConversationsRequest, ListConversationsResponse, SendMessageRequest,
     SendMessageResponse, StartChatRequest, StartChatResponse,
@@ -18,10 +18,10 @@ pub(crate) struct ChatServiceImpl {
     authority: ChatAuthority,
 }
 impl ChatServiceImpl {
-    pub fn new(
+    pub fn new<R: IdSource + Clock + Send + Sync>(
         composer: Arc<ComposerAuthority>,
         log: Arc<dyn FactLog<ChatFact>>,
-        ids: Arc<dyn IdSource>,
+        ids: Arc<R>,
     ) -> Result<Self, StorageError> {
         Ok(Self {
             authority: ChatAuthority::new(composer, log, ids)?,

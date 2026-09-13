@@ -275,5 +275,6 @@ fn from_wire(message: WireMessage) -> Option<ChatMessage> {
         id: message.id,
         role,
         text: message.text,
+        accepted_at_ms: message.accepted_at_ms,
     })
 }
