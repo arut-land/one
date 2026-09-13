@@ -1,5 +1,5 @@
 use arut_conformance::*;
-use arut_storage::{BlobStore, Directory, FactLog, KeyValue, MemoryLog, MemoryStore, Redb};
+use arut_storage::{FactLog, KeyValue, MemoryLog, MemoryStore, Redb};
 use std::sync::{
     Arc,
     atomic::{AtomicU64, Ordering},
@@ -18,25 +18,6 @@ fn memory_storage() {
     let store = MemoryStore::default();
     blobs(&store);
     key_value(&store);
-}
-#[test]
-fn directory_storage_reopens_after_compaction() {
-    let path = directory();
-    let store = Directory::open(&path).unwrap();
-    fact_log(&store.log("suite").unwrap());
-    blobs(&store);
-    key_value(&store);
-    let blob = store.put_blob(b"kept across restarts").unwrap();
-    drop(store);
-    let reopened = Directory::open(&path).unwrap();
-    assert_eq!(
-        reopened.get_blob(&blob).unwrap(),
-        Some(b"kept across restarts".to_vec())
-    );
-    let log = reopened.log::<String>("suite").unwrap();
-    assert_eq!(log.read_from(2).unwrap()[0].fact, "third");
-    assert_eq!(log.outcome_of("one").unwrap().unwrap().fact, "first");
-    std::fs::remove_dir_all(path).unwrap();
 }
 #[test]
 fn redb_storage_reopens_after_compaction() {
@@ -84,8 +65,7 @@ fn redb_refuses_a_second_holder_of_the_same_file() {
     std::fs::remove_dir_all(path).unwrap();
 }
 
-/// Inside the owning process, two appenders behave as the directory log's two
-/// lock holders do: redb serializes the write transactions and one loses.
+/// redb serializes concurrent write transactions, so only one append wins.
 #[test]
 fn redb_writers_compare_and_append_atomically() {
     let path = directory();
@@ -108,29 +88,6 @@ fn redb_writers_compare_and_append_atomically() {
     std::fs::remove_dir_all(path).unwrap();
 }
 
-#[test]
-fn independent_writers_compare_and_append_atomically() {
-    let path = directory();
-    let one = Directory::open(&path)
-        .unwrap()
-        .log::<String>("suite")
-        .unwrap();
-    let two = Directory::open(&path)
-        .unwrap()
-        .log::<String>("suite")
-        .unwrap();
-    let barrier = Arc::new(std::sync::Barrier::new(2));
-    let other = barrier.clone();
-    let thread = std::thread::spawn(move || {
-        other.wait();
-        one.append(0, 1, "one", "one".into())
-    });
-    barrier.wait();
-    let result = two.append(0, 1, "two", "two".into());
-    assert_ne!(thread.join().unwrap().is_ok(), result.is_ok());
-    assert_eq!(two.read_from(0).unwrap().len(), 1);
-    std::fs::remove_dir_all(path).unwrap();
-}
 #[tokio::test]
 async fn in_process_registry_rpc() {
     let registry = arut_rpc::RpcRegistry::default()

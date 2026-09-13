@@ -22,6 +22,7 @@ thiserror = "2.0.20"
 uuid = { version = "1.18.1", default-features = false, features = ["std"] }
 
 [dev-dependencies]
+arut-storage = { workspace = true, features = ["redb"] }
 uuid = { version = "1.18.1", features = ["v7"] }
 futures-executor = "0.3.31"
 

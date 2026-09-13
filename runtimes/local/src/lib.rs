@@ -1,6 +1,6 @@
 //! Native persistence ports, Tokio drivers, and generic node assembly.
 //!
-//! The composition root chooses storage and composes its feature list. A node
+//! The composition root composes features over redb storage. A node
 //! lease remains held by the runtime and every active RPC dispatch. Blocking
 //! storage dispatch runs on Tokio's blocking pool, including router future polling.
 //! ChildHost supervises arutd; ScheduledChannel supports foreign pollers.
@@ -12,7 +12,7 @@ pub mod hosting;
 use arut_feature_chat::ports::{Clock, Drafts, IdSource, Persist};
 use arut_rpc::{RpcRegistry, RpcService, Status};
 pub use arut_runtime_host_polled::{NativeClock, NativeIds};
-use arut_storage::{Directory, Fact, FactLog, KeyValue, Redb, StorageError};
+use arut_storage::{Fact, FactLog, KeyValue, Redb, StorageError};
 use axum::Router;
 use std::{
     collections::HashMap,
@@ -20,37 +20,17 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum NodeStorage {
-    #[default]
-    Directory,
-    Redb,
-}
-impl NodeStorage {
-    pub fn from_env() -> Self {
-        match std::env::var("ARUT_STORAGE").as_deref() {
-            Ok("redb") => Self::Redb,
-            _ => Self::default(),
-        }
-    }
-}
-
 pub struct LocalRuntime {
-    directory: Arc<Directory>,
     path: PathBuf,
-    databases: Option<Mutex<HashMap<String, Redb>>>,
+    databases: Mutex<HashMap<String, Redb>>,
     drafts: Arc<dyn KeyValue>,
     _lease: std::fs::File,
 }
 impl LocalRuntime {
     /// `primary_log` assigns the existing node.redb file to its feature namespace.
-    /// Additional namespaces get separate databases; directory names stay stable.
-    pub fn open(
-        path: PathBuf,
-        storage: NodeStorage,
-        primary_log: &str,
-    ) -> Result<Self, StorageError> {
-        let directory = Arc::new(Directory::open(&path)?);
+    /// Additional namespaces get separate databases.
+    pub fn open(path: PathBuf, primary_log: &str) -> Result<Self, StorageError> {
+        std::fs::create_dir_all(&path)?;
         let lease = std::fs::OpenOptions::new()
             .create(true)
             .truncate(false)
@@ -60,21 +40,10 @@ impl LocalRuntime {
         lease
             .try_lock()
             .map_err(|error| StorageError::from(std::io::Error::from(error)))?;
-        let (databases, drafts): (_, Arc<dyn KeyValue>) = match storage {
-            NodeStorage::Directory => (None, directory.clone()),
-            NodeStorage::Redb => {
-                let database = Redb::open(path.join("node.redb"))?;
-                (
-                    Some(Mutex::new(HashMap::from([(
-                        primary_log.into(),
-                        database.clone(),
-                    )]))),
-                    Arc::new(database),
-                )
-            }
-        };
+        let database = Redb::open(path.join("node.redb"))?;
+        let databases = Mutex::new(HashMap::from([(primary_log.into(), database.clone())]));
+        let drafts = Arc::new(database);
         Ok(Self {
-            directory,
             path,
             databases,
             drafts,
@@ -99,20 +68,18 @@ impl Drafts for LocalRuntime {
 }
 impl<F: Fact> Persist<F> for LocalRuntime {
     fn log(&self, namespace: &str) -> Result<Arc<dyn FactLog<F>>, StorageError> {
-        match &self.databases {
-            None => Ok(Arc::new(self.directory.log(namespace)?)),
-            Some(databases) => {
-                let mut databases = databases.lock().expect("databases poisoned");
-                if !databases.contains_key(namespace) {
-                    let path = self.path.join(format!(
-                        "log-{}.redb",
-                        arut_storage::digest(namespace.as_bytes())
-                    ));
-                    databases.insert(namespace.into(), Redb::open(path)?);
-                }
-                Ok(Arc::new(databases[namespace].log()))
+        let mut databases = self.databases.lock().map_err(|_| StorageError::Corrupt)?;
+        let database = match databases.entry(namespace.into()) {
+            std::collections::hash_map::Entry::Occupied(entry) => entry.into_mut(),
+            std::collections::hash_map::Entry::Vacant(entry) => {
+                let path = self.path.join(format!(
+                    "log-{}.redb",
+                    arut_storage::digest(namespace.as_bytes())
+                ));
+                entry.insert(Redb::open(path)?)
             }
-        }
+        };
+        Ok(Arc::new(database.log()))
     }
 }
 
@@ -147,10 +114,7 @@ mod tests {
     use futures_util::StreamExt;
 
     fn app(data: PathBuf) -> Result<Router, StorageError> {
-        app_with(data, NodeStorage::default())
-    }
-    fn app_with(data: PathBuf, storage: NodeStorage) -> Result<Router, StorageError> {
-        let runtime = Arc::new(LocalRuntime::open(data, storage, "chat")?);
+        let runtime = Arc::new(LocalRuntime::open(data, "chat")?);
         let feature = arut_feature_chat::compose(runtime.clone())?;
         Ok(Node::serve(runtime, feature.routers()).unwrap())
     }
@@ -160,15 +124,14 @@ mod tests {
     }
 
     #[test]
-    fn a_node_directory_has_one_owner_for_either_storage_choice() {
-        for storage in [NodeStorage::Directory, NodeStorage::Redb] {
-            let path = std::env::temp_dir()
-                .join(format!("arut-exclusive-{storage:?}-{}", std::process::id()));
+    fn a_node_directory_has_one_owner() {
+        {
+            let path = std::env::temp_dir().join(format!("arut-exclusive-{}", std::process::id()));
             let _ = std::fs::remove_dir_all(&path);
-            let first = app_with(path.clone(), storage).unwrap();
-            assert!(app_with(path.clone(), storage).is_err());
+            let first = app(path.clone()).unwrap();
+            assert!(app(path.clone()).is_err());
             drop(first);
-            drop(app_with(path.clone(), storage).unwrap());
+            drop(app(path.clone()).unwrap());
             std::fs::remove_dir_all(path).unwrap();
         }
     }
@@ -177,30 +140,26 @@ mod tests {
     fn a_surviving_direct_composer_client_keeps_the_node_lease() {
         let path = std::env::temp_dir().join(format!("arut-client-lease-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&path);
-        let runtime =
-            Arc::new(LocalRuntime::open(path.clone(), NodeStorage::Directory, "chat").unwrap());
+        let runtime = Arc::new(LocalRuntime::open(path.clone(), "chat").unwrap());
         let feature = arut_feature_chat::compose(runtime.clone()).unwrap();
         let composer = feature.clients().composer;
         drop(feature);
         drop(runtime);
-        assert!(LocalRuntime::open(path.clone(), NodeStorage::Directory, "chat").is_err());
+        assert!(LocalRuntime::open(path.clone(), "chat").is_err());
         drop(composer);
-        drop(LocalRuntime::open(path.clone(), NodeStorage::Directory, "chat").unwrap());
+        drop(LocalRuntime::open(path.clone(), "chat").unwrap());
         std::fs::remove_dir_all(path).unwrap();
     }
 
     #[tokio::test]
-    async fn either_storage_implementation_serves_the_same_node() {
-        for storage in [NodeStorage::Directory, NodeStorage::Redb] {
-            let path = std::env::temp_dir()
-                .join(format!("arut-storage-{storage:?}-{}", std::process::id()));
+    async fn redb_serves_the_node() {
+        {
+            let path = std::env::temp_dir().join(format!("arut-storage-{}", std::process::id()));
             let _ = std::fs::remove_dir_all(&path);
             let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
             let address = listener.local_addr().unwrap();
             let server = tokio::spawn(async move {
-                axum::serve(listener, app_with(path, storage).unwrap())
-                    .await
-                    .unwrap();
+                axum::serve(listener, app(path).unwrap()).await.unwrap();
             });
             let channel: Arc<dyn RpcChannel> =
                 Arc::new(HttpRpcChannel::new(format!("http://{address}")));
@@ -223,8 +182,8 @@ mod tests {
                 .unwrap()
                 .message;
 
-            assert_eq!(retry.chat_id, first.chat_id, "{storage:?}");
-            assert_eq!(first.messages.len(), 2, "{storage:?}");
+            assert_eq!(retry.chat_id, first.chat_id);
+            assert_eq!(first.messages.len(), 2);
             server.abort();
         }
     }

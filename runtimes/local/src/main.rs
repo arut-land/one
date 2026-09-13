@@ -4,12 +4,7 @@ use std::{env, path::PathBuf};
 async fn main() {
     let data = PathBuf::from(env::var("ARUT_DATA").unwrap_or_else(|_| "arut-chat.pb".into()));
     let runtime = std::sync::Arc::new(
-        arut_runtime_local::LocalRuntime::open(
-            data,
-            arut_runtime_local::NodeStorage::from_env(),
-            "chat",
-        )
-        .expect("initialize local ports"),
+        arut_runtime_local::LocalRuntime::open(data, "chat").expect("initialize local ports"),
     );
     let features = [arut_feature_chat::compose(runtime.clone())
         .expect("compose chat")

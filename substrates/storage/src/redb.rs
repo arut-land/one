@@ -5,9 +5,7 @@
 //! The database owns its file exclusively, so other processes use the daemon's
 //! RPC channel. The schema version controls migrations when opening a file.
 
-use crate::{
-    Fact, FactLog, KeyValue, Record, Result, Snapshot, StorageError, StoredRecord, StoredSnapshot,
-};
+use crate::{Fact, FactLog, KeyValue, Record, Result, Snapshot, StorageError};
 use prost::Message;
 use redb::{
     Database, Error as RedbError, ReadableDatabase, ReadableTable, TableDefinition,
@@ -381,5 +379,65 @@ impl From<redb::CommitError> for StorageError {
 impl From<redb::StorageError> for StorageError {
     fn from(error: redb::StorageError) -> Self {
         RedbError::from(error).into()
+    }
+}
+
+/// The on-disk shape of a record; the fact keeps its own Protobuf encoding.
+#[derive(Clone, PartialEq, prost::Message)]
+pub(crate) struct StoredRecord {
+    #[prost(uint64, tag = "1")]
+    pub sequence: u64,
+    #[prost(uint64, tag = "2")]
+    pub epoch: u64,
+    #[prost(string, tag = "3")]
+    pub command_id: String,
+    #[prost(bytes = "vec", tag = "4")]
+    pub fact: Vec<u8>,
+}
+#[derive(Clone, PartialEq, prost::Message)]
+pub(crate) struct StoredSnapshot {
+    #[prost(uint64, tag = "1")]
+    pub sequence: u64,
+    #[prost(uint64, tag = "2")]
+    pub epoch: u64,
+    #[prost(bytes = "vec", tag = "3")]
+    pub data: Vec<u8>,
+}
+impl<F: Fact> From<&Record<F>> for StoredRecord {
+    fn from(record: &Record<F>) -> Self {
+        Self {
+            sequence: record.sequence,
+            epoch: record.epoch,
+            command_id: record.command_id.clone(),
+            fact: record.fact.encode_to_vec(),
+        }
+    }
+}
+impl StoredRecord {
+    pub(crate) fn into_record<F: Fact>(self) -> Result<Record<F>> {
+        Ok(Record {
+            sequence: self.sequence,
+            epoch: self.epoch,
+            command_id: self.command_id,
+            fact: F::decode(&self.fact[..])?,
+        })
+    }
+}
+impl From<&Snapshot> for StoredSnapshot {
+    fn from(snapshot: &Snapshot) -> Self {
+        Self {
+            sequence: snapshot.sequence,
+            epoch: snapshot.epoch,
+            data: snapshot.data.clone(),
+        }
+    }
+}
+impl From<StoredSnapshot> for Snapshot {
+    fn from(stored: StoredSnapshot) -> Self {
+        Self {
+            sequence: stored.sequence,
+            epoch: stored.epoch,
+            data: stored.data,
+        }
     }
 }

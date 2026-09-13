@@ -4,19 +4,13 @@
 //! transaction. Facts and snapshots are Protobuf rows. Compaction requires a
 //! snapshot and retains outcomes for retries.
 //!
-//! Memory implements all three ports. Native directory storage uses cross-process
-//! locks, atomic temporary-file persistence, and file and directory fsyncs. Keys
-//! are hashed to prevent path traversal; BLAKE3-addressed blobs verify on read.
-//! The optional native `redb` feature supplies fact logs and key-value tables in
-//! one exclusively owned database file. All implementations share conformance tests.
+//! Memory implements all three ports for tests and wasm. The native `redb`
+//! feature supplies transactional fact logs and key-value tables in one exclusively
+//! owned database file. Both implementations share conformance tests.
 
-#[cfg(not(target_arch = "wasm32"))]
-mod directory;
 mod memory;
 #[cfg(feature = "redb")]
 mod redb;
-#[cfg(not(target_arch = "wasm32"))]
-pub use directory::{Directory, DirectoryLog};
 pub use memory::{MemoryLog, MemoryStore};
 #[cfg(feature = "redb")]
 pub use redb::{Redb, RedbLog};
@@ -128,65 +122,5 @@ pub(crate) fn checked_digest(id: &str) -> Result<&str> {
         Ok(id)
     } else {
         Err(StorageError::Corrupt)
-    }
-}
-
-/// The on-disk shape of a record; the fact keeps its own Protobuf encoding.
-#[derive(Clone, PartialEq, prost::Message)]
-pub(crate) struct StoredRecord {
-    #[prost(uint64, tag = "1")]
-    pub sequence: u64,
-    #[prost(uint64, tag = "2")]
-    pub epoch: u64,
-    #[prost(string, tag = "3")]
-    pub command_id: String,
-    #[prost(bytes = "vec", tag = "4")]
-    pub fact: Vec<u8>,
-}
-#[derive(Clone, PartialEq, prost::Message)]
-pub(crate) struct StoredSnapshot {
-    #[prost(uint64, tag = "1")]
-    pub sequence: u64,
-    #[prost(uint64, tag = "2")]
-    pub epoch: u64,
-    #[prost(bytes = "vec", tag = "3")]
-    pub data: Vec<u8>,
-}
-impl<F: Fact> From<&Record<F>> for StoredRecord {
-    fn from(record: &Record<F>) -> Self {
-        Self {
-            sequence: record.sequence,
-            epoch: record.epoch,
-            command_id: record.command_id.clone(),
-            fact: record.fact.encode_to_vec(),
-        }
-    }
-}
-impl StoredRecord {
-    pub(crate) fn into_record<F: Fact>(self) -> Result<Record<F>> {
-        Ok(Record {
-            sequence: self.sequence,
-            epoch: self.epoch,
-            command_id: self.command_id,
-            fact: F::decode(&self.fact[..])?,
-        })
-    }
-}
-impl From<&Snapshot> for StoredSnapshot {
-    fn from(snapshot: &Snapshot) -> Self {
-        Self {
-            sequence: snapshot.sequence,
-            epoch: snapshot.epoch,
-            data: snapshot.data.clone(),
-        }
-    }
-}
-impl From<StoredSnapshot> for Snapshot {
-    fn from(stored: StoredSnapshot) -> Self {
-        Self {
-            sequence: stored.sequence,
-            epoch: stored.epoch,
-            data: stored.data,
-        }
     }
 }
