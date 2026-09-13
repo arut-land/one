@@ -14,7 +14,7 @@ members = [
     "substrates/authority",
     "substrates/storage",
     "substrates/watch",
-    "surfaces/linux-gtk",
+    "surfaces/linux",
     "tools/bindings",
     "tools/conformance",
     "tools/i18n",

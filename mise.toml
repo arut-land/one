@@ -117,7 +117,7 @@ depends = ["check:bindings", "check:layers", "check:rust", "check:wasm", "check:
 description = "Build what this machine can build: the Linux surface, the daemon, and the web surfaces"
 depends = ["install"]
 run = [
-  "cargo build -p arut-linux-gtk -p arut-runtime-local",
+  "cargo build -p arut-linux -p arut-runtime-local",
   "pnpm build",
 ]
 
@@ -135,7 +135,7 @@ run = "cargo run -p arut-runtime-local --bin arutd"
 
 [tasks."surface:linux"]
 description = "Run the Linux GTK4 surface"
-run = "cargo run -p arut-linux-gtk"
+run = "cargo run -p arut-linux"
 
 [tasks."surface:web"]
 description = "Run the web surface with hot reload"

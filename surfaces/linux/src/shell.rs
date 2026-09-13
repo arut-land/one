@@ -156,12 +156,12 @@ impl Component for Shell {
         });
         root.add_controller(keys);
         root.connect_map(|window| {
-            eprintln!("arut-linux-gtk: shell mapped");
+            eprintln!("arut-linux: shell mapped");
             if let Some(clock) = window.frame_clock() {
                 let handler = Rc::new(std::cell::RefCell::new(None));
                 let disconnect = handler.clone();
                 *handler.borrow_mut() = Some(clock.connect_after_paint(move |clock| {
-                    eprintln!("arut-linux-gtk: first frame painted");
+                    eprintln!("arut-linux: first frame painted");
                     if let Some(handler) = disconnect.borrow_mut().take() {
                         clock.disconnect(handler);
                     }

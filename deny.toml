@@ -12,7 +12,7 @@
 # dependency under one of them needs a deliberate decision, the same way
 # ADR 0017 made a deliberate decision to use FSL for our own product
 # crates (see the `exceptions` entries for arut-feature-chat,
-# arut-product-session, and arut-linux-gtk below).
+# arut-product-session, and arut-linux below).
 #
 # Run with `cargo deny check` (CI-only per docs/ECOSYSTEM.md: needs network
 # access for the advisory database).
@@ -64,7 +64,7 @@ allow = [
 exceptions = [
     { allow = ["FSL-1.1-ALv2"], name = "arut-feature-chat" },
     { allow = ["FSL-1.1-ALv2"], name = "arut-product-session" },
-    { allow = ["FSL-1.1-ALv2"], name = "arut-linux-gtk" },
+    { allow = ["FSL-1.1-ALv2"], name = "arut-linux" },
 ]
 
 [licenses.private]

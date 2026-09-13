@@ -112,7 +112,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "arut-linux-gtk"
+name = "arut-linux"
 version = "0.1.0"
 dependencies = [
  "arut-i18n",
