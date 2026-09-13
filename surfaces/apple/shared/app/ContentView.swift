@@ -1,4 +1,4 @@
-import ArutFfi
+import ArutBindings
 import ArutSurface
 import SwiftUI
 struct ContentView: View {

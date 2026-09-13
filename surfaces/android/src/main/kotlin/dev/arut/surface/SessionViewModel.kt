@@ -1,8 +1,8 @@
 package dev.arut.surface
 
 import androidx.lifecycle.ViewModel
-import dev.arut.ffi.ProductSessionHandle
-import dev.arut.ffi.createProductSession
+import dev.arut.bindings.ProductSessionHandle
+import dev.arut.bindings.createProductSession
 
 /**
  * Owns the core session for this process. A ViewModel survives configuration

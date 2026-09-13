@@ -14,9 +14,9 @@ pub trait ChatRuntime: Send + Sync + 'static {
 }
 
 #[derive(Clone)]
-pub struct Services {
-    pub chat: ChatServiceClient,
-    pub composer: ComposerServiceClient,
+pub(crate) struct Services {
+    pub(crate) chat: ChatServiceClient,
+    pub(crate) composer: ComposerServiceClient,
 }
 impl ChatRuntime for Services {
     fn chat_service(&self) -> ChatServiceClient {
@@ -28,11 +28,14 @@ impl ChatRuntime for Services {
 }
 
 pub struct Node<R> {
-    pub runtime: Arc<R>,
-    pub id: String,
+    runtime: Arc<R>,
+    id: String,
     cancellation: Cancellation,
 }
 impl<R> Node<R> {
+    pub fn id(&self) -> &str {
+        &self.id
+    }
     pub fn new(id: String, runtime: Arc<R>) -> Arc<Self> {
         Arc::new(Self {
             runtime,
@@ -53,11 +56,17 @@ impl<R> Node<R> {
 }
 
 pub struct Workspace<R> {
-    pub node: Arc<Node<R>>,
-    pub id: String,
+    node: Arc<Node<R>>,
+    id: String,
     cancellation: Cancellation,
 }
 impl<R> Workspace<R> {
+    pub fn id(&self) -> &str {
+        &self.id
+    }
+    pub fn node(&self) -> &Arc<Node<R>> {
+        &self.node
+    }
     pub fn cancellation(&self) -> &Cancellation {
         &self.cancellation
     }

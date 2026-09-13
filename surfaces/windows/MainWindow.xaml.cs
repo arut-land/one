@@ -1,4 +1,3 @@
-using Arut.Ffi;
 using Arut.Surface.Windows;
 using Microsoft.UI.Xaml;
 

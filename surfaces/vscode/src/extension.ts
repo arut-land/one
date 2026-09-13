@@ -1,3 +1,4 @@
+import { uuidV7 } from "../../../runtimes/browser/ids";
 import { createSession, loadStrings } from "@arut/bindings-typescript";
 import { registerChat } from "./surface";
 import { Uri, env, workspace, type ExtensionContext } from "vscode";
@@ -11,7 +12,7 @@ export async function activate(context: ExtensionContext): Promise<void> {
       await workspace.fs.readFile(Uri.joinPath(context.extensionUri, "locales", ...file.split("/"))),
     ),
   });
-  const session = await createSession("vscode-demo");
+  const session = await createSession("vscode-demo", { newId: uuidV7 });
   context.subscriptions.push(session);
   registerChat(context, session);
 }

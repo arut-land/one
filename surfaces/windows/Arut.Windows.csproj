@@ -12,6 +12,7 @@
          product/i18n/locales (ADR 0022). -->
     <PRIResource Include="Strings\**\*.resw" />
   </ItemGroup>
+  <Import Project="../../bindings/dotnet/Exports.props" />
   <ItemGroup>
     <PackageReference Include="Microsoft.WindowsAppSDK" Version="1.7.250401001" />
     <ProjectReference Include="../../bindings/dotnet/Arut.Bindings.csproj" />

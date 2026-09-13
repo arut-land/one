@@ -1,9 +1,7 @@
 package dev.arut.surface
 
 import androidx.compose.runtime.Composable
-import dev.arut.ffi.ChatError
-import dev.arut.ffi.ComposerError
-import dev.arut.ffi.NodeFailure
+import dev.arut.bindings.*
 import dev.arut.surface.generated.L10n
 
 // The core returns typed outcomes only (ADR 0016) and every sentence lives once
@@ -28,20 +26,20 @@ fun describe(failure: NodeFailure): String = when (failure) {
 
 @Composable
 fun describe(error: ComposerError): String = when (error) {
-    is ComposerError.Node -> describe(error.field0)
-    is ComposerError.RevisionConflict -> L10n.composerErrorRevisionConflict(error.current.toString())
-    is ComposerError.AuthorityChanged -> L10n.composerErrorAuthorityChanged(error.currentEpoch.toString())
-    is ComposerError.SnapshotMissing -> L10n.composerErrorSnapshotMissing()
-    is ComposerError.OutcomeMissing -> L10n.composerErrorOutcomeMissing()
-    is ComposerError.ScopeMissing -> L10n.composerErrorScopeMissing()
-    is ComposerError.ScopeMismatch -> L10n.composerErrorScopeMismatch()
+    is ComposerErrorNode -> describe(error.field0)
+    is ComposerErrorRevisionConflict -> L10n.composerErrorRevisionConflict(error.current.toString())
+    is ComposerErrorAuthorityChanged -> L10n.composerErrorAuthorityChanged(error.currentEpoch.toString())
+    is ComposerErrorSnapshotMissing -> L10n.composerErrorSnapshotMissing()
+    is ComposerErrorOutcomeMissing -> L10n.composerErrorOutcomeMissing()
+    is ComposerErrorScopeMissing -> L10n.composerErrorScopeMissing()
+    is ComposerErrorScopeMismatch -> L10n.composerErrorScopeMismatch()
 }
 
 @Composable
 fun describe(error: ChatError): String = when (error) {
-    is ChatError.Node -> describe(error.field0)
-    is ChatError.NoConversation -> L10n.chatErrorNoConversation()
-    is ChatError.Cancelled -> L10n.chatErrorCancelled()
-    is ChatError.Draft -> describe(error.field0)
-    is ChatError.ChatIdMissing -> L10n.chatErrorChatIdMissing()
+    is ChatErrorNode -> describe(error.field0)
+    is ChatErrorNoConversation -> L10n.chatErrorNoConversation()
+    is ChatErrorCancelled -> L10n.chatErrorCancelled()
+    is ChatErrorDraft -> describe(error.field0)
+    is ChatErrorChatIdMissing -> L10n.chatErrorChatIdMissing()
 }
