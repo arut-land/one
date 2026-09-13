@@ -238,6 +238,15 @@
   <data name="node_failure_unsupported" xml:space="preserve">
     <value>Your node doesn't support that yet.</value>
   </data>
+  <data name="node_startup_failure_lease_held" xml:space="preserve">
+    <value>Another running copy of your node already holds its lease.</value>
+  </data>
+  <data name="node_startup_failure_socket_unreachable" xml:space="preserve">
+    <value>Your node's socket exists, but nothing answered on it.</value>
+  </data>
+  <data name="node_startup_failure_spawn_failed" xml:space="preserve">
+    <value>Your node process could not be started.</value>
+  </data>
   <data name="rpc_error_already_exists" xml:space="preserve">
     <value>This item already exists on the node.</value>
   </data>

@@ -161,6 +161,12 @@ pub enum Message {
     NodeFailureUnreachable,
     /// `node-failure-unsupported`
     NodeFailureUnsupported,
+    /// `node-startup-failure-lease-held`
+    NodeStartupFailureLeaseHeld,
+    /// `node-startup-failure-socket-unreachable`
+    NodeStartupFailureSocketUnreachable,
+    /// `node-startup-failure-spawn-failed`
+    NodeStartupFailureSpawnFailed,
     /// `rpc-error-already-exists`
     RpcErrorAlreadyExists,
     /// `rpc-error-cancelled`
@@ -265,6 +271,9 @@ impl Message {
             Self::NodeFailureTimedOut => "node-failure-timed-out",
             Self::NodeFailureUnreachable => "node-failure-unreachable",
             Self::NodeFailureUnsupported => "node-failure-unsupported",
+            Self::NodeStartupFailureLeaseHeld => "node-startup-failure-lease-held",
+            Self::NodeStartupFailureSocketUnreachable => "node-startup-failure-socket-unreachable",
+            Self::NodeStartupFailureSpawnFailed => "node-startup-failure-spawn-failed",
             Self::RpcErrorAlreadyExists => "rpc-error-already-exists",
             Self::RpcErrorCancelled => "rpc-error-cancelled",
             Self::RpcErrorChanged => "rpc-error-changed",

@@ -51,3 +51,13 @@ rpc-error-exhausted = The node has no capacity for this request.
 rpc-error-changed = The node changed before the request completed. Try again.
 rpc-error-unsupported = This node does not support the request.
 rpc-error-internal = The node encountered an internal error.
+
+## NodeStartupFailure -- why `arut_runtime_local::child::ChildHost` could not
+## give a session a working connection to the local node at all (ADR 0011).
+## This is a separate enum from `NodeFailure` above: that one is why a call
+## over an already-open connection failed, this is why the connection never
+## came to be, so the two never share a variant name.
+
+node-startup-failure-lease-held = Another running copy of your node already holds its lease.
+node-startup-failure-socket-unreachable = Your node's socket exists, but nothing answered on it.
+node-startup-failure-spawn-failed = Your node process could not be started.

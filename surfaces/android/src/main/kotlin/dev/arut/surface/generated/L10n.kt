@@ -688,6 +688,33 @@ object L10n {
     fun nodeFailureUnsupported(): String =
         stringResource(R.string.node_failure_unsupported)
 
+    /** `node-startup-failure-lease-held` */
+    fun nodeStartupFailureLeaseHeld(context: Context): String =
+        context.getString(R.string.node_startup_failure_lease_held)
+
+    /** `node-startup-failure-lease-held` */
+    @Composable
+    fun nodeStartupFailureLeaseHeld(): String =
+        stringResource(R.string.node_startup_failure_lease_held)
+
+    /** `node-startup-failure-socket-unreachable` */
+    fun nodeStartupFailureSocketUnreachable(context: Context): String =
+        context.getString(R.string.node_startup_failure_socket_unreachable)
+
+    /** `node-startup-failure-socket-unreachable` */
+    @Composable
+    fun nodeStartupFailureSocketUnreachable(): String =
+        stringResource(R.string.node_startup_failure_socket_unreachable)
+
+    /** `node-startup-failure-spawn-failed` */
+    fun nodeStartupFailureSpawnFailed(context: Context): String =
+        context.getString(R.string.node_startup_failure_spawn_failed)
+
+    /** `node-startup-failure-spawn-failed` */
+    @Composable
+    fun nodeStartupFailureSpawnFailed(): String =
+        stringResource(R.string.node_startup_failure_spawn_failed)
+
     /** `rpc-error-already-exists` */
     fun rpcErrorAlreadyExists(context: Context): String =
         context.getString(R.string.rpc_error_already_exists)

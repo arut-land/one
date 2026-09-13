@@ -308,6 +308,18 @@ enum L10n {
     static func nodeFailureUnsupported() -> String {
         String(localized: "node-failure-unsupported", table: "Localizable", bundle: .module)
     }
+    /// `node-startup-failure-lease-held`
+    static func nodeStartupFailureLeaseHeld() -> String {
+        String(localized: "node-startup-failure-lease-held", table: "Localizable", bundle: .module)
+    }
+    /// `node-startup-failure-socket-unreachable`
+    static func nodeStartupFailureSocketUnreachable() -> String {
+        String(localized: "node-startup-failure-socket-unreachable", table: "Localizable", bundle: .module)
+    }
+    /// `node-startup-failure-spawn-failed`
+    static func nodeStartupFailureSpawnFailed() -> String {
+        String(localized: "node-startup-failure-spawn-failed", table: "Localizable", bundle: .module)
+    }
     /// `rpc-error-already-exists`
     static func rpcErrorAlreadyExists() -> String {
         String(localized: "rpc-error-already-exists", table: "Localizable", bundle: .module)

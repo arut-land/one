@@ -86,6 +86,9 @@ export const keys = {
   nodeFailureTimedOut: "node-failure-timed-out",
   nodeFailureUnreachable: "node-failure-unreachable",
   nodeFailureUnsupported: "node-failure-unsupported",
+  nodeStartupFailureLeaseHeld: "node-startup-failure-lease-held",
+  nodeStartupFailureSocketUnreachable: "node-startup-failure-socket-unreachable",
+  nodeStartupFailureSpawnFailed: "node-startup-failure-spawn-failed",
   rpcErrorAlreadyExists: "rpc-error-already-exists",
   rpcErrorCancelled: "rpc-error-cancelled",
   rpcErrorChanged: "rpc-error-changed",
@@ -259,6 +262,12 @@ export const t = {
   nodeFailureUnreachable: (bundle: L10nBundle): string => bundle.format(keys.nodeFailureUnreachable),
   /** `node-failure-unsupported` */
   nodeFailureUnsupported: (bundle: L10nBundle): string => bundle.format(keys.nodeFailureUnsupported),
+  /** `node-startup-failure-lease-held` */
+  nodeStartupFailureLeaseHeld: (bundle: L10nBundle): string => bundle.format(keys.nodeStartupFailureLeaseHeld),
+  /** `node-startup-failure-socket-unreachable` */
+  nodeStartupFailureSocketUnreachable: (bundle: L10nBundle): string => bundle.format(keys.nodeStartupFailureSocketUnreachable),
+  /** `node-startup-failure-spawn-failed` */
+  nodeStartupFailureSpawnFailed: (bundle: L10nBundle): string => bundle.format(keys.nodeStartupFailureSpawnFailed),
   /** `rpc-error-already-exists` */
   rpcErrorAlreadyExists: (bundle: L10nBundle): string => bundle.format(keys.rpcErrorAlreadyExists),
   /** `rpc-error-cancelled` */

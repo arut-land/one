@@ -7,6 +7,7 @@ license.workspace = true
 [dependencies]
 arut-runtime-host-polled.workspace = true
 arut-feature-chat.workspace = true
+arut-i18n-macros.workspace = true
 arut-product-session.workspace = true
 arut-protocol.workspace = true
 arut-rpc.workspace = true
@@ -14,7 +15,11 @@ arut-storage = { workspace = true, features = ["redb"] }
 arut-transport-connect-http.workspace = true
 arut-transport-ipc.workspace = true
 axum = "0.8.4"
-tokio = { version = "1.47.1", features = ["macros", "net", "rt-multi-thread", "signal", "process", "io-util"] }
+thiserror = "2.0.20"
+tokio = { version = "1.47.1", features = ["macros", "net", "rt-multi-thread", "signal", "process", "io-util", "io-std"] }
+
+[target.'cfg(unix)'.dependencies]
+rustix = { version = "1.1.4", features = ["process"] }
 
 [dev-dependencies]
 futures-util = "0.3.31"

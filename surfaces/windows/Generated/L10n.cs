@@ -237,6 +237,15 @@ internal static class L10n
     /// <summary><c>node-failure-unsupported</c></summary>
     public static string NodeFailureUnsupported() => Resources.GetString("node_failure_unsupported");
 
+    /// <summary><c>node-startup-failure-lease-held</c></summary>
+    public static string NodeStartupFailureLeaseHeld() => Resources.GetString("node_startup_failure_lease_held");
+
+    /// <summary><c>node-startup-failure-socket-unreachable</c></summary>
+    public static string NodeStartupFailureSocketUnreachable() => Resources.GetString("node_startup_failure_socket_unreachable");
+
+    /// <summary><c>node-startup-failure-spawn-failed</c></summary>
+    public static string NodeStartupFailureSpawnFailed() => Resources.GetString("node_startup_failure_spawn_failed");
+
     /// <summary><c>rpc-error-already-exists</c></summary>
     public static string RpcErrorAlreadyExists() => Resources.GetString("rpc_error_already_exists");
 

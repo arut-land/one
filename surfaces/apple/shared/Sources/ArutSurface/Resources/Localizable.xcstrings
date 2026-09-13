@@ -826,6 +826,39 @@
         }
       }
     },
+    "node-startup-failure-lease-held": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Another running copy of your node already holds its lease."
+          }
+        }
+      }
+    },
+    "node-startup-failure-socket-unreachable": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Your node's socket exists, but nothing answered on it."
+          }
+        }
+      }
+    },
+    "node-startup-failure-spawn-failed": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Your node process could not be started."
+          }
+        }
+      }
+    },
     "rpc-error-already-exists": {
       "extractionState": "manual",
       "localizations": {

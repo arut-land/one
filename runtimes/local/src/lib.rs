@@ -8,6 +8,7 @@
 mod blocking;
 #[cfg(unix)]
 pub mod child;
+pub mod failure;
 pub mod hosting;
 use arut_feature_chat::ports::{Clock, Drafts, IdSource, Persist};
 use arut_rpc::{RpcRegistry, RpcService, Status};

@@ -170,6 +170,7 @@ name = "arut-runtime-local"
 version = "0.1.0"
 dependencies = [
  "arut-feature-chat",
+ "arut-i18n-macros",
  "arut-product-session",
  "arut-protocol",
  "arut-rpc",
@@ -179,6 +180,8 @@ dependencies = [
  "arut-transport-ipc",
  "axum",
  "futures-util",
+ "rustix",
+ "thiserror",
  "tokio",
 ]
 

@@ -76,6 +76,9 @@
     <string name="node_failure_timed_out">Your node is taking too long to answer.</string>
     <string name="node_failure_unreachable">Arut can\'t reach your node right now.</string>
     <string name="node_failure_unsupported">Your node doesn\'t support that yet.</string>
+    <string name="node_startup_failure_lease_held">Another running copy of your node already holds its lease.</string>
+    <string name="node_startup_failure_socket_unreachable">Your node\'s socket exists, but nothing answered on it.</string>
+    <string name="node_startup_failure_spawn_failed">Your node process could not be started.</string>
     <string name="rpc_error_already_exists">This item already exists on the node.</string>
     <string name="rpc_error_cancelled">The request was cancelled.</string>
     <string name="rpc_error_changed">The node changed before the request completed. Try again.</string>
