@@ -1,4 +1,5 @@
 //! Chat commands, transcript projections, composer drafts, and services.
+//! `compose` requires the IdSource, Persist, Drafts, and Clock capability bundle.
 //!
 //! Accepted mock exchanges append message and operation lifecycle facts atomically.
 //! UUIDv7 command IDs deduplicate retries; projections replay on restart. Clients
@@ -24,3 +25,9 @@ pub use client::{ChatClient, ChatStarted};
 pub use facts::ChatProjection;
 pub use projection::{ChatMessage, ChatRole, ChatState, ChatStatus};
 pub use service::ChatServiceImpl;
+
+mod compose;
+pub use compose::{ChatClients, ChatFeature, ComposeError, compose};
+pub use ports::ChatRuntime;
+#[cfg(any(test, feature = "test-support"))]
+pub mod test_support;
