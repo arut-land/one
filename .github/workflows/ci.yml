@@ -5,10 +5,18 @@ on:
     branches: ["**"]
     tags: ["v*"]
   pull_request:
+  workflow_dispatch:
+    inputs:
+      android:
+        description: "Run the Android job regardless of changed paths"
+        type: boolean
+        default: true
 
+# Pushes supersede each other; a manual dispatch keeps its own group so a
+# later push cannot cancel a verification someone asked for.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
-  cancel-in-progress: true
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: ${{ github.event_name != 'workflow_dispatch' }}
 
 jobs:
   changes:
@@ -84,7 +92,7 @@ jobs:
 
   android:
     needs: changes
-    if: needs.changes.outputs.android == 'true'
+    if: needs.changes.outputs.android == 'true' || (github.event_name == 'workflow_dispatch' && inputs.android)
     name: Android
     runs-on: ubuntu-latest
     steps:
