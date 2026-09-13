@@ -35,7 +35,7 @@ pub struct ComposerSnapshot {
 }
 
 impl ComposerSnapshot {
-    pub fn empty(scope: ComposerScope) -> Self {
+    pub(crate) fn empty(scope: ComposerScope) -> Self {
         Self {
             scope,
             authority_epoch: 1,

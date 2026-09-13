@@ -1,5 +1,4 @@
 import ArutBindings
-import ArutFfi
 import SwiftUI
 
 public struct ChatView: View {

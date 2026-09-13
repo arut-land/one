@@ -23,11 +23,11 @@ interface Manifest {
 export interface StringsSource {
   /**
    * The directory holding `locales.json` and `<lang>/<file>.ftl`. Ignored when
-   * `read` is supplied. Defaults to the web surface's served copy.
+   * `read` is supplied. The composition root supplies the resource location.
    */
   baseUrl?: string;
-  /** Languages best first. Defaults to `navigator.languages`. */
-  preferred?: readonly string[];
+  /** Languages best first, resolved by the surface. */
+  preferred: readonly string[];
   /**
    * Read one file of the tree by its path within it (`locales.json`,
    * `en/errors.ftl`). A host without `fetch` -- the VS Code extension host
@@ -68,16 +68,16 @@ export const strings: L10nBundle = {
  *
  * Returns the negotiated locales, best first.
  */
-export async function loadStrings(source: StringsSource = {}): Promise<readonly string[]> {
-  const base = source.baseUrl ?? "/locales";
+export async function loadStrings(source: StringsSource): Promise<readonly string[]> {
+  const base = source.baseUrl;
+  if (!source.read && base === undefined) throw new Error("a string source needs a reader or base URL");
   const read = source.read ?? (async (file: string) => {
     const response = await fetch(`${base}/${file}`);
     if (!response.ok) throw new Error(`${base}/${file}: ${response.status} ${response.statusText}`);
     return response.text();
   });
   const manifest = JSON.parse(await read("locales.json")) as Manifest;
-  const preferred = source.preferred
-    ?? (typeof navigator === "undefined" ? [] : navigator.languages);
+  const preferred = source.preferred;
   const chosen = negotiateLanguages([...preferred], manifest.locales, {
     defaultLocale: manifest.locales[0],
     strategy: "filtering",

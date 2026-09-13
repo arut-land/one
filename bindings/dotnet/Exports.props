@@ -1,0 +1,6 @@
+<Project>
+  <!-- C# aliases are source-scoped, so consumers compile this generated facade. -->
+  <ItemGroup>
+    <Compile Include="$(MSBuildThisFileDirectory)Exports.cs" Link="Bindings/Exports.cs" />
+  </ItemGroup>
+</Project>

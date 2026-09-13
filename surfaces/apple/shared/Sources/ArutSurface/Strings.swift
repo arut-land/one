@@ -1,4 +1,4 @@
-import ArutFfi
+import ArutBindings
 
 // The core returns typed outcomes only (ADR 0016) and every sentence lives once
 // in product/i18n as Fluent (ADR 0022). All this file does is choose which

@@ -33,6 +33,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "arut-binding-exports"
+version = "0.1.0"
+dependencies = [
+ "syn 2.0.119",
+]
+
+[[package]]
 name = "arut-conformance"
 version = "0.1.0"
 dependencies = [

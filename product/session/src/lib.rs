@@ -36,7 +36,7 @@ pub struct SessionScope {
 }
 
 pub struct ProductSession {
-    pub workspace: Arc<scopes::Workspace<scopes::Services>>,
+    workspace: Arc<scopes::Workspace<scopes::Services>>,
     chats: SessionChats,
     capability_service: Option<CapabilityServiceClient>,
     availability: Watch<SessionAvailability>,
@@ -248,7 +248,7 @@ impl ProductSession {
     /// The node scope every workspace, conversation, and operation hangs from.
     /// Cancelling it stops the whole session's outstanding work.
     pub fn cancellation(&self) -> &Cancellation {
-        self.workspace.node.cancellation()
+        self.workspace.node().cancellation()
     }
 
     pub fn with_capability_service(mut self, service: CapabilityServiceClient) -> Self {

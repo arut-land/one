@@ -1,6 +1,5 @@
 import * as ffi from "@arut/ffi";
-import { uuidV7 } from "./ids";
-export async function createSession(scope: string): Promise<ffi.ProductSessionHandle> {
+export async function createSession(scope: string, ids: ffi.HostIds): Promise<ffi.ProductSessionHandle> {
   await (ffi as typeof ffi & { initialized: Promise<void> }).initialized;
-  return ffi.createBrowserSession(scope, { newId: uuidV7 });
+  return ffi.createBrowserSession(scope, ids);
 }

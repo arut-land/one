@@ -73,6 +73,14 @@ run = [
   "cargo machete",
 ]
 
+[tasks.bindings]
+description = "Generate native public exports over the FFI binding packages"
+run = "cargo run --quiet -p arut-binding-exports"
+
+[tasks."check:bindings"]
+description = "Check generated binding facades and forbid direct FFI imports in surfaces"
+run = "cargo run --quiet -p arut-binding-exports -- --check"
+
 [tasks."check:layers"]
 description = "Enforce architectural dependency and executor boundaries"
 run = "cargo run --quiet -p arut-layers"
@@ -100,7 +108,7 @@ run = "pnpm check"
 
 [tasks.check]
 description = "Everything CI checks, in one command"
-depends = ["check:layers", "check:rust", "check:wasm", "check:proto", "check:i18n", "check:deps", "check:ts"]
+depends = ["check:bindings", "check:layers", "check:rust", "check:wasm", "check:proto", "check:i18n", "check:deps", "check:ts"]
 
 # ---------------------------------------------------------------------------
 # Build and run.

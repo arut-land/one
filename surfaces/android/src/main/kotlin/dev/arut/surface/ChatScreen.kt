@@ -7,7 +7,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import dev.arut.surface.generated.L10n
 import dev.arut.bindings.ObservableState
-import dev.arut.ffi.*
+import dev.arut.bindings.*
 import kotlinx.coroutines.launch
 
 @Composable
