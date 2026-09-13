@@ -34,7 +34,7 @@
       CopyToPublishDirectory="PreserveNewest"
     />
     <Content
-      Include="../../bindings/generated/csharp/runtimes/$(RuntimeIdentifier)/native/*.dll"
+      Include="../../bindings/generated/csharp/$(Configuration)/runtimes/$(RuntimeIdentifier)/native/*.dll"
       Link="%(Filename)%(Extension)"
       CopyToOutputDirectory="PreserveNewest"
       CopyToPublishDirectory="PreserveNewest"
@@ -42,8 +42,8 @@
   </ItemGroup>
   <Target Name="RequireRustBindings" BeforeTargets="PrepareForBuild">
     <Error
-      Condition="!Exists('../../bindings/generated/csharp/runtimes/$(RuntimeIdentifier)/native/arut_ffi.dll')"
-      Text="Rust bindings are missing. Run mise run ffi:csharp before building the Windows app."
+      Condition="!Exists('../../bindings/generated/csharp/$(Configuration)/runtimes/$(RuntimeIdentifier)/native/arut_ffi.dll')"
+      Text="Rust bindings are missing. Run mise run build:windows for Debug or mise run publish:windows for Release."
     />
   </Target>
   <!-- The .NET publish pipeline does not collect WinUI's loose XBF/PRI outputs. -->

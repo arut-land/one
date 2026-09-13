@@ -7,11 +7,13 @@ The desktop app uses WinUI 3 and C# over the Rust product session. Windows owns 
 Install mise and Visual Studio Build Tools with the Desktop development with C++ workload and Windows SDK. Run from the repository root in PowerShell:
 
 ```powershell
-mise install cargo-binstall
+mise install
 mise run surface:windows
 ```
 
 The repository pins cargo-binstall and requires prebuilt Cargo tools. BoltFFI comes directly from its GitHub release through mise because binstall cannot discover its archive names. Mise fails if a binary is unavailable instead of compiling a tool from source. The app's Rust core still compiles locally. The binding task discovers MSVC through vswhere, so a Developer PowerShell terminal is optional.
+
+Debug and Release bindings live in separate `bindings/generated/csharp/Debug` and `Release` directories. MSBuild selects the directory through `$(Configuration)`, so publishing cannot replace the Debug native library. Generate the corresponding package through mise before opening a fresh checkout in an IDE. See [build workflows](BUILDING.md) for the shared tool setup.
 
 The app targets Windows x64, .NET 10, and Windows App SDK 2.4. It runs unpackaged with the .NET and Windows App SDK runtimes beside the executable. `mise run publish:windows` builds Rust and C# in Release mode and writes the distributable folder to `surfaces/windows/bin/publish`. Distribute the entire folder, including `arut_ffi.dll`, `Arut.Windows.pri`, and the compiled `.xbf` views.
 

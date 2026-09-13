@@ -5,6 +5,6 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Remove="tests/**/*.cs" />
-    <ProjectReference Include="../generated/csharp/BoltFFI.CSharp.csproj" />
+    <ProjectReference Include="../generated/csharp/$(Configuration)/BoltFFI.CSharp.csproj" />
   </ItemGroup>
 </Project>

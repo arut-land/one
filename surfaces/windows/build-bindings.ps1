@@ -17,7 +17,8 @@ if (-not (Get-Command cl.exe -ErrorAction SilentlyContinue)) {
 
 Push-Location (Join-Path $PSScriptRoot '../../bindings/ffi')
 try {
-    $buildArguments = @('pack', 'csharp', '--deny-skipped')
+    $profile = if ($Release) { 'release' } else { 'debug' }
+    $buildArguments = @('pack', 'csharp', '--deny-skipped', '--overlay', "csharp-$profile.toml")
     if ($Release) { $buildArguments += '--release' }
     & boltffi @buildArguments
     if ($LASTEXITCODE -ne 0) { throw "C# binding generation failed with exit code $LASTEXITCODE." }

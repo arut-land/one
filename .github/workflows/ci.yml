@@ -43,7 +43,7 @@ jobs:
           android=false
           while IFS= read -r path; do
             case "$path" in
-              surfaces/android/*|bindings/kotlin/*|bindings/ffi/*|features/*|product/*|substrates/*|protocols/*|runtimes/*|Cargo.lock)
+              surfaces/android/*|bindings/kotlin/*|bindings/ffi/*|features/*|product/*|substrates/*|protocols/*|runtimes/*|tools/dev/*|Cargo.toml|Cargo.lock|mise.toml|mise.lock|.mise/*|.cargo/*|buf.yaml|.github/workflows/ci.yml)
                 android=true
                 break
                 ;;
@@ -76,14 +76,11 @@ jobs:
             git branch master origin/master
           fi
 
-      - uses: Swatinem/rust-cache@v2
-
       - uses: jdx/mise-action@v2
         with:
-          install_args: cargo-binstall
+          install_args: cargo-binstall rust
 
-      - name: Install toolchains
-        run: mise install
+      - uses: Swatinem/rust-cache@v2
 
       # One entry point for humans and CI: mise.toml owns what "check" means.
       - name: mise run check
@@ -99,7 +96,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: jdx/mise-action@v2
         with:
-          install_args: cargo-binstall
+          install_args: cargo-binstall rust
       - uses: Swatinem/rust-cache@v2
       - run: mise run check:windows
 
@@ -111,23 +108,20 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: Swatinem/rust-cache@v2
-
-      - uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: "21"
-
-      - uses: android-actions/setup-android@v3
-        with:
-          packages: "platform-tools platforms;android-34 build-tools;34.0.0 ndk;26.1.10909125"
-
       - uses: jdx/mise-action@v2
         with:
-          install_args: cargo-binstall
+          install_args: cargo-binstall rust
 
-      - name: Install toolchains
-        run: mise install
+      - uses: Swatinem/rust-cache@v2
+
+      # The hosted runner's default JDK runs sdkmanager. Build/test JDKs are
+      # pinned by their mise tasks rather than installed a second time here.
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: "platform-tools platforms;android-35 build-tools;35.0.0 ndk;26.1.10909125"
+
+      - name: Test Kotlin observation
+        run: mise run check:observers-kotlin
 
       # This machine has no Android emulator or device, so only the build
       # itself is verified here, not the app running.
@@ -144,14 +138,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: Swatinem/rust-cache@v2
-
       - uses: jdx/mise-action@v2
         with:
-          install_args: cargo-binstall
+          install_args: cargo-binstall rust
 
-      - name: Install toolchains
-        run: mise install
+      - uses: Swatinem/rust-cache@v2
 
       - name: Build ArutMac and test Swift bindings
         run: mise run check:apple
