@@ -5,18 +5,45 @@
   xmlns:local="using:Arut.Surface.Windows"
 >
   <UserControl.Resources>
-    <Style
-      x:Key="IconButtonStyle"
-      TargetType="Button"
-      BasedOn="{StaticResource DefaultButtonStyle}"
-    >
-      <Setter Property="Width" Value="28" />
-      <Setter Property="Height" Value="28" />
-      <Setter Property="Padding" Value="0" />
-      <Setter Property="Background" Value="Transparent" />
-      <Setter Property="BorderThickness" Value="0" />
-      <Setter Property="CornerRadius" Value="8" />
-    </Style>
+    <ResourceDictionary>
+      <ResourceDictionary.ThemeDictionaries>
+        <ResourceDictionary x:Key="Default">
+          <x:Double x:Key="ScrollFadeOpacity">1</x:Double>
+          <x:Double x:Key="BottomScrollFadeOpacity">0.5</x:Double>
+          <Thickness x:Key="ToolbarBorderThickness">0</Thickness>
+        </ResourceDictionary>
+        <ResourceDictionary x:Key="HighContrast">
+          <x:Double x:Key="ScrollFadeOpacity">0</x:Double>
+          <x:Double x:Key="BottomScrollFadeOpacity">0</x:Double>
+          <Thickness x:Key="ToolbarBorderThickness">1</Thickness>
+        </ResourceDictionary>
+      </ResourceDictionary.ThemeDictionaries>
+      <StandardUICommand x:Key="CopyMessageCommand" Kind="Copy" ExecuteRequested="CopyMessage" />
+      <MenuFlyout x:Name="MessageMenu">
+        <MenuFlyoutItem Command="{StaticResource CopyMessageCommand}" />
+      </MenuFlyout>
+      <XamlUICommand x:Key="NewChatCommand" ExecuteRequested="NewChat">
+        <XamlUICommand.KeyboardAccelerators>
+          <KeyboardAccelerator Key="N" Modifiers="Control" />
+        </XamlUICommand.KeyboardAccelerators>
+      </XamlUICommand>
+      <XamlUICommand x:Key="SearchCommand" ExecuteRequested="FocusSearch">
+        <XamlUICommand.KeyboardAccelerators>
+          <KeyboardAccelerator Key="F" Modifiers="Control" />
+        </XamlUICommand.KeyboardAccelerators>
+      </XamlUICommand>
+      <Style
+        x:Key="IconButtonStyle"
+        TargetType="Button"
+        BasedOn="{StaticResource DefaultButtonStyle}"
+      >
+        <Setter Property="Width" Value="28" />
+        <Setter Property="Height" Value="28" />
+        <Setter Property="Padding" Value="0" />
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="BorderThickness" Value="{ThemeResource ToolbarBorderThickness}" />
+      </Style>
+    </ResourceDictionary>
   </UserControl.Resources>
   <Grid>
     <Grid.RowDefinitions>
@@ -24,19 +51,32 @@
       <RowDefinition Height="*" />
     </Grid.RowDefinitions>
     <Grid.KeyboardAccelerators>
-      <KeyboardAccelerator Key="N" Modifiers="Control" Invoked="NewConversationShortcut" />
       <KeyboardAccelerator Key="B" Modifiers="Control" Invoked="ToggleHistoryShortcut" />
       <KeyboardAccelerator Key="L" Modifiers="Control" Invoked="FocusComposerShortcut" />
-      <KeyboardAccelerator Key="F" Modifiers="Control" Invoked="SearchShortcut" />
     </Grid.KeyboardAccelerators>
     <VisualStateManager.VisualStateGroups>
+      <VisualStateGroup>
+        <VisualState x:Name="CompactTitle">
+          <VisualState.StateTriggers>
+            <AdaptiveTrigger MinWindowWidth="0" />
+          </VisualState.StateTriggers>
+          <VisualState.Setters>
+            <Setter Target="ConversationTitle.Visibility" Value="Collapsed" />
+          </VisualState.Setters>
+        </VisualState>
+        <VisualState x:Name="FullTitle">
+          <VisualState.StateTriggers>
+            <AdaptiveTrigger MinWindowWidth="400" />
+          </VisualState.StateTriggers>
+        </VisualState>
+      </VisualStateGroup>
       <VisualStateGroup x:Name="ComposerFocusStates">
         <VisualState x:Name="ComposerUnfocused" />
         <VisualState x:Name="ComposerFocused">
           <VisualState.Setters>
             <Setter
-              Target="ComposerCard.Background"
-              Value="{ThemeResource SolidBackgroundFillColorQuarternaryBrush}"
+              Target="ComposerCard.BorderBrush"
+              Value="{ThemeResource TextControlBorderBrushFocused}"
             />
           </VisualState.Setters>
         </VisualState>
@@ -67,7 +107,6 @@
     </VisualStateManager.VisualStateGroups>
     <local:DesktopTitleBar
       x:Name="AppTitleBar"
-      Height="32"
       Title="{x:Bind AppName}"
       IsPaneToggleButtonVisible="True"
       PaneToggleRequested="TitleBarToggle"
@@ -85,8 +124,10 @@
       <TitleBar.Content>
         <TextBlock
           x:Name="ConversationTitle"
-          FontSize="12"
+          Style="{ThemeResource CaptionTextBlockStyle}"
           IsHitTestVisible="False"
+          TextWrapping="NoWrap"
+          VerticalAlignment="Center"
           TextTrimming="CharacterEllipsis"
           Margin="0,0,12,0"
         />
@@ -96,7 +137,7 @@
           <Button
             x:Name="SearchButton"
             Style="{StaticResource IconButtonStyle}"
-            Click="FocusSearch"
+            Command="{StaticResource SearchCommand}"
             AutomationProperties.Name="{x:Bind SearchLabel}"
             ToolTipService.ToolTip="{x:Bind SearchLabel}"
           >
@@ -105,7 +146,7 @@
           <Button
             x:Name="NewChatButton"
             Style="{StaticResource IconButtonStyle}"
-            Click="NewChat"
+            Command="{StaticResource NewChatCommand}"
             AutomationProperties.Name="{x:Bind NewConversationLabel}"
             ToolTipService.ToolTip="{x:Bind NewConversationTooltip}"
           >
@@ -119,7 +160,7 @@
       Grid.Row="1"
       OpenPaneLength="280"
       DisplayMode="Overlay"
-      PaneBackground="{ThemeResource ApplicationPageBackgroundThemeBrush}"
+      PaneBackground="{ThemeResource AcrylicInAppFillColorDefaultBrush}"
     >
       <SplitView.Pane>
         <Grid Padding="12,16,12,12" RowSpacing="16">
@@ -147,19 +188,26 @@
               x:Name="History"
               ItemsSource="{x:Bind Summaries}"
               SelectionChanged="SelectChat"
+              IsItemClickEnabled="True"
+              ItemClick="ActivateChat"
               AutomationProperties.Name="{x:Bind HistoryLabel}"
             >
+              <ListView.ItemContainerTransitions>
+                <TransitionCollection />
+              </ListView.ItemContainerTransitions>
               <ListView.ItemContainerStyle>
-                <Style TargetType="ListViewItem">
+                <Style
+                  TargetType="ListViewItem"
+                  BasedOn="{StaticResource DefaultListViewItemStyle}"
+                >
                   <Setter Property="HorizontalContentAlignment" Value="Stretch" />
-                  <Setter Property="Padding" Value="10,12" />
+                  <Setter Property="Padding" Value="12,8" />
                   <Setter Property="Margin" Value="0,0,0,4" />
-                  <Setter Property="CornerRadius" Value="8" />
                 </Style>
               </ListView.ItemContainerStyle>
               <ListView.ItemTemplate>
                 <DataTemplate x:DataType="local:ConversationRow">
-                  <Grid ColumnSpacing="10">
+                  <Grid ColumnSpacing="12">
                     <Grid.ColumnDefinitions>
                       <ColumnDefinition Width="32" />
                       <ColumnDefinition Width="*" />
@@ -167,21 +215,22 @@
                     <Border
                       Width="32"
                       Height="32"
-                      CornerRadius="10"
+                      CornerRadius="{ThemeResource OverlayCornerRadius}"
                       Background="{ThemeResource SubtleFillColorSecondaryBrush}"
                       VerticalAlignment="Center"
                     >
                       <FontIcon Glyph="&#xE8BD;" FontSize="16" />
                     </Border>
-                    <StackPanel Grid.Column="1" Spacing="3">
+                    <StackPanel Grid.Column="1" Spacing="4">
                       <TextBlock
-                        Text="{x:Bind Title}"
+                        Text="{x:Bind Title, Mode=OneWay}"
                         FontWeight="SemiBold"
                         TextTrimming="CharacterEllipsis"
                       />
                       <TextBlock
-                        Text="{x:Bind Preview}"
-                        FontSize="12"
+                        Text="{x:Bind Preview, Mode=OneWay}"
+                        TextWrapping="NoWrap"
+                        Style="{ThemeResource CaptionTextBlockStyle}"
                         Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                         TextTrimming="CharacterEllipsis"
                       />
@@ -215,8 +264,8 @@
       </SplitView.Pane>
       <Border
         x:Name="ConversationPanel"
-        Margin="4,0,6,6"
-        CornerRadius="10"
+        Margin="4,0,8,8"
+        CornerRadius="{ThemeResource OverlayCornerRadius}"
         Background="{ThemeResource LayerFillColorDefaultBrush}"
         BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
         BorderThickness="1"
@@ -233,6 +282,10 @@
               AutomationProperties.Name="{x:Bind TranscriptLabel}"
               ScrollViewer.HorizontalScrollBarVisibility="Disabled"
             >
+              <ListView.Resources>
+                <SolidColorBrush x:Key="ListViewItemBackgroundPointerOver" Color="Transparent" />
+                <SolidColorBrush x:Key="ListViewItemBackgroundPressed" Color="Transparent" />
+              </ListView.Resources>
               <ListView.Footer>
                 <Border
                   x:Name="TranscriptEndSpace"
@@ -244,22 +297,15 @@
                 <TransitionCollection />
               </ListView.ItemContainerTransitions>
               <ListView.ItemContainerStyle>
-                <Style TargetType="ListViewItem">
+                <Style
+                  TargetType="ListViewItem"
+                  BasedOn="{StaticResource DefaultListViewItemStyle}"
+                >
                   <Setter Property="HorizontalContentAlignment" Value="Stretch" />
                   <Setter Property="Padding" Value="0" />
                   <Setter Property="Margin" Value="0" />
                   <Setter Property="MinHeight" Value="0" />
-                  <Setter Property="Template">
-                    <Setter.Value>
-                      <ControlTemplate TargetType="ListViewItem">
-                        <ContentPresenter
-                          Content="{TemplateBinding Content}"
-                          ContentTemplate="{TemplateBinding ContentTemplate}"
-                          HorizontalContentAlignment="Stretch"
-                        />
-                      </ControlTemplate>
-                    </Setter.Value>
-                  </Setter>
+                  <Setter Property="ContextFlyout" Value="{StaticResource MessageMenu}" />
                 </Style>
               </ListView.ItemContainerStyle>
               <ListView.ItemTemplate>
@@ -279,6 +325,7 @@
             </ListView>
             <Rectangle
               x:Name="TopScrollFade"
+              Opacity="{ThemeResource ScrollFadeOpacity}"
               Height="24"
               Margin="16,0,16,0"
               VerticalAlignment="Top"
@@ -301,6 +348,7 @@
             </Rectangle>
             <Rectangle
               x:Name="BottomScrollFade"
+              Opacity="{ThemeResource BottomScrollFadeOpacity}"
               Margin="16,0,16,0"
               VerticalAlignment="Bottom"
               IsHitTestVisible="False"
@@ -330,7 +378,7 @@
               <Border
                 Width="64"
                 Height="64"
-                CornerRadius="20"
+                CornerRadius="{ThemeResource OverlayCornerRadius}"
                 Background="{ThemeResource SubtleFillColorSecondaryBrush}"
                 Margin="0,0,0,8"
               >
@@ -342,8 +390,7 @@
               </Border>
               <TextBlock
                 Text="{x:Bind EmptyTitle}"
-                FontSize="24"
-                FontWeight="SemiBold"
+                Style="{ThemeResource TitleTextBlockStyle}"
                 TextWrapping="Wrap"
                 TextAlignment="Center"
               />
@@ -369,13 +416,14 @@
                 Translation="0,0,12"
                 HorizontalAlignment="Right"
                 Visibility="Collapsed"
-                Background="{ThemeResource SolidBackgroundFillColorQuarternaryBrush}"
+                Background="{ThemeResource AcrylicInAppFillColorDefaultBrush}"
               >
                 <Border.Shadow>
                   <ThemeShadow />
                 </Border.Shadow>
                 <Button
                   x:Name="LatestButton"
+                  Background="Transparent"
                   Width="36"
                   Height="36"
                   Padding="0"
@@ -409,10 +457,12 @@
               <Grid
                 Grid.Row="1"
                 x:Name="ComposerCard"
-                Padding="7"
-                CornerRadius="22"
+                BorderThickness="1"
+                BorderBrush="{ThemeResource TextControlBorderBrush}"
+                Padding="8"
+                CornerRadius="27"
                 Translation="0,0,16"
-                Background="{ThemeResource SolidBackgroundFillColorTertiaryBrush}"
+                Background="{ThemeResource AcrylicInAppFillColorDefaultBrush}"
               >
                 <Grid.Shadow>
                   <ThemeShadow />
@@ -428,7 +478,7 @@
                   AcceptsReturn="True"
                   TextWrapping="Wrap"
                   MinHeight="36"
-                  Height="36"
+                  VerticalAlignment="Bottom"
                   MaxHeight="164"
                   FontSize="14"
                   Padding="10,7"

@@ -6,6 +6,7 @@ namespace Arut.Surface.Windows;
 
 // WinUI 2.3.6 copies AppWindow's physical caption insets into XAML GridLengths.
 // Convert them to DIPs until the upstream TitleBar performs that conversion.
+// Recheck TitleBar::UpdatePadding when upgrading WinUI; see docs/WINDOWS-AUDIT.md.
 public sealed class DesktopTitleBar : TitleBar
 {
     private ColumnDefinition? left;

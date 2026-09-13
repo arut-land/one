@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using Arut.Bindings;
+using global::Windows.ApplicationModel.DataTransfer;
 using global::Windows.System;
 using global::Windows.UI.Core;
 using Microsoft.UI.Input;
@@ -27,7 +28,6 @@ public sealed partial class ChatView : UserControl, IAsyncDisposable
     private bool realizingReadingAnchor;
     private double? restoringOffset;
     private ScrollViewer? transcriptScroll;
-    private readonly TextBlock composerMeasure = new() { TextWrapping = TextWrapping.Wrap };
     private readonly global::Windows.UI.ViewManagement.UISettings settings = new();
     private SendMotion? sendMotion;
     private double motionScrollOffset;
@@ -74,12 +74,6 @@ public sealed partial class ChatView : UserControl, IAsyncDisposable
             )
                 CancelSendMotion();
         };
-        Composer.TextChanged += (_, _) => SizeComposer();
-        Composer.SizeChanged += (_, args) =>
-        {
-            if (args.PreviousSize.Width != args.NewSize.Width)
-                SizeComposer();
-        };
         Loaded += (_, _) => Composer.Focus(FocusState.Programmatic);
     }
 
@@ -120,12 +114,7 @@ public sealed partial class ChatView : UserControl, IAsyncDisposable
     private void Bind(ConversationModel model)
     {
         if (model == current)
-        {
-            if (Shell.DisplayMode == SplitViewDisplayMode.Overlay)
-                Shell.IsPaneOpen = false;
-            Composer.Focus(FocusState.Programmatic);
             return;
-        }
         SaveReadingPosition();
         CancelSendMotion();
         restoringPosition = true;
@@ -139,9 +128,6 @@ public sealed partial class ChatView : UserControl, IAsyncDisposable
         UpdatePresentation();
         RefreshHistory();
         QueueScroll();
-        if (Shell.DisplayMode == SplitViewDisplayMode.Overlay)
-            Shell.IsPaneOpen = false;
-        Composer.Focus(FocusState.Programmatic);
     }
 
     private void RefreshHistory()
@@ -158,14 +144,16 @@ public sealed partial class ChatView : UserControl, IAsyncDisposable
                 .ToArray();
             for (var i = 0; i < rows.Length; i++)
             {
-                if (i < Summaries.Count && Summaries[i].Id == rows[i].Id)
-                {
-                    var preview = Preview(rows[i].Id);
-                    if (Summaries[i].Title != rows[i].Title || Summaries[i].Preview != preview)
-                        Summaries[i] = new(rows[i], preview);
-                }
-                else
+                var existing = Summaries.FirstOrDefault(row => row.Id == rows[i].Id);
+                if (existing is null)
                     Summaries.Insert(i, new(rows[i], Preview(rows[i].Id)));
+                else
+                {
+                    var index = Summaries.IndexOf(existing);
+                    if (index != i)
+                        Summaries.Move(index, i);
+                    existing.Update(rows[i], Preview(rows[i].Id));
+                }
             }
             while (Summaries.Count > rows.Length)
                 Summaries.RemoveAt(Summaries.Count - 1);
@@ -243,10 +231,11 @@ public sealed partial class ChatView : UserControl, IAsyncDisposable
         Composer.Focus(FocusState.Programmatic);
     }
 
-    private void NewChat(object sender, RoutedEventArgs args)
+    private void NewChat(XamlUICommand sender, ExecuteRequestedEventArgs args)
     {
         var pending = conversations.FirstOrDefault(model => model.Id is null);
         Bind(pending ?? Create(session.NewChat()));
+        FocusComposer();
     }
 
     private void SelectChat(object sender, SelectionChangedEventArgs args)
@@ -257,6 +246,17 @@ public sealed partial class ChatView : UserControl, IAsyncDisposable
             || summary.Id == current.Id
         )
             return;
+        OpenConversation(summary);
+    }
+
+    private void ActivateChat(object sender, ItemClickEventArgs args)
+    {
+        OpenConversation((ConversationRow)args.ClickedItem);
+        FocusComposer();
+    }
+
+    private void OpenConversation(ConversationRow summary)
+    {
         var cached = conversations.FirstOrDefault(model => model.Id == summary.Id);
         if (cached is not null)
             Bind(cached);
@@ -264,37 +264,43 @@ public sealed partial class ChatView : UserControl, IAsyncDisposable
             Bind(Create(handle));
     }
 
+    private void CopyMessage(XamlUICommand sender, ExecuteRequestedEventArgs args)
+    {
+        if (MessageMenu.Target is not ListViewItem { Content: MessageRow message })
+            return;
+        var data = new DataPackage();
+        data.SetText(message.Text);
+        Clipboard.SetContent(data);
+    }
+
     private void SearchChanged(AutoSuggestBox sender, AutoSuggestBoxTextChangedEventArgs args)
     {
-        if (history is not null)
+        if (args.Reason == AutoSuggestionBoxTextChangeReason.UserInput)
             RefreshHistory();
     }
 
-    private void TitleBarToggle(TitleBar sender, object args) =>
-        Shell.IsPaneOpen = !Shell.IsPaneOpen;
+    private void TitleBarToggle(TitleBar sender, object args) => ToggleHistory();
 
-    private void FocusSearch(object sender, RoutedEventArgs args)
+    private void ToggleHistory()
+    {
+        Shell.IsPaneOpen = !Shell.IsPaneOpen;
+        if (Shell.IsPaneOpen)
+            History.Focus(FocusState.Programmatic);
+        else
+            Composer.Focus(FocusState.Programmatic);
+    }
+
+    private void FocusComposer()
+    {
+        if (Shell.DisplayMode == SplitViewDisplayMode.Overlay)
+            Shell.IsPaneOpen = false;
+        Composer.Focus(FocusState.Programmatic);
+    }
+
+    private void FocusSearch(XamlUICommand sender, ExecuteRequestedEventArgs args)
     {
         Shell.IsPaneOpen = true;
-        Search.Focus(FocusState.Keyboard);
-    }
-
-    private void SearchShortcut(
-        KeyboardAccelerator sender,
-        KeyboardAcceleratorInvokedEventArgs args
-    )
-    {
-        FocusSearch(this, new());
-        args.Handled = true;
-    }
-
-    private void NewConversationShortcut(
-        KeyboardAccelerator sender,
-        KeyboardAcceleratorInvokedEventArgs args
-    )
-    {
-        NewChat(this, new());
-        args.Handled = true;
+        Search.Focus(FocusState.Programmatic);
     }
 
     private void ToggleHistoryShortcut(
@@ -302,7 +308,7 @@ public sealed partial class ChatView : UserControl, IAsyncDisposable
         KeyboardAcceleratorInvokedEventArgs args
     )
     {
-        Shell.IsPaneOpen = !Shell.IsPaneOpen;
+        ToggleHistory();
         args.Handled = true;
     }
 
@@ -311,7 +317,7 @@ public sealed partial class ChatView : UserControl, IAsyncDisposable
         KeyboardAcceleratorInvokedEventArgs args
     )
     {
-        Composer.Focus(FocusState.Keyboard);
+        FocusComposer();
         args.Handled = true;
     }
 
@@ -342,26 +348,6 @@ public sealed partial class ChatView : UserControl, IAsyncDisposable
 
     private static bool IsDown(VirtualKey key) =>
         InputKeyboardSource.GetKeyStateForCurrentThread(key).HasFlag(CoreVirtualKeyStates.Down);
-
-    private void SizeComposer()
-    {
-        var width = Composer.ActualWidth - Composer.Padding.Left - Composer.Padding.Right;
-        if (width <= 0)
-            return;
-        composerMeasure.FontFamily = Composer.FontFamily;
-        composerMeasure.FontSize = Composer.FontSize;
-        composerMeasure.Text = Composer.Text + "\u200b";
-        composerMeasure.Measure(
-            new global::Windows.Foundation.Size(width, double.PositiveInfinity)
-        );
-        Composer.Height = Math.Clamp(
-            Math.Ceiling(
-                composerMeasure.DesiredSize.Height + Composer.Padding.Top + Composer.Padding.Bottom
-            ),
-            36,
-            164
-        );
-    }
 
     private void ComposerFocusChanged(object sender, RoutedEventArgs args) =>
         VisualStateManager.GoToState(
@@ -445,7 +431,7 @@ public sealed partial class ChatView : UserControl, IAsyncDisposable
             )
         )
             CancelSendMotion();
-        if (current is not null)
+        if (IsLoaded)
             QueueScroll();
     }
 
@@ -461,7 +447,7 @@ public sealed partial class ChatView : UserControl, IAsyncDisposable
         BottomScrollFade.Height = args.NewSize.Height + 40;
         LatestArea.Margin = new(24, 0, 24, args.NewSize.Height + 8);
         EmptyState.Margin = new(24, 24, 24, args.NewSize.Height + 24);
-        if (current is not null)
+        if (IsLoaded)
             QueueScroll();
     }
 
@@ -648,18 +634,7 @@ public sealed partial class ChatView : UserControl, IAsyncDisposable
         disposed = true;
         CancelSendMotion();
         history.Dispose();
-        await Task.WhenAll(conversations.Select(async model => await model.DisposeAsync()));
+        await Task.WhenAll(conversations.Select(model => model.DisposeAsync().AsTask()));
         list.Dispose();
     }
-}
-
-// WinUI's XAML compiler generates setters for record structs. Expose read-only
-// presentation properties without changing the generated Rust value types.
-public sealed class ConversationRow(ChatSummary summary, string preview)
-{
-    public string Id => summary.Id;
-    public string Title => summary.Title;
-    public string Preview => preview;
-
-    public override string ToString() => Title;
 }

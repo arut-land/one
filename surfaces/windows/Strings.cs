@@ -1,10 +1,6 @@
 namespace Arut.Surface.Windows;
 
-// The core returns typed outcomes only (ADR 0016) and every sentence lives once
-// in product/i18n as Fluent (ADR 0022). All this file does is choose which
-// generated L10n accessor a typed variant means; the resource name, the lookup
-// and the language are in Generated/L10n.cs and the app's own ResourceLoader,
-// so this surface localizes the way any other WinUI app does.
+// Map Rust outcomes to the generated, localized Windows resource accessors.
 internal static class Strings
 {
     public static string Describe(NodeFailure failure) =>

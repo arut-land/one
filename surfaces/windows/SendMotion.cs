@@ -42,7 +42,6 @@ internal sealed class SendMotion : IDisposable
             FontFamily = editor.FontFamily,
             FontSize = editor.FontSize,
             Foreground = editor.Foreground,
-            LineHeight = 21,
             TextWrapping = TextWrapping.Wrap,
             HorizontalAlignment = HorizontalAlignment.Left,
             VerticalAlignment = VerticalAlignment.Top,
@@ -67,6 +66,7 @@ internal sealed class SendMotion : IDisposable
         Canvas.SetTop(source, origin.Y);
         layer.Children.Add(source);
         layer.UpdateLayout();
+        // A recycled or unrealized destination must never leave replies held.
         expiry = layer.DispatcherQueue.CreateTimer();
         expiry.Interval = TimeSpan.FromSeconds(1);
         expiry.IsRepeating = false;

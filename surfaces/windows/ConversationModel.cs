@@ -308,3 +308,28 @@ public sealed class MessageRow
 
     public override string ToString() => $"{Author}: {Text}. {FullTime}";
 }
+
+// WinUI's XAML compiler generates setters for record structs. Expose read-only
+// presentation properties without changing the generated Rust value types.
+public sealed class ConversationRow(ChatSummary summary, string preview) : INotifyPropertyChanged
+{
+    public string Id => summary.Id;
+    public string Title => summary.Title;
+    public string Preview => preview;
+    public event PropertyChangedEventHandler? PropertyChanged;
+
+    // Keep the native item container and its focus when a title or preview changes.
+    internal void Update(ChatSummary next, string nextPreview)
+    {
+        var titleChanged = summary.Title != next.Title;
+        var previewChanged = preview != nextPreview;
+        summary = next;
+        preview = nextPreview;
+        if (titleChanged)
+            PropertyChanged?.Invoke(this, new(nameof(Title)));
+        if (previewChanged)
+            PropertyChanged?.Invoke(this, new(nameof(Preview)));
+    }
+
+    public override string ToString() => Title;
+}

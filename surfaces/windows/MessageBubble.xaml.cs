@@ -1,4 +1,3 @@
-using global::Windows.ApplicationModel.DataTransfer;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media.Animation;
@@ -22,7 +21,6 @@ public sealed partial class MessageBubble : UserControl
     public MessageBubble()
     {
         InitializeComponent();
-        CopyItem.Text = L10n.ActionCopyMessage();
         Loaded += (_, _) => RevealReply();
     }
 
@@ -70,14 +68,5 @@ public sealed partial class MessageBubble : UserControl
         var storyboard = new Storyboard();
         storyboard.Children.Add(fade);
         storyboard.Begin();
-    }
-
-    private void Copy(object sender, RoutedEventArgs args)
-    {
-        if (Message is not { } message)
-            return;
-        var data = new DataPackage();
-        data.SetText(message.Text);
-        Clipboard.SetContent(data);
     }
 }
