@@ -208,6 +208,7 @@ fn refresh(
     // Every style color is a palette name; none is a hard-coded RGB value.
     // Themes may omit a name. In that case retain the native widget styling.
     css.push_str(".arut-message { padding: 10px; border-radius: 12px; margin: 4px 12px; } .arut-composer { border-radius: 18px; } .arut-composer textview, .arut-composer textview text { background-color: transparent; }\n");
+    css.push_str(".arut-transcript, .arut-transcript > row { background-color: transparent; } .arut-error { padding: 12px; border-radius: 8px; }\n");
     for (required, rule) in [
         (
             &["background", "foreground"][..],
@@ -219,7 +220,7 @@ fn refresh(
         ),
         (
             &["selection", "selection_foreground"][..],
-            ".arut-outgoing { background-color: @arut_selection; color: @arut_selection_foreground; }",
+            ".arut-message.arut-outgoing { background-color: @arut_selection; color: @arut_selection_foreground; }",
         ),
         (
             &["surface", "foreground"][..],
@@ -227,7 +228,7 @@ fn refresh(
         ),
         (
             &["border"][..],
-            ".arut-message { border: 1px solid @arut_border; }",
+            ".arut-message, .arut-error { border: 1px solid @arut_border; }",
         ),
         (
             &["accent"][..],

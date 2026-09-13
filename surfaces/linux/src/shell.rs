@@ -107,10 +107,26 @@ impl Component for Shell {
                         composer -> gtk::Box {},
                     },
                 },
-                gtk::Label {
+                gtk::Box {
                     #[watch]
-                    set_label: &model.error,
-                    set_wrap: true,
+                    set_visible: !model.error.is_empty(),
+                    set_spacing: 8,
+                    set_margin_start: 12,
+                    set_margin_end: 12,
+                    set_margin_bottom: 12,
+                    add_css_class: "arut-error",
+                    set_accessible_role: gtk::AccessibleRole::Alert,
+                    gtk::Image {
+                        set_icon_name: Some("dialog-warning-symbolic"),
+                        set_accessible_role: gtk::AccessibleRole::Presentation,
+                    },
+                    gtk::Label {
+                        #[watch]
+                        set_label: &model.error,
+                        set_wrap: true,
+                        set_xalign: 0.0,
+                        set_hexpand: true,
+                    },
                 },
             },
         }
@@ -215,6 +231,7 @@ impl Component for Shell {
             ));
         }
         root.add_controller(shortcuts);
+        crate::review::install(&root, model.session.clone(), sender.clone());
         root.connect_map(|window| {
             eprintln!("arut-linux: shell mapped");
             if let Some(clock) = window.frame_clock() {

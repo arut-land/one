@@ -26,6 +26,10 @@
 //! GTK reads scheme and contrast from its portal settings. Theme colors come
 //! from named GTK colors; ashpd supplies live accent and reduced-motion settings.
 //! Only Arut classes receive additional CSS, and icons come from the desktop.
+//! `mise run review:linux` uses a separate app identity, data directory, workspace,
+//! and headless Hyprland output. ARUT_REVIEW=1 enables fixture actions only for
+//! this run; real node messages and native TextBuffers exercise the normal UI.
+//! The error fixture injects SessionError::Unavailable through Fluent accessors.
 //! Non-Linux builds have no UI dependencies and run an empty main.
 
 #[cfg(target_os = "linux")]
@@ -46,6 +50,8 @@ mod message_model;
 mod navigation;
 #[cfg(target_os = "linux")]
 mod observe;
+#[cfg(target_os = "linux")]
+mod review;
 #[cfg(target_os = "linux")]
 mod shell;
 #[cfg(target_os = "linux")]

@@ -59,6 +59,20 @@ fn recycled_models_search_and_ordered_drafts_work_over_ipc() {
         hosting::{TokioSpawner, desktop_executor},
     };
     let _app = relm4::RelmApp::<()>::new("dev.arut.ComponentTest");
+    let wrapped = gtk::Label::new(Some(
+        &"A paragraph that must wrap when the sidebar opens. ".repeat(20),
+    ));
+    wrapped.set_wrap(true);
+    let column = crate::layout::Column::new(&wrapped, 880);
+    assert_eq!(column.request_mode(), gtk::SizeRequestMode::HeightForWidth);
+    assert!(
+        column.measure(gtk::Orientation::Vertical, 320).1
+            > column.measure(gtk::Orientation::Vertical, 880).1
+    );
+    assert_eq!(
+        column.measure(gtk::Orientation::Vertical, 1920).1,
+        column.measure(gtk::Orientation::Vertical, 880).1
+    );
     let context = glib::MainContext::default();
     let _guard = context.acquire().unwrap();
     let executor = desktop_executor().unwrap();
@@ -97,7 +111,9 @@ fn recycled_models_search_and_ordered_drafts_work_over_ipc() {
     content.append(transcript.widget());
     content.append(composer.widget());
     window.set_child(Some(&content));
-    window.present();
+    // Realize and allocate without mapping: tests must not take desktop focus.
+    WidgetExt::realize(&window);
+    content.allocate(800, 600, -1, None);
     let availability = Availability::builder().launch(session.clone()).detach();
     drain(&context);
     assert_eq!(availability.widget().label(), "Ready");
@@ -169,9 +185,13 @@ fn recycled_models_search_and_ordered_drafts_work_over_ipc() {
             .join("\n"),
     );
     drain(&context);
-    let metrics = editor.pango_context().metrics(None, None);
-    let line = ((metrics.ascent() + metrics.descent()) / gtk::pango::SCALE).max(1);
-    assert_eq!(scroll.max_content_height(), line * 7);
+    // Seven complete lines must fit, including descent at fractional font sizes.
+    let first = editor.iter_location(&editor.buffer().iter_at_line(0).unwrap());
+    let seventh = editor.iter_location(&editor.buffer().iter_at_line(6).unwrap());
+    let inset = editor.top_margin();
+    assert!(scroll.max_content_height() >= seventh.y() + seventh.height() - first.y() + inset);
+    let eighth = editor.iter_location(&editor.buffer().iter_at_line(7).unwrap());
+    assert!(scroll.max_content_height() < eighth.y() + eighth.height() - first.y() + inset);
     // UI keystrokes remain visible while all Rust replacements are serialized.
     for index in 0..100 {
         editor.buffer().set_text(&format!("edit {index}"));
@@ -212,7 +232,7 @@ fn recycled_models_search_and_ordered_drafts_work_over_ipc() {
     let shell = crate::shell::Shell::builder()
         .launch(session.clone())
         .detach();
-    shell.widget().present();
+    WidgetExt::realize(shell.widget());
     drain(&context);
     shell.emit(crate::shell::Msg::Select(chat.id().unwrap()));
     drain(&context);

@@ -53,6 +53,7 @@ impl Component for Composer {
                     set_margin_bottom: 8,
                     gtk::Overlay {
                         set_hexpand: true,
+                        set_valign: gtk::Align::Center,
                         #[name = "scroll"]
                         gtk::ScrolledWindow {
                             set_hscrollbar_policy: gtk::PolicyType::Never,
@@ -62,6 +63,8 @@ impl Component for Composer {
                                 set_buffer: Some(&model.buffer),
                                 set_wrap_mode: gtk::WrapMode::WordChar,
                                 set_accepts_tab: false,
+                                set_top_margin: 8,
+                                set_bottom_margin: 8,
                                 update_property: &[gtk::accessible::Property::Label(&strings::show(&Message::LabelDraft))],
                                 set_tooltip_text: Some(&strings::show(&Message::ComposerHintMultiline)),
                             },
@@ -72,6 +75,7 @@ impl Component for Composer {
                             set_halign: gtk::Align::Start,
                             set_valign: gtk::Align::Start,
                             set_can_target: false,
+                            set_margin_top: 8,
                             set_accessible_role: gtk::AccessibleRole::Presentation,
                             add_css_class: "dim-label",
                         },
@@ -137,6 +141,12 @@ impl Component for Composer {
         model
             .state
             .bind_property("status", &widgets.status, "label")
+            .sync_create()
+            .build();
+        model
+            .state
+            .bind_property("status", &widgets.status, "visible")
+            .transform_to(|_, text: String| Some(!text.is_empty()))
             .sync_create()
             .build();
         model
@@ -237,12 +247,33 @@ impl Component for Composer {
         }
         widgets.editor.add_controller(shortcuts);
         let resize = |editor: &gtk::TextView, scroll: &gtk::ScrolledWindow| {
-            let metrics = editor.pango_context().metrics(None, None);
-            let line = ((metrics.ascent() + metrics.descent()) / gtk::pango::SCALE).max(1);
-            scroll.set_min_content_height(line);
-            scroll.set_max_content_height(line * 7);
+            // Use Pango's rounded pixel extents; truncating font metrics clips
+            // the seventh baseline at fractional font sizes.
+            let line = editor.create_pango_layout(Some("Ag")).pixel_size().1.max(1);
+            let inset = editor.top_margin() + editor.bottom_margin();
+            scroll.set_min_content_height(line + inset);
+            // Bottom margin belongs to the end of the document, not every
+            // viewport. Counting it here exposes part of an eighth line.
+            scroll.set_max_content_height(line * 7 + editor.top_margin());
         };
         resize(&widgets.editor, &widgets.scroll);
+        // Keep the icon beside a short draft's first line. For a tall editor it
+        // stays at the bottom, where sending does not interrupt the text column.
+        widgets.scroll.vadjustment().connect_changed({
+            let editor = widgets.editor.downgrade();
+            let send = widgets.send.downgrade();
+            move |adjustment| {
+                let (Some(editor), Some(send)) = (editor.upgrade(), send.upgrade()) else {
+                    return;
+                };
+                let line = editor.create_pango_layout(Some("Ag")).pixel_size().1.max(1);
+                send.set_valign(if adjustment.page_size() <= f64::from(line * 3) {
+                    gtk::Align::Start
+                } else {
+                    gtk::Align::End
+                });
+            }
+        });
         widgets.editor.connect_notify_local(Some("scale-factor"), {
             let scroll = widgets.scroll.clone();
             move |editor, _| resize(editor, &scroll)

@@ -26,13 +26,26 @@ mod imp {
         }
     }
     impl WidgetImpl for Column {
+        fn request_mode(&self) -> gtk::SizeRequestMode {
+            self.child
+                .borrow()
+                .as_ref()
+                .map_or(gtk::SizeRequestMode::ConstantSize, WidgetExt::request_mode)
+        }
         fn measure(&self, orientation: gtk::Orientation, for_size: i32) -> (i32, i32, i32, i32) {
             let Some(child) = self.child.borrow().clone() else {
                 return (0, 0, -1, -1);
             };
+            // Wrapped descendants need the same capped width during measurement
+            // that they receive during allocation, including sidebar transitions.
+            let for_size = if orientation == gtk::Orientation::Vertical {
+                for_size.min(self.maximum.get())
+            } else {
+                for_size
+            };
             let (min, natural, a, b) = child.measure(orientation, for_size);
             if orientation == gtk::Orientation::Horizontal {
-                (min.min(320), natural.min(self.maximum.get()), a, b)
+                (min, natural.min(self.maximum.get()).max(min), a, b)
             } else {
                 (min, natural, a, b)
             }

@@ -200,3 +200,7 @@ run = "dotnet test bindings/dotnet/tests/Arut.Observer.Tests.csproj"
 
 [tasks."check:observers-dotnet".tools]
 dotnet = "8.0.425"
+
+[tasks."review:linux"]
+description = "Capture Linux states on an isolated Hyprland output at three sizes, then clean up"
+run = "bash surfaces/linux/review.sh"

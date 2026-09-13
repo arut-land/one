@@ -89,7 +89,7 @@ impl SimpleComponent for Transcript {
             Some(gtk::NoSelection::new(Some(messages.clone()))),
             Some(factory),
         );
-        list.add_css_class("navigation-sidebar");
+        list.add_css_class("arut-transcript");
         list.set_accessible_role(gtk::AccessibleRole::Log);
         list.update_property(&[gtk::accessible::Property::Label(&strings::show(
             &Message::LabelTranscript,
@@ -136,6 +136,11 @@ impl SimpleComponent for Transcript {
         let state = ViewState::default();
         state
             .bind_property("status", &widgets.status, "label")
+            .sync_create()
+            .build();
+        state
+            .bind_property("status", &widgets.status, "visible")
+            .transform_to(|_, text: String| Some(!text.is_empty()))
             .sync_create()
             .build();
         let empty = widgets.empty.clone();
