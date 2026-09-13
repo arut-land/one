@@ -97,13 +97,15 @@ The primary feature namespace uses `node.redb`; other namespaces use `log-<BLAKE
 
 Memory implements all three ports for tests and wasm. Redb is an opt-in Cargo feature enabled by the local runtime, not a wasm dependency. No persistent `BlobStore` remains; Phase 1 adds attachment storage and transfer through `iroh-blobs`. Current memory blob addresses use BLAKE3 and verify content on reads.
 
-## Observation and bindings
+## Bindings and surfaces
 
 `Watch<T>` wraps `tokio::sync::watch` with Tokio's `sync` feature only. Updates compare a detached candidate and increment the revision only when the value changes. New subscribers receive an initial invalidation; intervening updates may coalesce. Dropping the writer closes subscriptions.
 
 Product sessions expose conversation summaries and composer availability. Chat and composer handles expose separate watches. Transcript metadata contains `last_message_id`; `messages_after(id)` returns immutable keyed rows strictly after that cursor. Surfaces cache rows and fetch only additions. Connectivity and operation handles are targets, not current exports.
 
-Projection types declare `#[boltffi::data]` in their owning crate and are re-exported by `bindings/ffi`. Explicit `#[export]` blocks expose handles and callback streams. BoltFFI's source scanner does not expand export macros, so these blocks remain explicit. `arut-dev bindings` generates Swift/Kotlin aliases and factory forwarding, plus C# source aliases. Observation adapters remain hand-written per ADR 0021. GTK consumes product types and watches directly.
+Projection types declare `#[boltffi::data]` in their owning crate and are re-exported by `bindings/ffi`. Explicit `#[export]` blocks expose handles and callback streams. BoltFFI's source scanner does not expand export macros, so these blocks remain explicit. `arut-dev bindings` generates Swift/Kotlin aliases and factory forwarding, plus C# source aliases. Observation adapters remain hand-written per ADR 0021. GTK consumes product types directly through its local observation module. A keyed `gio::ListModel` appends transcript rows with `items_changed(position, 0, 1)`, and `GtkListView` recycles their widgets. Composer and status GObject properties bind to widgets; one waker-driven GLib task per watch refreshes them without an intermediate component message. The native gtk-rs scheduler internally pairs its task source with a child waker source. No timer, extra thread, or per-invalidation task is added.
+
+The Linux shell uses a searchable list model, desktop-configured header bar, and a split view that collapses below 720 logical pixels. Transcript and composer share an 880-pixel reading column. Visited composer controllers retain buffers and ordered edit queues; transcript reading positions are retained per conversation. Actions use `gio::SimpleAction` and `GtkShortcutController`. GTK theme colors, portal accent and reduced motion, and `gtk-enable-animations` control appearance and transitions.
 
 FFI observation uses a host-polled callback driver. The standalone `HostPolledSpawner` implements `LocalSpawner` through `async_executor::LocalExecutor` and bounded ticks; platform callbacks do not yet drive it. Idle unsubscribed FFI observers may remain retained until the next source change, an open roadmap decision.
 
@@ -117,7 +119,7 @@ The capability service derives its manifest from registrations. Product maps com
 
 ## Hosting and browser composition
 
-`Host` and `HostMode` describe in-process, child-process, system-service, and remote hosting. `ChildHost` starts `arutd`, waits for `READY`, and retains the child with its channel. `ScheduledChannel` dispatches through a supplied spawner. Executor creation lives in the local runtime and the daemon root; GTK polls UI work on GLib.
+`Host` and `HostMode` describe in-process, child-process, system-service, and remote hosting. `ChildHost` starts `arutd`, waits for `READY`, and retains the child with its channel. `ScheduledChannel` dispatches through a supplied spawner. Executor creation lives in the local runtime and the daemon root; GTK dispatches UI work on GLib when its futures are woken.
 
 | Surface | Current composition | Remaining target |
 | --- | --- | --- |

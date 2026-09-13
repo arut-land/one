@@ -65,6 +65,7 @@
     <string name="label_node_availability">Node availability</string>
     <string name="label_recent">Recent</string>
     <string name="label_transcript">Conversation transcript</string>
+    <string name="label_unread_messages">Unread messages</string>
     <string name="node_failure_cancelled">That request was cancelled before your node answered.</string>
     <string name="node_failure_conflict">Something else changed first. Try again.</string>
     <string name="node_failure_internal">Something went wrong on your node.</string>

@@ -589,6 +589,15 @@ object L10n {
     fun labelTranscript(): String =
         stringResource(R.string.label_transcript)
 
+    /** `label-unread-messages` */
+    fun labelUnreadMessages(context: Context): String =
+        context.getString(R.string.label_unread_messages)
+
+    /** `label-unread-messages` */
+    @Composable
+    fun labelUnreadMessages(): String =
+        stringResource(R.string.label_unread_messages)
+
     /** `node-failure-cancelled` */
     fun nodeFailureCancelled(context: Context): String =
         context.getString(R.string.node_failure_cancelled)

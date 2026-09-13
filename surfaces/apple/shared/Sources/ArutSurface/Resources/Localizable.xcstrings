@@ -705,6 +705,17 @@
         }
       }
     },
+    "label-unread-messages": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Unread messages"
+          }
+        }
+      }
+    },
     "node-failure-cancelled": {
       "extractionState": "manual",
       "localizations": {

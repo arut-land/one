@@ -205,6 +205,9 @@
   <data name="label_transcript" xml:space="preserve">
     <value>Conversation transcript</value>
   </data>
+  <data name="label_unread_messages" xml:space="preserve">
+    <value>Unread messages</value>
+  </data>
   <data name="node_failure_cancelled" xml:space="preserve">
     <value>That request was cancelled before your node answered.</value>
   </data>

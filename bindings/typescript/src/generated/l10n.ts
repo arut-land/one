@@ -75,6 +75,7 @@ export const keys = {
   labelNodeAvailability: "label-node-availability",
   labelRecent: "label-recent",
   labelTranscript: "label-transcript",
+  labelUnreadMessages: "label-unread-messages",
   nodeFailureCancelled: "node-failure-cancelled",
   nodeFailureConflict: "node-failure-conflict",
   nodeFailureInternal: "node-failure-internal",
@@ -236,6 +237,8 @@ export const t = {
   labelRecent: (bundle: L10nBundle): string => bundle.format(keys.labelRecent),
   /** `label-transcript` */
   labelTranscript: (bundle: L10nBundle): string => bundle.format(keys.labelTranscript),
+  /** `label-unread-messages` */
+  labelUnreadMessages: (bundle: L10nBundle): string => bundle.format(keys.labelUnreadMessages),
   /** `node-failure-cancelled` */
   nodeFailureCancelled: (bundle: L10nBundle): string => bundle.format(keys.nodeFailureCancelled),
   /** `node-failure-conflict` */

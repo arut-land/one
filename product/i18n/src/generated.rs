@@ -139,6 +139,8 @@ pub enum Message {
     LabelRecent,
     /// `label-transcript`
     LabelTranscript,
+    /// `label-unread-messages`
+    LabelUnreadMessages,
     /// `node-failure-cancelled`
     NodeFailureCancelled,
     /// `node-failure-conflict`
@@ -252,6 +254,7 @@ impl Message {
             Self::LabelNodeAvailability => "label-node-availability",
             Self::LabelRecent => "label-recent",
             Self::LabelTranscript => "label-transcript",
+            Self::LabelUnreadMessages => "label-unread-messages",
             Self::NodeFailureCancelled => "node-failure-cancelled",
             Self::NodeFailureConflict => "node-failure-conflict",
             Self::NodeFailureInternal => "node-failure-internal",

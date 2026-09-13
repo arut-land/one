@@ -204,6 +204,9 @@ internal static class L10n
     /// <summary><c>label-transcript</c></summary>
     public static string LabelTranscript() => Resources.GetString("label_transcript");
 
+    /// <summary><c>label-unread-messages</c></summary>
+    public static string LabelUnreadMessages() => Resources.GetString("label_unread_messages");
+
     /// <summary><c>node-failure-cancelled</c></summary>
     public static string NodeFailureCancelled() => Resources.GetString("node_failure_cancelled");
 

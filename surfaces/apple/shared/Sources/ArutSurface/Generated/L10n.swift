@@ -264,6 +264,10 @@ enum L10n {
     static func labelTranscript() -> String {
         String(localized: "label-transcript", table: "Localizable", bundle: .module)
     }
+    /// `label-unread-messages`
+    static func labelUnreadMessages() -> String {
+        String(localized: "label-unread-messages", table: "Localizable", bundle: .module)
+    }
     /// `node-failure-cancelled`
     static func nodeFailureCancelled() -> String {
         String(localized: "node-failure-cancelled", table: "Localizable", bundle: .module)

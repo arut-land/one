@@ -8,7 +8,15 @@ use ashpd::desktop::{
 };
 use futures_util::StreamExt;
 use gtk::{gdk, glib, prelude::*};
-use std::{cell::RefCell, rc::Rc};
+use std::{
+    cell::{Cell, RefCell},
+    rc::Rc,
+};
+
+thread_local! {
+    static REDUCED: Cell<bool> = const { Cell::new(true) };
+    static REVEAL_DURATION: u32 = gtk::Revealer::new().transition_duration();
+}
 
 /// The provider augments Arut classes only. GTK remains responsible for the theme.
 pub struct Theme {
@@ -72,6 +80,12 @@ impl Theme {
             };
             // Subscribe before reading so an appearance change cannot fall between them.
             let changes = portal.receive_setting_changed().await;
+            if let Ok(layout) = portal
+                .read::<String>("org.gnome.desktop.wm.preferences", "button-layout")
+                .await
+            {
+                portal_settings.set_gtk_decoration_layout(Some(&layout));
+            }
             let accent = portal
                 .read::<(f64, f64, f64)>(APPEARANCE_NAMESPACE, ACCENT_COLOR_SCHEME_KEY)
                 .await
@@ -94,6 +108,19 @@ impl Theme {
             };
             futures_util::pin_mut!(changes);
             while let Some(change) = changes.next().await {
+                if change.namespace() == "org.gnome.desktop.wm.preferences"
+                    && change.key() == "button-layout"
+                {
+                    if let Some(layout) = change
+                        .value()
+                        .try_clone()
+                        .ok()
+                        .and_then(|v| String::try_from(v).ok())
+                    {
+                        portal_settings.set_gtk_decoration_layout(Some(&layout));
+                    }
+                    continue;
+                }
                 if change.namespace() != APPEARANCE_NAMESPACE {
                     continue;
                 }
@@ -167,7 +194,9 @@ fn refresh(
     let contrast = settings.gtk_interface_contrast();
     provider.set_prefers_contrast(contrast);
     let high_contrast = contrast == gtk::InterfaceContrast::More;
+    REDUCED.set(appearance.reduced_motion);
     let reduced_motion = appearance.reduced_motion || !settings.is_gtk_enable_animations();
+    update_reveals(widget, reduced_motion);
     let mut css = String::new();
     let mut defined = std::collections::HashSet::new();
     // Palette lookup and theme notification pattern adapted from WaterUI (MIT):
@@ -197,7 +226,7 @@ fn refresh(
     }
     // Every style color is a palette name; none is a hard-coded RGB value.
     // Themes may omit a name. In that case retain the native widget styling.
-    css.push_str(".arut-window { padding: 12px; } .arut-message { padding: 10px; }\n");
+    css.push_str(".arut-message { padding: 10px; border-radius: 12px; margin: 4px 12px; } .arut-composer { border-radius: 18px; } .arut-composer textview, .arut-composer textview text { background-color: transparent; }\n");
     for (required, rule) in [
         (
             &["background", "foreground"][..],
@@ -209,7 +238,7 @@ fn refresh(
         ),
         (
             &["selection", "selection_foreground"][..],
-            ".arut-conversations button:checked { background-color: @arut_selection; color: @arut_selection_foreground; }",
+            ".arut-outgoing { background-color: @arut_selection; color: @arut_selection_foreground; }",
         ),
         (
             &["surface", "foreground"][..],
@@ -244,4 +273,55 @@ fn refresh(
 )]
 fn lookup(widget: &gtk::Widget, name: &str) -> Option<gdk::RGBA> {
     widget.style_context().lookup_color(name)
+}
+
+pub fn reveal_motion(revealer: &gtk::Revealer) {
+    let settings = gtk::Settings::default().expect("GTK settings");
+    let duration = REVEAL_DURATION.with(|duration| *duration);
+    let weak = revealer.downgrade();
+    let update = move |settings: &gtk::Settings| {
+        if let Some(revealer) = weak.upgrade() {
+            revealer.set_transition_duration(
+                if settings.is_gtk_enable_animations() && !REDUCED.get() {
+                    duration
+                } else {
+                    0
+                },
+            );
+        }
+    };
+    update(&settings);
+    // Object-bound signal disconnects when the revealer is destroyed.
+    settings.connect_closure(
+        "notify::gtk-enable-animations",
+        false,
+        glib::closure_local!(
+            #[weak]
+            revealer,
+            move |settings: gtk::Settings, _: glib::ParamSpec| {
+                revealer.set_transition_duration(
+                    if settings.is_gtk_enable_animations() && !REDUCED.get() {
+                        duration
+                    } else {
+                        0
+                    },
+                );
+            }
+        ),
+    );
+}
+
+fn update_reveals(widget: &gtk::Widget, reduced: bool) {
+    if let Some(revealer) = widget.downcast_ref::<gtk::Revealer>() {
+        revealer.set_transition_duration(if reduced {
+            0
+        } else {
+            REVEAL_DURATION.with(|duration| *duration)
+        });
+    }
+    let mut child = widget.first_child();
+    while let Some(current) = child {
+        update_reveals(&current, reduced);
+        child = current.next_sibling();
+    }
 }

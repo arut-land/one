@@ -1,9 +1,16 @@
 //! Native Linux UI built with relm4 over GTK4, without libadwaita.
 //!
 //! The root owns the desktop executor and ChildHost and binds feature clients to IPC.
-//! Components read
-//! ProductSession handles directly and await independent watches on GLib. Only
-//! navigation is persisted here, under XDG_STATE_HOME/arut/linux-ui.
+//! The local observation module refreshes GObject properties on GLib and binds
+//! them to widgets. Each watch owns one native GLib task, internally a task source
+//! plus gtk-rs's child waker source, with no timer or per-invalidation task.
+//! A keyed gio::ListModel fetches only transcript additions; GtkListView recycles
+//! message and conversation widgets. The sidebar filters its model with SearchEntry.
+//! A desktop-configured HeaderBar and ShortcutController expose gio actions.
+//! The split collapses below 720 logical pixels; the reading column caps at 880.
+//! Composer buffers and ordered command consumers survive conversation switches,
+//! as do transcript reading positions. Only navigation is persisted here, under
+//! XDG_STATE_HOME/arut/linux-ui; the node owns durable conversations and drafts.
 //! Chat and composer errors are typed enums from the core (ADR 0016); strings.rs
 //! maps every `ChatError`/`ComposerError`/`NodeFailure` variant, plus the typed
 //! availability and connect-time RPC statuses, to a message id in the shared
@@ -19,7 +26,13 @@ mod availability;
 #[cfg(target_os = "linux")]
 mod composer;
 #[cfg(target_os = "linux")]
+mod conversation_model;
+#[cfg(target_os = "linux")]
 mod conversations;
+#[cfg(target_os = "linux")]
+mod layout;
+#[cfg(target_os = "linux")]
+mod message_model;
 #[cfg(target_os = "linux")]
 mod navigation;
 #[cfg(target_os = "linux")]
@@ -84,7 +97,10 @@ fn main() {
         },
         Arc::new(arut_runtime_local::NativeIds),
     ));
-    let app = relm4::RelmApp::new("dev.arut.Arut");
+    // A separate application identity lets smoke tests use the real desktop
+    // portal without activating an already-running personal instance.
+    let app_id = std::env::var("ARUT_LINUX_APP_ID").unwrap_or_else(|_| "dev.arut.Arut".into());
+    let app = relm4::RelmApp::new(&app_id);
     gtk::Window::set_default_icon_name("dev.arut.Arut");
     app.run::<shell::Shell>(session);
 }

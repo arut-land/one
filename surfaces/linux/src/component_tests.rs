@@ -33,28 +33,26 @@ fn wait_until(context: &glib::MainContext, ready: impl Fn() -> bool) {
     }
 }
 
-fn scroll_content(scroll: &gtk::ScrolledWindow) -> gtk::Widget {
-    let child = scroll.child().unwrap();
-    if let Some(viewport) = child.downcast_ref::<gtk::Viewport>() {
-        viewport.child().unwrap()
-    } else {
-        child
+fn descendant<T: IsA<gtk::Widget> + StaticType + Clone>(widget: &impl IsA<gtk::Widget>) -> T {
+    fn find<T: IsA<gtk::Widget> + StaticType + Clone>(widget: &gtk::Widget) -> Option<T> {
+        if let Ok(found) = widget.clone().downcast::<T>() {
+            return Some(found);
+        }
+        let mut child = widget.first_child();
+        while let Some(current) = child {
+            if let Some(found) = find(&current) {
+                return Some(found);
+            }
+            child = current.next_sibling();
+        }
+        None
     }
-}
-
-fn transcript_rows(transcript: &relm4::Controller<Transcript>) -> gtk::Box {
-    let scroll = transcript
-        .widget()
-        .first_child()
-        .unwrap()
-        .downcast::<gtk::ScrolledWindow>()
-        .unwrap();
-    scroll_content(&scroll).downcast::<gtk::Box>().unwrap()
+    find(widget.as_ref()).expect("widget type in component")
 }
 
 #[test]
 #[ignore = "requires a GTK display; run with --ignored --test-threads=1"]
-fn watches_preserve_message_widgets_and_bind_independent_drafts() {
+fn recycled_models_search_and_ordered_drafts_work_over_ipc() {
     use arut_product_session::{ProductSession, SessionScope, hosting::Host};
     use arut_runtime_local::{
         child::ChildHost,
@@ -94,78 +92,103 @@ fn watches_preserve_message_widgets_and_bind_independent_drafts() {
     let transcript = Transcript::builder().launch(chat.clone()).detach();
     let composer = Composer::builder().launch(chat.clone()).detach();
     let conversations = Conversations::builder().launch(session.clone()).detach();
+    let window = gtk::Window::new();
+    let content = gtk::Box::new(gtk::Orientation::Vertical, 8);
+    content.append(transcript.widget());
+    content.append(composer.widget());
+    window.set_child(Some(&content));
+    window.present();
     let availability = Availability::builder().launch(session.clone()).detach();
     drain(&context);
     assert_eq!(availability.widget().label(), "Ready");
     composer.emit(ComposerMsg::Enabled(true));
     drain(&context);
-    let editor = composer
-        .widget()
-        .first_child()
-        .unwrap()
-        .downcast::<gtk::ScrolledWindow>()
-        .unwrap()
-        .child()
-        .unwrap()
-        .downcast::<gtk::TextView>()
-        .unwrap();
+    let editor: gtk::TextView = descendant(composer.widget());
     editor.buffer().set_text("first message");
     wait_until(&context, || chat.composer().state().text == "first message");
     assert_eq!(chat.composer().state().text, "first message");
     let controllers = editor.observe_controllers();
-    let keys = (0..controllers.n_items())
-        .filter_map(|index| controllers.item(index))
-        .filter_map(|object| object.downcast::<gtk::EventControllerKey>().ok())
-        .find(|controller| controller.name().as_deref() == Some("arut-composer-keys"))
-        .expect("composer keyboard controller");
-    assert!(!keys.emit_by_name::<bool>(
-        "key-pressed",
-        &[
-            &gtk::gdk::Key::Return,
-            &0u32,
-            &gtk::gdk::ModifierType::SHIFT_MASK
-        ]
-    ));
-    drain(&context);
+    let shortcuts = (0..controllers.n_items())
+        .filter_map(|p| controllers.item(p))
+        .filter_map(|o| o.downcast::<gtk::ShortcutController>().ok())
+        .find(|c| c.n_items() == 4)
+        .expect("composer shortcuts");
+    let shortcut = shortcuts
+        .item(0)
+        .unwrap()
+        .downcast::<gtk::Shortcut>()
+        .unwrap();
+    let trigger = shortcut
+        .trigger()
+        .unwrap()
+        .downcast::<gtk::KeyvalTrigger>()
+        .unwrap();
+    assert_eq!(trigger.keyval(), gtk::gdk::Key::Return);
     assert!(
-        chat.messages_after(0).is_empty(),
-        "Shift+Enter must not send"
+        trigger.modifiers().is_empty(),
+        "Shift+Return stays with TextView"
     );
-    assert!(keys.emit_by_name::<bool>(
-        "key-pressed",
-        &[
-            &gtk::gdk::Key::Return,
-            &0u32,
-            &gtk::gdk::ModifierType::empty()
-        ]
-    ));
+    assert!(
+        shortcut
+            .action()
+            .unwrap()
+            .activate(gtk::ShortcutActionFlags::empty(), &editor, None)
+    );
     wait_until(&context, || {
         chat.messages_after(0).len() == 2 && editor.buffer().char_count() == 0
     });
     assert_eq!(chat.messages_after(0).len(), 2);
     assert_eq!(editor.buffer().char_count(), 0);
-    let rows = transcript_rows(&transcript);
-    let original = rows.first_child().unwrap();
+    let rows: gtk::ListView = descendant(transcript.widget());
+    let messages = rows.model().unwrap();
+    let original = messages.item(0).unwrap();
     context.block_on(chat.send("second message".into()));
     drain(&context);
-    assert_eq!(chat.messages_after(0).len(), 4);
-    assert_eq!(
-        rows.first_child().unwrap(),
-        original,
-        "appending must preserve the first message widget"
-    );
-    let history = scroll_content(conversations.widget())
-        .downcast::<gtk::Box>()
-        .unwrap();
-    let original_conversation = history.first_child().unwrap();
+    assert_eq!(messages.n_items(), 4);
+    assert_eq!(messages.item(0).unwrap(), original);
+    let history: gtk::ListView = descendant(conversations.widget());
+    let history_model = history.model().unwrap();
+    let original_conversation = history_model.item(0).unwrap();
     let second = session.new_chat();
     context.block_on(second.send("another conversation".into()));
     drain(&context);
-    assert_eq!(
-        history.last_child().unwrap(),
-        original_conversation,
-        "prepending must preserve the old conversation row"
+    assert_eq!(history_model.item(1).unwrap(), original_conversation);
+    let search: gtk::SearchEntry = descendant(conversations.widget());
+    search.set_text("another");
+    search.emit_by_name::<()>("search-changed", &[]);
+    drain(&context);
+    assert_eq!(history_model.n_items(), 1);
+    search.set_text("");
+    search.emit_by_name::<()>("search-changed", &[]);
+    drain(&context);
+    let scroll: gtk::ScrolledWindow = descendant(composer.widget());
+    editor.buffer().set_text(
+        &(0..12)
+            .map(|n| format!("line {n}"))
+            .collect::<Vec<_>>()
+            .join("\n"),
     );
+    drain(&context);
+    let metrics = editor.pango_context().metrics(None, None);
+    let line = ((metrics.ascent() + metrics.descent()) / gtk::pango::SCALE).max(1);
+    assert_eq!(scroll.max_content_height(), line * 7);
+    // UI keystrokes remain visible while all Rust replacements are serialized.
+    for index in 0..100 {
+        editor.buffer().set_text(&format!("edit {index}"));
+    }
+    assert_eq!(
+        editor.buffer().text(
+            &editor.buffer().start_iter(),
+            &editor.buffer().end_iter(),
+            true
+        ),
+        "edit 99"
+    );
+    editor.activate_action("composer.send", None).unwrap();
+    wait_until(&context, || {
+        chat.messages_after(0).len() == 6 && editor.buffer().char_count() == 0
+    });
+    assert_eq!(chat.messages_after(0)[4].text, "edit 99");
     context.block_on(second.composer().replace("other draft".into()));
     context.block_on(chat.composer().replace("updated draft".into()));
     drain(&context);
@@ -175,6 +198,7 @@ fn watches_preserve_message_widgets_and_bind_independent_drafts() {
         "updated draft"
     );
     assert_eq!(second.composer().state().text, "other draft");
+    content.remove(composer.widget());
     drop(composer);
     drain(&context);
     context.block_on(chat.composer().replace("after unmount".into()));
@@ -184,4 +208,42 @@ fn watches_preserve_message_widgets_and_bind_independent_drafts() {
         "updated draft",
         "unmounted composer must stop watching"
     );
+    window.close();
+    let shell = crate::shell::Shell::builder()
+        .launch(session.clone())
+        .detach();
+    shell.widget().present();
+    drain(&context);
+    shell.emit(crate::shell::Msg::Select(chat.id().unwrap()));
+    drain(&context);
+    let draft: gtk::TextView = descendant(shell.widget());
+    draft.buffer().set_text("preserved immediately");
+    shell.emit(crate::shell::Msg::Select(second.id().unwrap()));
+    drain(&context);
+    shell.emit(crate::shell::Msg::Select(chat.id().unwrap()));
+    drain(&context);
+    let restored: gtk::TextView = descendant(shell.widget());
+    assert_eq!(
+        restored.buffer(),
+        draft.buffer(),
+        "switching keeps the native buffer and undo history"
+    );
+    assert_eq!(
+        restored.buffer().text(
+            &restored.buffer().start_iter(),
+            &restored.buffer().end_iter(),
+            true
+        ),
+        "preserved immediately"
+    );
+    WidgetExt::activate_action(shell.widget(), "win.search", None).unwrap();
+    drain(&context);
+    let search: gtk::SearchEntry = descendant(shell.widget());
+    search.set_text("filter");
+    WidgetExt::activate_action(shell.widget(), "win.escape", None).unwrap();
+    drain(&context);
+    assert!(search.text().is_empty());
+    shell.widget().close();
+    drop(shell);
+    drain(&context);
 }
