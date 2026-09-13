@@ -97,10 +97,20 @@ fn streams(ffi: &syn::File, kotlin_imports: &mut String, kotlin: &mut String) ->
         if !item.attrs.iter().any(|a| a.path().is_ident("export")) {
             continue;
         }
-        let Type::Path(self_ty) = &*item.self_ty else { continue };
-        let handle = self_ty.path.segments.last().ok_or("empty impl type")?.ident.to_string();
+        let Type::Path(self_ty) = &*item.self_ty else {
+            continue;
+        };
+        let handle = self_ty
+            .path
+            .segments
+            .last()
+            .ok_or("empty impl type")?
+            .ident
+            .to_string();
         for member in &item.items {
-            let syn::ImplItem::Fn(method) = member else { continue };
+            let syn::ImplItem::Fn(method) = member else {
+                continue;
+            };
             if !method.attrs.iter().any(|a| a.path().is_ident("ffi_stream")) {
                 continue;
             }
