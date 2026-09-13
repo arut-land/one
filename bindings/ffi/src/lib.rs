@@ -1,4 +1,4 @@
-//! Generated foreign bindings over shared scope projections and host-supplied sessions.
+//! Foreign bindings over shared scope projections and host-supplied time and IDs.
 //!
 //! Each handle has an explicit `#[export] impl`. BoltFFI's source scanner does not
 //! expand macros: a macro-generated handle silently disappears from bindings,

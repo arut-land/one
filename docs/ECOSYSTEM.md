@@ -12,21 +12,20 @@ What exists in the Rust ecosystem for each part of arut, with a verdict per crat
 
 ## Actions this survey implies
 
-Ordered by when they pay off. Each is small enough to be one commit.
+Implementation status reconciled with the repository after consolidation. The survey tables below distinguish adopted code from candidates; ADOPT NOW is a recommendation, not an assertion that a dependency is installed.
 
-1. **CI assertion** that no `wasm-bindgen` appears in the `arut_ffi` wasm dependency graph (the async section verified `n0-future`, and therefore iroh, would fail it).
-2. **Watch substrate traps** found by inspection: bump the revision only when the value changed (`send_if_modified`), never re-enter `get()` inside `send_modify`, and document that the `mark_changed()` in `subscribe` is what delivers the first invalidation.
-3. **Pin `schemars` 1.x** in `[workspace.dependencies]` before Phase 2; `rig-core`, `rmcp`, and `agent-client-protocol` all require it and two majors means two incompatible traits.
-4. **`async-executor` as the host-polled `Spawner`** for wasm and the Android host thread; `tokio-util` cancellation tokens with `child_token()` for the scope tree.
-5. **Spike the `connectrpc` crate** (0.9, Apache-2.0, passes the Connect conformance suite) against `transports/connect-http`; if it holds, ADR 0009's "immature" note is retired and the hand-written framing goes.
-6. **`thiserror` for ADR 0016** typed errors; `snafu` rejected because its context idiom pushes strings back into the core.
-7. **BLAKE3 digests** for `BlobStore` when `iroh-blobs` lands, replacing SHA-256.
-   **Fact log store: `redb` typed tables, not SQL.** The log is six statements over opaque protobuf rows with no relational schema, so Diesel or SQLx would type-check nothing; `redb`'s `TableDefinition<K, V>` types keys and values at compile time, adds no C build, and needs no migration tooling beyond a `meta` schema-version table with Rust migration functions at open. SQLite returns later for a full-text-search read model (FTS5) behind a separate port, with `rusqlite_migration` for automatic versioning; never for the log.
-8. **Pairing:** QR needs no PAKE; the short-code path runs SPAKE2 before any identity is revealed. Envelopes: sign, then `crypto_box::seal`; backup keys via HKDF from the root key.
-9. **`keyring` 4 needs explicit store crates** per platform; mobile secrets go through the native side over FFI, not through the young mobile store crates.
-10. **OpenTelemetry crates pull js-sys on wasm**; gate export behind a feature that is off in the wasm core.
-11. **The first external harness adapter speaks ACP** (Agent Client Protocol); its schema crate is serde-only and wasm-clean, its runtime crate stays in `runtimes/local`.
-12. **`mise run check` gains `cargo nextest` and `cargo machete`**; `cargo deny`, `semver-checks`, `hack`, and `mutants` are CI-only.
+1. [x] **Core dependency checks.** `arut-dev layers --check` rejects wasm-bindgen and Tokio executors in isolated core graphs, including the FFI graph.
+2. [x] **Watch behavior.** Revisions advance only on changes through `send_if_modified`; updates use a detached candidate; initial subscription invalidation is documented and tested.
+3. [ ] **Pin `schemars` 1.x** before Phase 2. No direct workspace pin exists yet.
+4. [ ] **Host executor integration.** `HostPolledSpawner` uses `async-executor`, and cancellation uses child tokens. Both are implemented and tested; platform callbacks still need wiring.
+5. [x] **Connect spike.** The recorded `connectrpc` 0.9.0 trial passed RPC conformance but required more adapter code than it removed, including buffa/prost bridging, metadata, and a Unix-socket client. Keep the current framing; revisit byte-level or prost-compatible handlers.
+6. [x] **Typed feature errors.** Chat, composer, and node failures use `thiserror` and compile-checked Fluent keys. Storage and session failures remain typed enums; they do not expose user-facing sentences.
+7. [x] **Storage.** Blob addresses use BLAKE3. Redb is the native fact-log/key-value default under ADR 0023, with schema migration functions and command indexes. Directory storage is removed. Persistent blob storage remains Phase 1 work.
+8. [ ] **Pairing and envelopes.** QR identity exchange, SPAKE2 for short codes, signed sealed envelopes, and backup key derivation remain Phase 1 work.
+9. [ ] **Keychain stores.** Desktop `keyring` and native mobile secret storage remain unimplemented.
+10. [ ] **Telemetry export.** Keep OpenTelemetry out of the wasm core when an exporter is added. Current code has tracing spans only.
+11. [ ] **ACP harness.** The first external harness adapter remains Phase 2 work; there is no harness implementation yet.
+12. [x] **Repository gates.** `mise run check` runs nextest, machete, and cargo-deny. Semver checks, feature-powerset builds, and mutation testing remain future CI work. One `arut-dev` binary owns i18n, layer, and binding checks; `tools/conformance` stays a test crate.
 
 ## Async, Sans-I/O, reactivity
 
@@ -38,8 +37,8 @@ wasm column verified by building each crate for `wasm32-unknown-unknown` on rust
 | tokio (`sync` only) | 1.53.1 | MIT | yes (built) | ADOPT NOW (already) | `watch`, `Notify`, `Semaphore`, `mpsc`, `oneshot`, `broadcast` all build wasm-clean; it already covers most primitives below. |
 | tokio-util | 0.7.19 | MIT | yes (built) | ADOPT NOW | `sync::CancellationToken` + `child_token()` + `DropGuard` mirror the Node→Workspace→Conversation→Operation tree exactly; no feature flags needed, so no `rt` on wasm. |
 | pin-project-lite | 0.2.17 | Apache-2.0 OR MIT | yes (built) | ADOPT NOW | The workspace sets `unsafe_code = "deny"`; this is the only way to hand-write a `Future`/`Stream` in a substrate without it. no_std, no proc-macro. |
-| async-executor | 1.14.0 | Apache-2.0 OR MIT | yes (built) | ADOPT NOW (Phase 0 gap) | `LocalExecutor::try_tick()` verified on wasm — it *is* the BoltFFI host-polled `Spawner`. No threads, no I/O, no bindgen. Also the Android host-thread `Spawner`. |
-| futures-lite | 2.6.1 | Apache-2.0 OR MIT | yes (built) | ADOPT NOW | Lighter combinator/`block_on` set than the `futures-util` currently in `substrates/watch`; same wasm story, smaller graph, no_std-capable. |
+| async-executor | 1.14.0 | Apache-2.0 OR MIT | yes (built) | ADOPTED | `LocalExecutor::try_tick()` verified on wasm — it *is* the BoltFFI host-polled `Spawner`. No threads, no I/O, no bindgen. Also the Android host-thread `Spawner`. |
+| futures-lite | 2.6.1 | Apache-2.0 OR MIT | yes (built) | ADOPT NOW | Used by `substrates/watch` for streams and by the host-polled runtime for blocking native polling. |
 | futures-concurrency | 7.7.1 | MIT OR Apache-2.0 | yes (built) | ADOPT AT PHASE 1 | `Join`/`Race` over tuples+arrays and `ConcurrentStream::limit(n)` give parallel operations per node with no executor and no tokio `rt`. |
 | futures-buffered | 0.2.13 | MIT | yes (built) | ADOPT AT PHASE 1 | `FuturesUnorderedBounded` — one allocation for N in-flight operations; the dynamic half of the per-node scheduler. |
 | slotmap | 1.1.1 | Zlib | yes (built) | ADOPT AT PHASE 1 | Generational keys for the operation scheduler and scope-handle registry; an `OperationId` that cannot dangle after removal. |
@@ -54,14 +53,14 @@ wasm column verified by building each crate for `wasm32-unknown-unknown` on rust
 | async-broadcast | 0.7.2 | MIT OR Apache-2.0 | yes (built) | BORROW PATTERN | Steal `InactiveReceiver`: a scope handle with zero live observers must keep its channel open rather than close. `tokio::sync::broadcast` otherwise covers it. |
 | statig | 0.4.1 | MIT | yes (built) | BORROW PATTERN | Only the `#[state]`/`#[superstate]` hierarchy idea, if session negotiation grows nested states. Its macro DSL hides the ordering ADR 0005 wants visible. |
 | n0-future | 0.3.2 | MIT OR Apache-2.0 | **no (bindgen)** | REJECT | Verified: pulls `wasm-bindgen`, `js-sys`, `web-time`, `send_wrapper` on wasm32-unknown-unknown. Same reason iroh cannot enter the wasm core. |
-| smol / async-io | 2.0.2 / 2.6.0 | Apache-2.0 OR MIT | no (needs polling/OS) | REJECT | OS reactor; no wasm, and Tokio already owns desktop and backend. |
+| smol / async-io | 2.0.2 / 2.6.0 | Apache-2.0 OR MIT | no (needs polling/OS) | REJECT | OS reactor; no wasm, and Tokio owns the local native runtime; the backend is not implemented. |
 | async-task | 4.7.1 | Apache-2.0 OR MIT | yes | REJECT (direct) | `async-executor` already wraps its `Runnable`/`Task` split; taking it directly means writing the queue yourself. |
 | event-listener | 5.4.2 | Apache-2.0 OR MIT | yes (built) | REJECT (redundant) | `tokio::sync::Notify` under the `sync` feature you already compile everywhere covers the same need. |
 | async-lock | 3.4.2 | Apache-2.0 OR MIT | yes (built) | REJECT (redundant) | `tokio::sync::{Mutex,RwLock,Semaphore}` already ship in the `sync` feature. |
 | arc-swap | 1.9.2 | MIT OR Apache-2.0 | yes | REJECT (redundant) | `watch::Receiver::borrow()` is already the cheap read; a second cell duplicates the substrate. |
 | crossbeam-channel / flume / postage / tachyonix | — | MIT/Apache-2.0 | mixed | REJECT | Blocking (wrong on the wasm main thread) or redundant with `tokio::sync::mpsc`. |
 | pollster | 1.0.1 | Apache-2.0/MIT | yes | REJECT | `block_on` traps the wasm main thread; `futures-lite::future::block_on` covers the daemon's sync entry. |
-| sansio | 1.0.1 | MIT/Apache-2.0 | yes | REJECT | A thin trait for the four methods `Machine` already declares; no ordering or timer help. |
+| sansio | 1.0.1 | MIT/Apache-2.0 | yes | REJECT | A thin trait for the proposed generic machine interface; no ordering or timer help. |
 | sans-io-runtime | 0.3.0 | MIT | yes | REJECT | ~1.3k recent downloads, last release 2024, opinionated worker/bus model that fights the `Spawner` port. |
 | rust-fsm | 0.8.0 | MIT | yes | REJECT | Transition-table macro with no effect vocabulary and no timers. |
 | typestate | 0.9.0-rc2 | MIT OR Apache-2.0 | yes | REJECT | Pre-release since 2021, abandoned. |
@@ -77,9 +76,9 @@ wasm column verified by building each crate for `wasm32-unknown-unknown` on rust
 2. **quinn-proto `connection/timer.rs`.** A fixed array of *named* timers (`Timer::Close`, `Timer::Idle`, …) reduced to one `poll_timeout()`. Every machine you listed needs at least two timers; do not grow two `Option<Instant>` fields.
 3. **Never call `Instant::now()` inside a machine** (Firezone's rule): `now` is a parameter on every input. That is what makes vector tests exact rather than approximate, and it is what ADR 0005's fake clock assumes.
 4. **Trap: a `poll_timeout` that does not advance busy-loops the driver.** Put "timeout is strictly monotonic across a `handle_timeout`" in the machine conformance suite, not just in review.
-5. **Trap: `tokio::sync::watch::borrow()` holds a read lock.** Never `send`/`send_modify` while a borrow is alive; the `Watch::update` closure in `substrates/watch/src/lib.rs` is already inside `send_modify`, so keep callers from re-entering `get()`.
-6. **Use `send_if_modified` for coalescing at the source.** Today every `update` bumps the revision even when the projection is unchanged, so bindings hop the native scheduler for a no-op re-read.
-7. **Trap: `Sender::subscribe()` starts "seen", `watch::channel()`'s receiver starts "unseen".** The `mark_changed()` in `Watch::subscribe` papers over that difference deliberately — it deserves a comment, because removing it silently drops the first invalidation.
+5. **Trap: `tokio::sync::watch::borrow()` holds a read lock.** Never `send`/`send_modify` while a borrow is alive; the `Watch::update` closure in `substrates/watch/src/lib.rs` runs inside `send_if_modified`, so keep callers from re-entering `get()`.
+6. **Use `send_if_modified` for coalescing at the source.** Implemented: unchanged writes leave the revision unchanged, so bindings do not refresh for a no-op.
+7. **Trap: `Sender::subscribe()` starts "seen", `watch::channel()`'s receiver starts "unseen".** The shared subscription helper calls `mark_changed()` to deliver the first invalidation; this behavior is documented and tested.
 8. **`InactiveReceiver` (async-broadcast).** A scope handle whose surface has navigated away has zero observers; the stream must stay open, not close and force a re-subscribe with a lost revision.
 9. **embassy-sync's `Watch` receivers.** N receivers each with their own "seen" marker means coalescing happens *per binding*, not per cell — the right shape when SwiftUI and a GTK window observe the same conversation at different frame rates.
 10. **`LocalExecutor::try_tick()` is the wasm `Spawner`.** Return whether it made progress so the host knows to reschedule, and bound the tick loop so one task cannot starve the frame.
@@ -87,7 +86,7 @@ wasm column verified by building each crate for `wasm32-unknown-unknown` on rust
 12. **`futures-concurrency`/`futures-buffered` keep the operation scheduler off tokio `rt`,** which does not exist on wasm. The scheduler stays a `Stream` the `Spawner` drives, not a runtime.
 13. **`trait-variant` solves the `Send`/`!Send` split** you will hit the first time a wasm port holds a JS-side handle while the daemon needs `Send + Sync` bundles.
 14. **Trap: iroh's dependency on `n0-future` means iroh transitively wants wasm-bindgen.** Keep it out of `bindings/ffi`'s wasm graph entirely; a `cargo tree -i wasm-bindgen --target wasm32-unknown-unknown` assertion in CI is cheap insurance.
-15. **`loom` on the watch substrate before Phase 1,** while it is still ~120 lines — it is the one piece where a memory-ordering bug shows up as a dropped invalidation on one platform only.
+15. **`loom` on the watch substrate before Phase 1,** while it is still small — it is the one piece where a memory-ordering bug shows up as a dropped invalidation on one platform only.
 
 ## Connectivity, identity, encryption
 
@@ -96,7 +95,7 @@ wasm column verified by building each crate for `wasm32-unknown-unknown` on rust
 | iroh | 1.2.0 (2026-09-09) | MIT/Apache-2.0 | no (browser build uses wasm-bindgen) | ADOPT NOW (ADR 0019) | Endpoint = device key, discovery, hole-punch, relay fallback, QUIC transport encryption. |
 | iroh-relay | 1.2.0 (2026-09-09) | MIT/Apache-2.0 | n/a (server binary) | ADOPT NOW | The backend relay deployment; pairing service sits beside it. |
 | iroh-net-report | 0.34.1 (2025-04-07, stale) | MIT/Apache-2.0 | n/a | REJECT (direct dep) | Reachability/NAT reporting now folded into `iroh` core; no reason to depend on it separately. |
-| iroh-docs | 0.101.0 (2026-06-15) | MIT/Apache-2.0 | no | REJECT | Multi-writer CRDT sync; ARCHITECTURE.md bans CRDTs for authority-owned state. Drafts already use gossip + LWW, not this. |
+| iroh-docs | 0.101.0 (2026-06-15) | MIT/Apache-2.0 | no | REJECT | Multi-writer CRDT sync; ARCHITECTURE.md bans CRDTs for authority-owned state. Phase 1 drafts will use gossip + LWW. |
 | crypto_box | 0.9.1 (2025-10, 0.10 pre exists) | Apache-2.0/MIT | yes | ADOPT NOW | X25519+XSalsa20-Poly1305 `seal`/`SealedBox`, libsodium-compatible anonymous sealed box — matches ADR 0003/0019 wording directly. |
 | chacha20poly1305 | 0.11.0 (2026-06-28) | Apache-2.0/MIT | yes | ADOPT NOW | AEAD for content keys derived from the root key (backups, at-rest envelopes). |
 | ed25519-dalek | 3.0.0 (2026-07-06) | BSD-3-Clause | yes | ADOPT NOW | Application-level command/envelope signing; same primitive family iroh uses for endpoint keys. |
@@ -123,15 +122,15 @@ Notes:
 - Pairing protocol: two paths, both inside an iroh connection. **QR path**: the QR already carries the target endpoint id (high-entropy, authenticated dial target), so no PAKE is needed — open the iroh stream, seal the root key with `crypto_box::seal` to the scanned key, done. **Short-code path** (no camera): run **SPAKE2** over the fresh stream keyed by the human-typed code before either side reveals its endpoint id or root key; this defeats offline brute-force of a short numeric code and blocks an active MITM carrier. CPace crates are rejected only for staleness/fragmentation, not the protocol idea — revisit if a maintained pure-Rust CPace appears.
 - Sealed-envelope construction: `crypto_box::seal` (X25519 + XSalsa20-Poly1305, libsodium sealed-box compatible) per envelope and per backup blob, addressed to a recipient key derived from the root key; the plaintext command is signed with `ed25519-dalek` before sealing so the recipient (never the carrier) can verify sender authenticity after opening. Backup blobs use the same seal call with a key derived via HKDF-SHA256 from the root key, one per checkpoint, so the relay literally cannot read them (ADR 0002/0003).
 - `hpke` is the RFC 9180 fallback if Phase 3 escrow ever needs one ciphertext openable by several recipients (device + account); not needed for the current single-recipient case.
-- Everything marked wasm-no-bindgen "yes" above is pure-Rust/RustCrypto-family and fine inside the BoltFFI wasm core; iroh itself is excluded from the web surface for exactly that reason (ADR 0019), which is why the relay's WebSocket path (tokio-tungstenite + rustls, server-side) is the browser's only route in.
+- Everything marked wasm-no-bindgen "yes" above is pure-Rust/RustCrypto-family and fine inside the BoltFFI wasm core; iroh itself is excluded from the web surface for exactly that reason (ADR 0019), which is why the relay's WebSocket path (tokio-tungstenite + rustls, server-side) is the planned browser route.
 
 ## Storage, logs, serialization
 
 | Crate | Version | License | Mobile | wasm | Verdict | Why |
 | --- | --- | --- | --- | --- | --- | --- |
-| redb | 4.2.0 (Aug 2026) | MIT/Apache-2.0 | yes (pure Rust, mmap) | no | ADOPT AT PHASE n | Pure-Rust single-file MVCC B-tree, no C toolchain; strong FactLog/KeyValue candidate, active |
+| redb | 4.2.0 (Aug 2026) | MIT/Apache-2.0 | yes (pure Rust, mmap) | no | ADOPTED | Native node FactLog/KeyValue default; transactional Protobuf rows and indexed retry outcomes (ADR 0023) |
 | fjall | 3.1.10 (Aug 2026) | MIT/Apache-2.0 | yes (pure Rust) | no | ADOPT AT PHASE n | LSM-tree = literally append+compact; use if write throughput ever dominates over redb's txn model |
-| rusqlite (bundled) | 0.40.2 (Aug 2026) | MIT | yes (cc/NDK proven) | no | ADOPT AT PHASE n (recommended) | Matches ADR 0010's stated "SQLite first, deferred"; mature mobile story, WAL + real transactions |
+| rusqlite (bundled) | 0.40.2 (Aug 2026) | MIT | yes (cc/NDK proven) | no | CANDIDATE | A future full-text-search read model may use SQLite; the fact log uses redb (ADR 0023) |
 | sqlx | 0.9.0 (May 2026) | MIT/Apache-2.0 | yes | no | REJECT | Async-only API fights the sync FactLog/KeyValue port trait; duplicates rusqlite's bundled sqlite path |
 | sled | 0.34.7 (Oct 2024) | MIT/Apache-2.0 | yes | no | REJECT | Unmaintained (>1yr), historical space-amp/correctness issues, author paused it for a rewrite |
 | rocksdb | 0.25.0 (Aug 2026) | Apache-2.0 | heavy (C++) | no | REJECT | C++ dep makes 5-target cross-compile (esp. iOS static link) heavy; fjall/redb cover the same ground |
@@ -141,16 +140,16 @@ Notes:
 | marble | 16.0.2 (Feb 2025) | MIT/Apache-2.0 | n/a | n/a | BORROW PATTERN | Copy: generational GC of on-disk objects, for in-place BlobStore compaction of orphaned blobs |
 | iroh-blobs | 0.103.0 (Jun 2026) | MIT/Apache-2.0 | yes (project dep) | no | ADOPT AT PHASE 1 | Already required by ROADMAP step 7; its own store can implement BlobStore directly, verified partial DL |
 | bao-tree | 0.16.1 (Aug 2026) | MIT/Apache-2.0 | transitive | n/a | ADOPT AT PHASE 1 (transitive) | Comes in via iroh-blobs; pattern source for chunk-group verified range reads if a custom store is ever built |
-| blake3 | 1.8.7 (Aug 2026) | CC0/Apache-2.0 | yes | yes | ADOPT AT PHASE 1 | Needed to align blob addresses with iroh-blobs, which hashes BLAKE3 not SHA-256 |
+| blake3 | 1.8.7 (Aug 2026) | CC0/Apache-2.0 | yes | yes | ADOPTED | Current storage digest; matches the planned iroh-blobs addresses |
 | postcard | 1.1.3 (Jul 2025) | MIT/Apache-2.0 | yes | yes | REJECT | ADR 0015 mandates protobuf for every boundary value; second wire format buys nothing |
 | rkyv | 0.8.18 (Aug 2026) | MIT | yes | yes | REJECT | Zero-copy is nice but conflicts with protobuf-everywhere; revisit only if snapshot decode is a measured bottleneck |
 | prost | 0.14.4 (Jun 2026) | Apache-2.0 | yes | yes | ADOPT NOW | Already adopted; `Fact` trait bound is `prost::Message`, matches ADR 0015 |
 | serde | 1.0.229 (Jul 2026) | MIT/Apache-2.0 | yes | yes | ADOPT NOW | Fine for non-boundary Rust-only types (config chain); not used for fact rows |
 | cbor4ii | 1.2.3 (Sep 2026) | MIT | yes | yes | REJECT | Redundant with prost under the single-wire-format rule |
 | fs4 | 1.1.0 (Apr 2026) | MIT/Apache-2.0 | yes | n/a | ADOPT AT PHASE n | Only if shared/read locks or async-lock-across-await are needed; std already covers exclusive locks |
-| fd-lock | 4.0.4 (2025) | MIT/Apache-2.0 | yes | n/a | REJECT | Superseded by stabilized `std::fs::File::lock()`/`try_lock()` (Rust 1.89), already in use in `directory.rs` |
-| atomicwrites | 0.4.4 (2024) | MIT | yes | n/a | BORROW PATTERN | `directory.rs::atomic()` already implements its temp+fsync+rename+fsync-dir sequence; no dependency needed |
-| tempfile | 3.27.0 (Mar 2026) | MIT/Apache-2.0 | yes | n/a | ADOPT NOW | Swap hand-rolled temp/rename for `NamedTempFile::persist()`: more robust Windows replace-on-open semantics |
+| fd-lock | 4.0.4 (2025) | MIT/Apache-2.0 | yes | n/a | REJECT | Superseded by stabilized `std::fs::File::lock()`/`try_lock()` (Rust 1.89), used for the native node lease |
+| atomicwrites | 0.4.4 (2024) | MIT | yes | n/a | NOT NEEDED | Redb transactions replace the removed directory store and its atomic-file machinery |
+| tempfile | 3.27.0 (Mar 2026) | MIT/Apache-2.0 | yes | n/a | NO DIRECT DEPENDENCY | Removed with directory storage; it may remain transitively in the build graph |
 | directories | 6.0.0 (Jan 2025) | MIT/Apache-2.0 | n/a (desktop) | n/a | ADOPT AT PHASE n | Resolve desktop data dir (XDG/AppData/Library) at daemon startup; mobile/wasm get paths from the host |
 | etcetera | 0.11.0 (Oct 2025) | MIT/Apache-2.0 | n/a (desktop) | n/a | REJECT | Same job as `directories`, smaller user base; pick one |
 | refinery | 0.9.2 (Jun 2026) | MIT | yes | n/a | ADOPT AT PHASE n | Pairs with rusqlite (has a rusqlite feature) for embedded migrations once SQLite lands |
@@ -162,13 +161,12 @@ Notes:
 | eventually | 0.4.0 (2020) | MIT | n/a | n/a | REJECT | Abandoned since 2020 |
 
 Notes:
-- Recommended first non-directory `FactLog`/`KeyValue` backend: **rusqlite with bundled SQLite** — matches ADR 0010's own "SQLite first, deferred not rejected"; mature Android NDK / iOS cc builds; one file gives WAL durability plus real cross-table transactions (facts table keyed by sequence, unique index on command_id for `outcome_of`, kv table, snapshot row) while still storing `Fact` as protobuf-encoded blobs, preserving ADR 0015.
-- `redb` is the pure-Rust fallback if a C toolchain across Android/iOS/Windows becomes the constraint; `fjall` (LSM) if append-throughput ever outweighs the need for multi-table transactions.
-- Cross-process locking for the desktop daemon: keep `std::fs::File::lock()`/`try_lock()` (stabilized 1.89, already used per-log in `directory.rs`) — add one daemon-wide `arutd.lock` file taken with `try_lock()` in the composition root at startup so a second `arutd` instance fails fast instead of corrupting state; reach for `fs4` only if shared/read locks or locking across an await point are later needed.
-- `iroh-blobs` is already the Phase 1 `BlobStore` per ROADMAP step 7; when it lands, migrate blob digests from SHA-256 (current `digest()` in `storage/lib.rs`) to BLAKE3 so addresses match iroh-blobs' own hashing.
-- wasm: nothing here targets wasm directly; keep the existing `MemoryLog`/`MemoryStore` until an OPFS-backed impl is justified — that would be hand-written against `web-sys`/host callbacks, not a crate.
-- Rows stay protobuf-only per ADR 0015; postcard/cbor4ii/rkyv are rejected as second wire formats, not for quality.
-- Event-sourcing crates are pattern sources only, per the task's own framing — none is a dependency candidate.
+- Redb is the default native `FactLog`/`KeyValue` implementation (ADR 0023). Each namespace owns a database; the primary namespace uses `node.redb`. Facts remain Protobuf rows.
+- `LocalRuntime` takes `node.lock` with `std::fs::File::try_lock()`. Redb also refuses a second owner of a database file. There is no directory implementation or per-log filesystem lock machinery.
+- `iroh-blobs` remains the Phase 1 persistent `BlobStore` and transfer candidate. `digest()` already uses BLAKE3; no SHA-256 migration remains.
+- Memory implements all three storage ports for tests and wasm. Redb does not enter the wasm build. A browser persistence adapter would need host callbacks.
+- Retry outcomes survive compaction and are unbounded. Their retention window remains an open roadmap decision.
+- SQLite is a possible future search projection, not the log backend. Event-sourcing crates remain pattern sources; postcard/cbor4ii/rkyv are not alternate persisted formats.
 
 ## FFI, codegen, RPC
 
@@ -189,7 +187,7 @@ Notes:
 | pbjson | 0.9.0 (2025-12-09) | MIT | yes | ADOPT AT PHASE n | Only needed if Connect framing grows a canonical proto-JSON content type for browsers beyond today's binary + JSON-error-envelope; not needed yet. |
 | tonic | 0.14.6 (2026-05-07) | MIT | n/a (server-only) | REJECT | gRPC/HTTP2, not Connect; ADR 0009 already rejected gRPC+grpc-web for browser reach. Worth reading its interceptor/TLS layering as a pattern, nothing more. |
 | tonic-web | 0.14.6 | MIT | n/a | REJECT | Solves grpc-web, not the Connect protocol we standardized on. |
-| connectrpc (connectrpc/connect-rust) | 0.9.0 (2026-08-25) | Apache-2.0 | n/a (server-only) | ADOPT AT PHASE n | **Best current match** for replacing the hand-written framing: tower-based, mounts as an axum fallback service, passes the full Connect conformance suite (3,600 server / 6,872 client tests) per its README. Still pre-1.0. Worth a spike behind the existing `RpcChannel`/`arut-transport-connect-http` seam since framing is already isolated from product code — low blast radius if it doesn't pan out. |
+| connectrpc (connectrpc/connect-rust) | 0.9.0 (2026-08-25) | Apache-2.0 | n/a (server-only) | SPIKE COMPLETE; NOT ADOPTED | Recorded local trial passed RPC conformance but added adapter code. Revisit prost or byte-level handlers. |
 | connectrpc-axum | 0.2.3 (2026-08-05) | MIT | n/a | REJECT (for now) | Thinner axum-native wrapper over the same protocol, explicitly flagged "not recommended for production yet" upstream; re-evaluate only if the base `connectrpc` crate stalls. |
 | axum-connect | 0.5.3 (2025-06-13) | MIT/Apache-2.0 | n/a | REJECT | Over a year stale, superseded by `connectrpc`/`connectrpc-axum`. |
 | prost-protovalidate | 0.6.0 (2026-07-10) | MIT/Apache-2.0 | yes (uses prost-reflect) | ADOPT AT PHASE n | Evaluates `buf.validate` CEL constraints against descriptors at runtime; natural pairing once protos start declaring validation rules and once `prost-reflect` is in the tree. |
@@ -203,7 +201,7 @@ Notes:
 
 ## Notes
 
-- **Connect framing verdict**: no Rust Connect implementation is mature enough to *replace* the hand-written `transports/connect-http` framing today, but `connectrpc` (the `connectrpc/connect-rust` project) is close — it is conformance-tested and already axum-shaped. ADR 0009's "Rust Connect server libraries are immature" should be revisited at the next transport-layer milestone, not accepted as permanent; a spike swapping only `transports/connect-http`'s server half (client stays hand-rolled `reqwest`, since it's simple and works) is the lowest-risk trial, since `RpcChannel` already isolates the framing from every feature.
+- **Connect framing verdict**: the recorded `connectrpc` spike passed the shared RPC tests but required more code for buffa/prost translation, erased messages, metadata, and Unix HTTP/1.1 support. The current Connect adapter remains. Revisit when the library offers prost or byte-level handlers; this is a fit decision rather than an untested maturity assumption.
 - `protovalidate` on crates.io is a placeholder (version `0.0.0`, name reserved) — do not depend on it; `prost-protovalidate` is the real, maintained implementation.
 - No candidate beats BoltFFI for the actual export boundary; all UniFFI/Diplomat/typeshare rejections in ADR 0007/ARCHITECTURE are reconfirmed on current versions.
 
@@ -342,7 +340,7 @@ wasm-bindgen, i.e. usable inside the BoltFFI core (ARCHITECTURE.md "Constraints 
 ### Notes
 
 1. Harness port, mirroring `ModelProvider` — one stream, no I/O in the trait: `fn start(&self, req: OperationRequest) -> BoxStream<'_, Result<HarnessEvent, HarnessError>>`, plus `fn resolve(&self, ApprovalId, Decision) -> Result<(), HarnessError>` and `fn cancel(&self, OperationId)`.
-2. `HarnessEvent` is a closed enum whose every variant is already a fact: `Token`, `ToolCallStarted{id,name,args}`, `ToolCallDelta`, `ToolCallEnded{outcome}`, `ApprovalRequested{id,request}`, `Ended{outcome}`. `HarnessError` is typed (ADR 0016).
+2. Target `HarnessEvent` is a closed enum whose every variant is already a fact: `Token`, `ToolCallStarted{id,name,args}`, `ToolCallDelta`, `ToolCallEnded{outcome}`, `ApprovalRequested{id,request}`, `Ended{outcome}`. `HarnessError` is typed (ADR 0016).
 3. Approval is an in-band *event* plus an out-of-band `resolve` call, never a callback: that is what lets any surface answer first and gives a late answer a typed stale result (Phase 2 item 2). A callback binds the answer to one surface.
 4. `ModelProvider` becomes a sub-port the harness consumes, not a peer of it; `Harness` joins `ChatRuntime`'s capability bundle so a runtime without it cannot construct the feature, and the mock harness is one impl of the same trait.
 5. **The first external harness adapter should speak ACP** (Agent Client Protocol), JSON-RPC 2.0 over child-process stdio. Arut's node is the ACP *client*; the external harness is the ACP *agent*.
@@ -390,25 +388,25 @@ wasm-bindgen, i.e. usable inside the BoltFFI core (ARCHITECTURE.md "Constraints 
 | cargo-nextest | 0.9.144 (2026-09) | MIT/Apache-2.0 | n/a | ADOPT NOW | Drop-in `cargo test` replacement, faster, deterministic, no network after install. |
 | cargo-machete | 0.9.2 (2026-04) | MIT | n/a | ADOPT NOW | Sub-second unused-dep scan, no compile needed. |
 | cargo-shear | 1.13.4 (2026-08) | MIT | n/a | BORROW PATTERN | Newer machete alternative (oxc parser); trial later, don't run both. |
-| cargo-deny | 0.20.2 (2026-07) | MIT/Apache-2.0 | n/a | ADOPT NOW, CI-only | License/advisory/duplicate gate; directly enforces ADR 0017's split; needs network + a maintained `deny.toml`, so PR-gate not local. |
+| cargo-deny | 0.20.2 (2026-07) | MIT/Apache-2.0 | n/a | ADOPTED | License/advisory/duplicate gate; directly enforces ADR 0017's split; needs network + a maintained `deny.toml`, and runs in the local and CI check gate. |
 | cargo-semver-checks | 0.50.0 (2026-08) | Apache-2.0/MIT | n/a | ADOPT AT PHASE 1, CI-only | Scope to `protocols`, `protocols/rpc`, substrates that are MIT/Apache-2.0 and meant to be reused per ADR 0017; needs a baseline build. |
 | cargo-udeps | 0.1.61 (2026-04) | MIT/Apache-2.0 | n/a | ADOPT AT PHASE n, CI-only | Nightly + full rebuild; scheduled job to catch what machete/shear miss. |
 | cargo-hack | 0.6.45 (2026-05) | Apache-2.0/MIT | n/a | ADOPT AT PHASE 1, CI-only | Feature-powerset builds; worth it once wasm/native feature flags multiply; combinatorial cost rules out local. |
 | cargo-mutants | 27.1.0 (2026-06) | MIT | n/a | ADOPT AT PHASE 2, CI-only (scheduled) | Cost ≈ test-suite time × mutant count; run weekly once the conformance/Machine suites are the thing being graded, not per-PR. |
 | fluent-bundle | 0.16.0 | Apache-2.0/MIT | Yes | ADOPT NOW | ADR 0022's runtime: the bundle Rust and wasm consumers format from. No I/O, no clock, no wasm-bindgen; `concurrent::FluentBundle` is the `Sync` variant a `OnceLock` needs. |
-| fluent-syntax | 0.12.0 | Apache-2.0/MIT | Yes | ADOPT NOW | The `.ftl` parser and AST `tools/i18n` walks to emit each platform's resources, and the one the key test reads message ids from. Already under fluent-bundle. |
+| fluent-syntax | 0.12.0 | Apache-2.0/MIT | Yes | ADOPT NOW | The `.ftl` parser and AST `tools/dev` walks to emit each platform's resources, and the one the key test reads message ids from. Already under fluent-bundle. |
 | fluent-langneg | 0.13.1 | Apache-2.0/MIT | Yes | ADOPT NOW | Locale negotiation over the surface-supplied language list. Pin 0.13, not 0.14: 0.14 swaps `unic-langid` for `icu_locid` and duplicates the whole langid stack under fluent-bundle. |
 | unic-langid | 0.9.6 | MIT/Apache-2.0 | Yes | ADOPT NOW | The language-identifier type fluent-bundle and fluent-langneg both speak; parses the POSIX names GTK and the platforms hand over. |
 | intl-memoizer | 0.5.3 | Apache-2.0/MIT | Yes | ADOPT NOW (transitive) | Caches per-locale plural-rule formatters inside fluent-bundle; taken through fluent-bundle rather than named directly, so nothing declares it twice. |
 | @fluent/bundle (npm) | 0.19.1 | Apache-2.0 | n/a (browser) | ADOPT NOW | The same Fluent runtime for web, Chromium and the VS Code extension host, reading the `.ftl` files `mise run i18n` copies beside each surface. With `@fluent/langneg` 0.7.0 (Apache-2.0) for `navigator.languages` negotiation. |
 | bacon | 3.25.0 (2026-08) | AGPL-3.0 | n/a | REJECT (repo tooling) | AGPL; also an interactive watcher, not a scripted check — fine as a developer's personal install, never wired into `mise.toml` or CI. |
 
-Notes (≤15 lines):
-- `mise run check` (fast, local, no network): add `cargo nextest run` in place of `cargo test`, and `cargo machete`. Both are sub-second-to-seconds and deterministic.
-- CI-only jobs, not local: `cargo deny check` (PR gate, needs advisory-db + `deny.toml`), `cargo semver-checks` (PR gate, scoped to `protocols`/`protocols/rpc`), `cargo hack --feature-powerset` and `cargo udeps` (nightly/scheduled), `cargo mutants` (weekly scheduled). None belong in the commit-time loop.
+Design notes for future integrations:
+- `mise run check` uses nextest and cargo-machete and also runs cargo-deny, which may update its advisory cache over the network.
+- Future CI-only jobs: scoped cargo-semver-checks, cargo-hack feature powersets, nightly cargo-udeps, and scheduled cargo-mutants. They are not wired into CI yet.
 - ADR 0016 error-type approach: use `thiserror` 2.x on every core error/outcome enum. `#[error("...")]` only backs `Display` for logs/telemetry; the enum's typed variants and payload fields are the contract surfaces read, so no user-facing string ever needs to exist in the attribute. Reject `snafu` — its `.context()`/`whatever!` idiom encourages narrative strings at construction time, working against the ADR's discipline. Keep `miette` strictly in `tools/` for pretty CLI diagnostics (conformance runner output), never on a `features/` or `substrates/` error type.
 - OTel crates (`opentelemetry*`, `tracing-opentelemetry`) leak a `js-sys` dependency on any `wasm32` target even with `wasm-bindgen` absent from your own code — cfg them out of the wasm build explicitly rather than relying on "off by default" alone.
 - `keyring` stays desktop-only (Linux secret-service, macOS/Windows). For iOS/Android, don't add `keyring`'s new native-store backends yet (both ~1 year old); go through the platform runtime's own Keychain/Keystore FFI as the architecture already implies, wrapping values in `secrecy::Secret` uniformly across all hosts including wasm.
 - ADR 0022 typed accessors: `product/i18n/macros` is the one proc macro this repo writes; it uses `syn` 2 / `quote` / `proc-macro2` (all MIT/Apache-2.0, already in the graph through `thiserror` and `prost`) plus `fluent-syntax` to read the string source at expansion time. Keep it derive-only and keep its expansion free of any `arut-i18n` type, or a `features/` crate ends up depending on a layer above it.
-- ADR 0022 string source: the Fluent crates are a product dependency, not repo tooling — `product/i18n` ships them into every Rust and wasm consumer, and `tools/i18n` uses `fluent-syntax` alone to generate `Localizable.xcstrings`, `strings.xml` and `.resw`. Nothing pulls a Fluent crate into a native surface: those read their own platform resources. Reject `fluent-fallback` and `fluent-resmgr` — both exist to load `.ftl` off a filesystem at runtime, which is exactly what the generator removes.
+- ADR 0022 string source: `product/i18n` embeds Fluent for Rust localization; the `arut-dev i18n` subcommand uses that source and `fluent-syntax` to generate resources and typed accessors. GTK uses Rust Fluent at runtime. Apple, Android, and Windows use native resources; TypeScript uses `@fluent/bundle`. `fluent-fallback` and `fluent-resmgr` are not needed for this build-time resource pipeline.
 - `loom` and `proptest` are dev-dependencies only, so their partial/no wasm support is irrelevant; both should live in `substrates/watch`, `substrates/authority`, and `tools/conformance` test targets.

@@ -1,308 +1,211 @@
 # Architecture
 
-Arut is one product presented through native surfaces on every device a person owns and executed on whichever of their nodes they choose. Product behavior, protocols, and projections are shared Rust. Presentation, lifecycle, hosting, and packaging are native to each platform.
+Arut shares Rust product behavior, protocols, and projections across native surfaces. Surfaces own presentation, lifecycle, hosting, and packaging. Product vocabulary is in `CONTEXT.md`; implementation terms are in `docs/GLOSSARY.md`.
 
-This document is the target design. Where the repository differs from it today, `docs/ROADMAP.md` says in what order it converges. Product vocabulary is in `CONTEXT.md`; engineering vocabulary is in `docs/GLOSSARY.md`; the reasons behind each boundary are in `docs/adr/`.
+This document distinguishes the current chat implementation from the accepted target design. `docs/ROADMAP.md` records the remaining work. ADRs preserve decisions and their amendments; they are not implementation status reports.
 
 ## Principles
 
-1. Every surface behaves as if its platform's own developers built it. Nothing is forced across platforms.
-2. One product, one truth. Conversations, drafts, operations, and availability are identical on every device.
-3. Local first. Everything works with no backend; the backend adds reach and recovery and never owns truth.
-4. Execution location is chosen per conversation and changed only deliberately. Routes never move execution.
-5. The compiler proves local composition. Manifests describe remote nodes. Nothing is assumed about a node it did not report.
-6. Facts have one authority and one order. No CRDTs for authority-owned state.
-7. A feature is one Rust crate. Bindings and surfaces gain it without hand-written glue.
-8. Prefer a proven open standard or crate over anything written here. Substrates are thin.
-9. Add a directory or abstraction only after a concrete implementation proves its boundary.
-
-## System model
-
-```text
-person
-  devices  ──pairing──  device keys, root key
-  nodes    ──host──     laptop daemon, phone service, cloud daemon
-  workspaces            resources, connectors, settings, per node
-  conversations         one authority each, replicated to every node
-  operations            model turns and tool calls, parallel per node
-  surfaces  ──session── one live attachment to one node, many conversations shown
-  routes                in-process, IPC, LAN, relay, later WebRTC and Bluetooth
-  backend               pairing, relay, encrypted backup; optional
-```
-
-A conversation is created on a node, which becomes its authority (ADR 0001). Every other node of the person holds a replica and may queue and carry commands for it (ADR 0004). A surface attaches to one node through a session and may show conversations whose authorities are elsewhere; the node it is attached to forwards. Changing which route reaches a node changes nothing about which node executes.
-
-## Ownership tiers
-
-State and services have one of three owners. The tier decides where code lives, what is synchronized, and who may change it.
-
-| Tier | Owns | Synchronized | Lives in |
-| --- | --- | --- | --- |
-| Product | identity, pairing, workspaces, conversation list, availability, connectivity, settings that follow the person | yes | `product/` |
-| Feature | one feature's facts, projections, commands, ports, and rules; for chat: transcript, operations, composer | yes, as facts and ephemeral replication | `features/<name>/` |
-| Surface | sidebar collapse, window geometry, focus, hover, open menus, last selected item, platform permissions | never; stored in the platform's own store | each surface |
-
-Surface state may live in the binding wrapper or in the view; it never enters a scope handle. A surface may have features no other surface has (a collapsed rail, a command palette, a menu-bar extra) without any change below it.
+1. Each surface follows its platform's presentation and lifecycle conventions.
+2. Features own commands, facts, projections, and acceptance rules. Surfaces render typed values.
+3. A conversation has one authority. Changing its route does not move execution.
+4. Local operation does not require a backend. The planned backend carries encrypted data and never owns conversation truth.
+5. Concrete port bundles prove local composition; service descriptors describe remote capabilities.
+6. Add an abstraction or directory only when an implementation needs it.
 
 ## Layers and dependency rules
 
-```text
-surfaces/        native views and composition roots
-bindings/        generated per-ecosystem observation over scope handles
-product/         session, scopes, availability projections
-features/        one crate per feature: commands, facts, projections, services, ports
-substrates/      watch, authority, machine, log and storage ports, crypto, identity, routing
-protocols/       Protobuf packages, generator, RPC types
-transports/      RpcChannel implementations
-runtimes/        port implementations and drivers per host: local, android, apple, browser, cloud
-backend/         pairing, relay, encrypted store-and-forward
-```
-
-Allowed directions:
+The current directories and the two Phase 1 additions are:
 
 ```text
-surface -> binding -> product -> feature -> substrate
-Rust surface (GTK, terminal) -> product directly
-runtime -> feature + product + transport + substrate
-transport -> protocols/rpc only
-backend -> protocols + substrates + transports
-generator -> protocols only
+surfaces/              views and deployment composition roots
+bindings/              FFI exports and per-language observation adapters
+product/               sessions, node/workspace scopes, localization
+features/chat/         chat acceptance, clients, projections, composer, ports
+substrates/authority/  generic command acceptance and projection reduction
+substrates/storage/    FactLog, BlobStore, KeyValue; memory and native redb
+substrates/watch/      revisioned watch values and subscriptions
+substrates/identity/   Phase 1: iroh identity and pairing integration
+protocols/             Protobuf contracts, Rust generator, RPC vocabulary
+transports/            Connect HTTP and Unix IPC channels
+transports/iroh/       Phase 1: RpcChannel over iroh streams
+runtimes/              local native drivers, host-polled memory ports, browser callbacks
+tools/                 development commands and shared conformance suites
 ```
 
-Forbidden directions:
+Features depend on substrates and protocols. Product depends on features, substrates, protocols, and other product crates. Rust surfaces consume product clients directly; foreign surfaces import their binding package. Composition roots select runtimes. Transport implementations depend on RPC contracts, not product behavior. A binding does not select a host mode on behalf of a view.
 
-```text
-feature -> surface, binding, runtime, transport, or native SDK
-product -> binding, surface, or generated foreign-language FFI
-substrate -> feature or product
-transport -> product semantics or capability policy
-binding -> runtime selection
-anything -> a global service locator
-native view -> raw capability identifiers
-```
+`arut-dev layers --check` reads Cargo metadata, including optional, target-specific, build, and development edges. It rejects forbidden dependencies, Tokio executor features and wasm-bindgen in isolated core graphs, and weakened `unsafe_code` lints. Parsed Rust source also rejects feature `ServiceImpl` names in product and runtimes and `Authority` names in runtimes, including aliases and macro bodies. Tests are checked too.
 
-These rules are enforced, not just written: `check:layers` (in `tools/layers`) reads `cargo metadata` and fails the gate on any edge the lists above forbid, on Tokio's `rt` feature or `wasm-bindgen` anywhere in an isolated core graph, and on any crate that weakens the workspace `unsafe_code` deny. It also rejects `ServiceImpl` identifiers in runtimes and product code, and `Authority` identifiers in runtimes, including aliases and macro bodies. These source checks include tests. `check:bindings` (in `tools/bindings`) generates the per-language binding facades and fails if a native surface imports a generated FFI package directly. Four allowances are encoded in the tool with their reason and are the only ones: the chat feature depends on the i18n derive macro for compile-time message-key validation (ADR 0022); the IPC transport reuses the Connect framing crate rather than duplicating it; the FFI factory root uses host-polled memory ports and observation while preserving its exported factories; and the FFI crate uses `futures-executor` in tests only. Adding a fifth is a decision, not a config change.
+Four exceptions are recorded in the tool: the chat feature's i18n derive macro, IPC's reuse of Connect framing, the FFI factory's host-polled runtime dependency, and the FFI crate's test-only `futures-executor`. `arut-dev bindings --check` verifies native export facades, rejects direct generated FFI imports outside bindings, and rejects relative TypeScript source paths that escape a surface or runtime package.
 
 ## Scopes
 
-Scopes are typed structs, not a container (ADR 0006).
+The structs in `product/session/src/scopes.rs` are:
 
 ```rust
-pub struct Node<R: NodeRuntime>        { runtime: Arc<R>, identity: DeviceIdentity, workspaces: Watch<WorkspaceList>, .. }
-pub struct Workspace<R: NodeRuntime>   { node: Arc<Node<R>>, id: WorkspaceId, config: ConfigChain, .. }
-pub struct Conversation<R: ChatRuntime>{ workspace: Arc<Workspace<R>>, id: ConversationId, authority: AuthorityRef, .. }
-pub struct Operation                   { conversation_id: ConversationId, id: OperationId, stream: StreamRef, .. }
-```
-
-A child holds an `Arc` to its parent and is constructed by the parent. Configuration resolves through the chain global → node → workspace → conversation, which is where skills, connectors, and provider settings attach at the level a person expects.
-
-Feature dependencies are capability bundles. The chat feature defines these ports in `features/chat/src/ports.rs`:
-
-```rust
-pub trait IdSource: Send + Sync + 'static { fn new_id(&self) -> String; }
-pub trait Persist<F: Fact> {
-    fn log(&self, namespace: &str) -> Result<Arc<dyn FactLog<F>>, StorageError>;
+pub struct Node<R> {
+    runtime: Arc<R>,
+    id: String,
+    cancellation: Cancellation,
 }
-pub trait Drafts { fn drafts(&self) -> Arc<dyn KeyValue>; }
-pub trait Clock { fn now(&self) -> u64; } // Unix milliseconds
-
-pub trait ChatRuntime: IdSource + Persist<ChatFact> + Drafts + Clock + Send + Sync + 'static {}
-impl<R: IdSource + Persist<ChatFact> + Drafts + Clock + Send + Sync + 'static> ChatRuntime for R {}
-```
-
-`compose(runtime: Arc<R>) -> Result<ChatFeature, ComposeError>` requires `R: ChatRuntime`. It builds the authority and services inside the feature. `ChatFeature::clients()` returns generated direct clients as `ChatClients`; `routers()` returns erased RPC services. Its registrations derive from those routers' descriptors, so the direct manifest and the remotely served manifest describe the same feature. Service implementation and authority types are crate-private. Clock is supplied today for deterministic tests; chat acceptance does not yet read it.
-
-`LocalRuntime` implements the ports with native IDs and time, directory or redb storage, and an exclusive node lease. Its generic `Node::serve` registers the root's feature routers and derives the capability service. The runtime's blocking RPC driver polls dispatch away from async workers and retains the runtime during active calls. The root assigns the legacy `node.redb` log to the `chat` namespace; additional namespaces use separate databases. `MemoryRuntime` supplies named memory logs, draft recovery, injected IDs, and an injected clock without a feature list or executor creation.
-
-Roots list features with `compose`, then hand clients to `ProductSession` or routers to `Node::serve`. The GTK root binds `ChatClients::remote` to its child-process route; its daemon owns the corresponding feature composition. FFI factories compose the same feature over memory ports for native and browser hosts. `ProductSession` receives feature clients and a required capability client, and only constructs product scopes. Its tests use the feature's `test-support` memory ports through the same `compose`; product-to-runtime development edges remain forbidden. The product scope's `ChatServices` trait is client access, separate from the feature's runtime port bundle.
-
-A runtime that lacks a port cannot compose the feature. That is the compile-time half of capabilities; the derived manifest is the runtime half. Adding a feature adds its composition to each hosting root's feature list and its clients to each consuming root. Runtime drivers and node assembly contain no per-service construction.
-
-## Reactivity and scope handles
-
-Surfaces observe scope handles, one per scope instance, each with its own watch (ADR 0007):
-
-```text
-Conversations            list, ordering, unread, per workspace
-Conversation(id)         transcript projection, status, typed error
-Composer(scope)          draft text, attachments, revision, remote-editing indicator
-Operation(id)            progress, stream cursor, outcome
-Availability             per-service typed availability with reasons
-Connectivity             route, health, paired nodes
-```
-
-The watch substrate is a newtype over `tokio::sync::watch` compiled with only the `sync` feature, so it runs on every target including wasm with no threads. Bindings coalesce invalidations and re-read on the native scheduler. Transcripts use a keyed collection with changed-range signals so a token does not re-marshal the whole conversation; Qt-style parallel string lists and joined transcript strings are not permitted.
-
-The current durable transcript exposes `last_message_id` in watched chat metadata and `messages_after(id)` for immutable rows. A surface keeps its cursor and reads only newly accepted messages after an invalidation, including coalesced changes. Token streaming remains a separate resumable stream.
-
-Optimism is intent-specific and decided in Rust. Draft edits apply locally at once. Sending, approvals, authority changes, and irreversible operations wait for authoritative acceptance. Surfaces never choose consistency behavior.
-
-## Commands, facts, and the log
-
-Every mutation is a `Command` (ADR 0004):
-
-```rust
-pub trait Command: Send + 'static {
-    type Scope: Hash + Eq + Clone;
-    type Fact: Clone + Send;
-    type Outcome: From<Applied<Self::Fact>>;
-    fn command_id(&self) -> &CommandId;          // UUIDv7, chosen by the surface, kept through retries
-    fn scope(&self) -> &Self::Scope;
-    fn precondition(&self) -> Precondition;       // Revision(n) | Epoch(e) | OperationOpen(id) | None
-    fn apply(self, current: &Projection<Self>) -> Result<Self::Fact, Self::Outcome>;
+pub struct Workspace<R> {
+    node: Arc<Node<R>>,
+    id: String,
+    cancellation: Cancellation,
 }
 ```
 
-One generic `Authority<C, L: FactLog<C::Fact>>` performs dedup by command ID, epoch fencing, precondition checks, apply, and append. Its outcomes are typed: applied, duplicate, revision conflict, authority mismatch, superseded. Queueability, expiry, and optimistic policy are associated items on the command type so shared machinery acts on them without a switch.
+`Node::workspace` constructs a workspace and gives it child cancellation. Product sessions use `Workspace<ChatClients>` directly. A workspace keeps its node alive and creates cancellation scopes for conversation clients.
 
-Facts go to the `FactLog` with a sequence, an epoch, and the command ID. Projections are pure reducers rebuilt from facts and accelerated by snapshots. Compaction keeps the log bounded. Drafts are the one exception: they replicate as ephemeral state with last-writer-wins and are not facts (ADR 0018).
+Conversation and operation ownership structs are Phase 2 work. Today's `ChatClient` is an observable conversation handle, not a `Conversation` scope struct. The global/node/workspace/conversation configuration chain is also a target; no `ConfigChain` or `NodeRuntime` type exists.
 
-High-rate data (tokens, progress, later terminal bytes) uses resumable streams with a stable stream ID, monotonic offsets, bounded retention, and an explicit unavailable-range response. A consumer resumes from its cursor or installs the final durable result.
+## Ports and composition
 
-## Sans-I/O machines and drivers
+The chat feature requires four ports in `features/chat/src/ports.rs`:
 
-Control flow that must be correct under reconnection and reordering is a machine (ADR 0005):
+- `IdSource::new_id() -> String` supplies identities.
+- `Persist<F>::log(namespace)` opens a named fact log.
+- `Drafts::drafts()` supplies local key-value recovery storage.
+- `Clock::now() -> u64` supplies Unix milliseconds.
 
-```rust
-pub trait Machine {
-    type Input;
-    type Effect;
-    fn handle(&mut self, input: Self::Input) -> SmallVec<[Self::Effect; 4]>;
-    fn next_timeout(&self) -> Option<Instant>;
-}
-```
+`ChatRuntime` combines these ports with `Send + Sync + 'static`. `compose(Arc<R>)` constructs private chat and composer authorities and services. `ChatFeature` exposes generated clients, erased routers, and registrations derived from those routers' descriptors. A runtime without the required ports cannot compose chat.
 
-Machines: conversation authority, session negotiation (manifest, version window, epoch), stream resume, draft replication, route health. Drivers in `runtimes/` feed inputs and perform effects on the host executor. Tests drive machines with vectors and a fake clock. Effects with results (model call, file read, process spawn) are async ports, not machine effects.
+`LocalRuntime` supplies native UUIDv7 IDs, wall time, redb logs, draft storage, and the node lease. `arutd` composes chat and passes its routers to `Node::serve`. This runtime assembly type is distinct from the product's ownership scope `Node<R>`. `Node::serve` registers routers and the derived capability service. Its small `Blocking` adapter runs dispatch construction and future polling through `spawn_blocking`, retaining the runtime during active calls. Redb's synchronous transactions still need that executor isolation.
 
-Nothing outside `runtimes/` creates an executor. A `Spawner` port from the composition root runs futures: Tokio on desktops and the backend, a foreground-service thread on Android, the host's async on Apple through BoltFFI, and the page's event loop on wasm through BoltFFI's poll exports.
+`MemoryRuntime` supplies named memory logs, draft storage, injected IDs, and an injected clock. It contains no feature list. Core tests use the feature's `test_support::MemoryPorts` and `TestIds` through the production composition function, without a product-to-runtime development dependency.
 
-## Protocols and the service layer
+`ProductSession::from_chat` consumes a composed local feature and derives its capability client. `ProductSession::remote` binds chat, composer, and capability clients to the root's chosen channel. The session constructs its pending chat through the same helper used for subsequent pending chats. FFI factories compose chat over memory ports and call `from_chat`; the Linux root calls `remote` with its child-process channel.
 
-Protobuf defines everything that crosses a boundary (ADR 0015). A project-owned generator emits, per service, an object-safe trait, a client with direct and remote targets, an erased router, canonical procedure names, descriptors, and typed availability (ADR 0008). Direct clients pass generated structs with no encoding. Remote clients encode exactly once at `RpcChannel`.
+## Acceptance, facts, and recovery
 
-Evolution is additive within a package version. A session and a node talk when within two minor versions; otherwise negotiation returns a typed unsupported result.
+`Command` declares its scope, fact, projection, rejection, epoch, precondition, optional expiry, and pure `apply(current, now)` function. `Authority<C>` serializes acceptance through `FactLog::commit`. The transaction refreshes the projection, checks the retry outcome, validates the command, and optionally appends one record. Outcomes distinguish applied, duplicate, revision conflict, authority mismatch, superseded, and rejected commands.
 
-## Transport and routes
+Chat invokes `execute_with_clock`. The authority reads the supplied clock inside the transaction after deduplication. The accepted `ChatFact` batch and its transcript messages carry `accepted_at_ms`. `ChatMessage` in the projection and generated FFI bindings preserves that timestamp. The Protobuf additions are field 6 on `ChatFact` and field 4 on `ChatMessage`; older rows decode with zero. A retry returns the original timestamp.
 
-`RpcChannel` is the only boundary a remote call crosses. Connect protocol framing sits on top of it for every HTTP-carried route (ADR 0009). Channels: memory (tests, in-process hosting), IPC pipe (child-process daemon), an iroh bi-directional stream between nodes, and the relay's WebSocket path for browsers. Layers around a channel attach and read metadata: device auth, authority epoch, W3C trace context, protocol version. Features never see a channel.
+Each accepted mock exchange records a user message, an echo response, and started/completed operation facts. Records also carry sequence, authority epoch, and command ID. Chat currently uses epoch 1. Canonical UUIDv7 command IDs deduplicate starts and sends. Operation execution, model streaming, replication, and authority hand-off are not implemented.
 
-Between devices, connectivity is iroh (ADR 0019): each node is an iroh endpoint whose Ed25519 key is the device key; discovery, hole punching, relay fallback, and transport encryption are iroh's. Route selection is therefore not ours (ADR 0012 as amended). Per-feature preferences sit above it: drafts and presence travel over `iroh-gossip`, facts over streams, attachments over `iroh-blobs`, backups through the relay store.
+`ChatProjection` is an internal pure reducer. Authority startup replays facts after an optional snapshot. Explicit checkpoint and compaction methods exist; the daemon does not schedule maintenance automatically. Retry outcomes survive compaction and currently have no expiry.
 
-Envelopes held at rest by a carrier or the relay are sealed under keys derived from the person's root key (ADR 0003). Any paired device or the relay may carry an envelope for an unreachable node and cannot read it (ADR 0002).
-
-## Hosting
-
-Hosting is a port (ADR 0011). The composition root of each surface picks a mode and hands the result to the binding:
-
-| Platform | Mode | Notes |
-| --- | --- | --- |
-| Linux, Windows | child process (`arutd`) over IPC | system service later without code changes above the port |
-| macOS | child process now, login item later | `SMAppService` when a task should outlive the window |
-| Android | foreground service, background thread, in-app process | the phone is a full node |
-| iOS, iPadOS | in-process | `BGTaskScheduler` for short background work |
-| VS Code | core in the extension host, UI in a webview over a transport | no wasm in the extension |
-| JetBrains | pure JVM client of the local daemon | no native code in the plugin |
-| Web, browser extensions | wasm in the page or a worker | I/O through host callbacks; executes only what needs no OS access |
-| Terminal | in-process or client of the daemon | inline CLI, optional alternate-screen TUI |
-| Watches, messaging integrations | pure clients of a phone or the backend | no core |
+Drafts are ephemeral values with local `KeyValue` recovery, not transcript facts. Composer edits check revision and epoch. A start fact records the pending revision it consumed, so recovery can finish draft cleanup after a failure without erasing later edits. Cross-device last-writer-wins replication and remote-editing indicators remain Phase 1 work under ADR 0018.
 
 ## Storage
 
-Three ports (ADR 0010): `FactLog`, `BlobStore`, `KeyValue`. The first implementation is a directory tree whose layout carries structure, JSON only for documents, raw bytes for blobs, append-and-fsync for the log. SQLite and platform stores plug in later per port. Nothing rewrites whole state on a change.
+ADR [0023](docs/adr/0023-redb-default-node-storage.md) amends [0010](docs/adr/0010-storage-as-three-ports.md). The ports remain `FactLog`, `BlobStore`, and `KeyValue`. Native nodes use redb for facts and key-value data. The directory implementation and `NodeStorage` selector are gone; `ARUT_STORAGE` no longer selects a store.
 
-## Bindings and surfaces
+The primary feature namespace uses `node.redb`; other namespaces use `log-<BLAKE3 digest>.redb`. Redb owns each database exclusively. `node.lock` prevents two runtimes from owning the same node directory. Transactions maintain sequence and command indexes, snapshots, retained retry outcomes, and a schema-version table. Existing redb files remain readable. Directory data is not automatically migrated.
 
-Bindings are generated per ecosystem from scope handle definitions over BoltFFI plus a thin wrapper of ours that bridges watches to BoltFFI event subscriptions and fixes handle conventions. Projection types carry the FFI data attribute in the feature crate and are re-exported by the FFI crate, so each type is defined once. Bindings own coalescing, scheduler hops, and ecosystem cancellation. They own no product transitions. A hand-written binding is a regression.
+Memory implements all three ports for tests and wasm. Redb is an opt-in Cargo feature enabled by the local runtime, not a wasm dependency. No persistent `BlobStore` remains; Phase 1 adds attachment storage and transfer through `iroh-blobs`. Current memory blob addresses use BLAKE3 and verify content on reads.
 
-Rust-owned surfaces (GTK, terminal) read projection types directly with no FFI.
+## Observation and bindings
 
-Surfaces own rendering, navigation, disposable state, accessibility, platform permissions, lifecycle observation, and the composition root. They report platform facts (suspend, background expiry, connectivity) to shared policy and never contain authority, routing, or compatibility rules. The core returns typed outcomes and no text (ADR 0016).
+`Watch<T>` wraps `tokio::sync::watch` with Tokio's `sync` feature only. Updates compare a detached candidate and increment the revision only when the value changes. New subscribers receive an initial invalidation; intervening updates may coalesce. Dropping the writer closes subscriptions.
 
-Those outcomes become sentences through one source. Every user-facing string lives once in `product/i18n` as Fluent, and a typed variant names its message by convention through `message_key` on the enum itself, with variant fields as Fluent arguments (ADR 0022). Strings never cross the FFI boundary. Rust-owned surfaces and the wasm core read the `.ftl` directly through `arut-i18n`'s `Localizer`; web and editor surfaces read the same files with `@fluent/bundle`; native surfaces read `mise run i18n`'s output — `Localizable.xcstrings`, `values-<lang>/strings.xml`, `Strings/<lang>/Resources.resw` — through their own platform localization API, so each surface keeps its idiom and pays nothing at runtime. Locale selection stays platform-owned: a surface hands over the language list its platform already resolved, and the core never learns the locale. No message id is written by hand anywhere. Beside the resources, `mise run i18n` emits one typed accessor per message for each consumer — a Rust `Message` enum that `Localizer::format` takes, `L10n` in Swift, Kotlin and C#, `t` in TypeScript — with parameter types read off the source, so naming a string that does not exist or passing the wrong argument is a compile error in that language. `#[derive(Localized)]` puts the same convention on the error enums themselves and checks it against the source while the feature crate compiles, so a variant added without a message does not build; it is a proc macro whose expansion names only `&'static str`, which is what lets a `features/` crate use it without depending on anything above it. Every locale must define the same ids, and `mise run check` regenerates everything and fails if any generated file drifted from the source.
+Product sessions expose conversation summaries and composer availability. Chat and composer handles expose separate watches. Transcript metadata contains `last_message_id`; `messages_after(id)` returns immutable keyed rows strictly after that cursor. Surfaces cache rows and fetch only additions. Connectivity and operation handles are targets, not current exports.
 
-## Capabilities and availability
+Projection types declare `#[boltffi::data]` in their owning crate and are re-exported by `bindings/ffi`. Explicit `#[export]` blocks expose handles and callback streams. BoltFFI's source scanner does not expand export macros, so these blocks remain explicit. `arut-dev bindings` generates Swift/Kotlin aliases and factory forwarding, plus C# source aliases. Observation adapters remain hand-written per ADR 0021. GTK consumes product types and watches directly.
 
-Static capabilities are the port bundles above. Dynamic capabilities are the manifest a node reports at session connect: service versions, methods, permissions, limits, extensions, current availability. The generator turns descriptors into typed per-service availability so product code holds `ChatAvailability` and views read a typed reason, never a string identifier. Availability updates stream during a session.
+FFI observation uses a host-polled callback driver. The standalone `HostPolledSpawner` implements `LocalSpawner` through `async_executor::LocalExecutor` and bounded ticks; platform callbacks do not yet drive it. Idle unsubscribed FFI observers may remain retained until the next source change, an open roadmap decision.
 
-## Security
+## Protocols and transport
 
-Device keys are Ed25519 iroh endpoint keys, generated on first launch, never exported, held in the platform keychain (`keyring` on desktop). Pairing by QR or short code exchanges endpoint ids over an iroh connection and transfers the root key. Transport encryption is iroh's QUIC; stored envelopes and backups use sealed boxes under keys derived from the root key. Provider keys live in the executing node's platform keychain (ADR 0014). Accounts, when they arrive, vouch for device keys and escrow the root key; they do not replace device identity.
+`protocols/proto/arut` contains capability, chat, and nested composer packages. `protox` compiles descriptors; `arut-protocol-build` generates Rust service traits, direct and remote clients, routers, procedure names, and descriptors. Direct calls pass typed values. Remote calls encode at `RpcChannel`. The generator supports all four streaming shapes.
 
-Sharing a conversation copies explicitly shareable history and grants nothing else. Continuing from a shared transcript creates a new conversation with a new authority.
+The registry supplies an in-process channel. Connect HTTP and Unix IPC support unary calls and server streams; request-streaming calls return `Unimplemented`. Connect framing bounds messages to 8 MiB and preserves typed status codes and details. IPC reuses the HTTP framing with a Unix-socket connector. No WebSocket or iroh channel exists yet.
 
-## Telemetry and flags
+The capability service derives its manifest from registrations. Product maps composer presence, current availability, and manifest failures into `FeatureAvailability`. Per-service availability types are not generated, and capabilities do not yet stream. ADR 0015's two-minor compatibility window remains Phase 1 work. `buf breaking` checks additive schema evolution against local `master`, not negotiated runtime compatibility.
 
-`tracing` instruments the core with OpenTelemetry export off until configured; W3C trace context rides in RPC metadata. Content, prompts, paths, and payloads are never in spans without explicit consent. Feature flags use the OpenFeature SDK with a local file provider first; flags select implementations and rollout and reach views only through availability projections. A flag never changes stored-fact meaning, wire interpretation, authority rules, or cryptography.
+## Hosting and browser composition
+
+`Host` and `HostMode` describe in-process, child-process, system-service, and remote hosting. `ChildHost` starts `arutd`, waits for `READY`, and retains the child with its channel. `ScheduledChannel` dispatches through a supplied spawner. Executor creation lives in the local runtime and the daemon root; GTK polls UI work on GLib.
+
+| Surface | Current composition | Remaining target |
+| --- | --- | --- |
+| Linux | relm4/GTK4 root, child `arutd`, Unix IPC, persistent redb | v1 features and device routes |
+| Apple | SwiftUI, in-process memory FFI session | macOS child hosting; iOS lifecycle support |
+| Android | Compose, ViewModel-owned memory FFI session | foreground service and persistent node |
+| Windows | WinUI, in-process memory FFI session | child hosting and persistent node |
+| Web, Chromium | wasm memory session in the page | worker/lifecycle integration and remote routes |
+| VS Code | wasm session in the extension host, webview messages | native extension-host composition or daemon route |
+
+`runtimes/browser` is the pnpm package `@arut/runtime-browser`. Web and VS Code import its UUIDv7 callback through the package export and supply wall time to the binding. Chromium imports the web composition entry through `@arut/surface-web/main`. This keeps runtime selection in composition roots while making package dependencies explicit. Relative TypeScript paths cannot escape surface or runtime packages.
+
+Terminal, JetBrains, watch, and messaging surfaces have no directories yet.
+
+## Localization
+
+`product/i18n/locales/en` is the current Fluent source. `arut-dev i18n` generates native resources, typed accessors, and Fluent copies for web/editor surfaces. GTK uses Rust `Localizer`; TypeScript uses Fluent bundles; Apple, Android, and Windows use native resources. Surface error mappings select typed accessors; product transitions return typed errors rather than sentences.
+
+`Localized` derives message keys and validates them against the English source at compile time. Locale completeness tests and generator checks detect missing or stale output. Adding a locale requires its files and registration in `product/i18n/src/lib.rs`. Locale choice stays outside the feature core.
+
+## Accepted targets beyond the current slice
+
+Phase 1 adds iroh endpoints, pairing, device keys, sealed envelopes, peer-assisted delivery, gossip drafts, blob transfer, a `ModelProvider` implemented with `rig`, and a `figment` configuration chain. ADR 0019 assigns connection discovery and direct/relay failover to iroh; Arut does not build a routing substrate. Keychain storage, root-key derivation, encryption, and backups remain unimplemented. Current local IPC permissions do not provide the planned device trust protocol.
+
+Phase 2 adds conversation/operation ownership structs, explicit hand-off, harnesses, tools, and approvals. ADR 0005's reusable `Machine`/`Effect` interface remains a target. Today's authority calls synchronous storage ports; there is no generic machine trait or effect driver. Phase 3 adds backend accounts, recovery, push, and hosted nodes. The backend has no directory yet.
+
+`tracing` spans exist for RPC, authority, and composer activity. There is no OpenTelemetry exporter, OpenFeature integration, or feature-flag provider. Those remain target integrations. Content, prompts, and payloads must not enter telemetry without consent.
 
 ## Repository layout
 
-The current workspace has 20 Rust crates. Features own their port bundles and `compose` functions. Runtimes implement ports and drive RPC and observation; deployable roots list features. Product sessions consume feature clients. The tree below names each crate beside its directory; planned implementations are added when they exist.
+The workspace contains 18 Rust crates. This lists all maintained crate and surface roots; `src`, tests, resources, and generated build output are omitted below those roots.
 
 ```text
 /
+|-- .github/workflows/ci.yml
 |-- CONTEXT.md, ARCHITECTURE.md
+|-- Cargo.toml, Cargo.lock, deny.toml
+|-- mise.toml, mise.lock, buf.yaml
+|-- package.json, pnpm-workspace.yaml, pnpm-lock.yaml, tsconfig.json
+|-- .gitignore, LICENSE-APACHE, LICENSE-MIT, LICENSE-FSL
 |-- docs/{PRD,ROADMAP,GLOSSARY,ECOSYSTEM}.md
-|-- docs/adr/                       decisions and index.md
-|-- protocols/                     arut-protocol: generated Protobuf contracts
-|   |-- proto/arut/<pkg>/v1/*.proto
-|   |-- build/                      arut-protocol-build: service generator
-|   `-- rpc/                        arut-rpc: channels, registry, cancellation, spawning
+|   `-- adr/                       numbered decisions and index.md
+|-- protocols/                     arut-protocol
+|   |-- proto/arut/capability/v1/
+|   |-- proto/arut/chat/v1/
+|   |-- proto/arut/chat/composer/v1/
+|   |-- build/                      arut-protocol-build
+|   `-- rpc/                        arut-rpc
 |-- substrates/
-|   |-- watch/                      arut-watch: revisioned cells and subscriptions
-|   |-- authority/                  arut-authority: commands, reducers, machines
-|   `-- storage/                    arut-storage: memory, directory, optional redb
-|-- features/chat/                  arut-feature-chat: ports, compose, transcript and composer
+|   |-- authority/                  arut-authority
+|   |-- storage/                    arut-storage
+|   `-- watch/                      arut-watch
+|-- features/chat/                  arut-feature-chat
 |-- product/
-|   |-- session/                    arut-product-session: supplied clients, scopes, availability
-|   `-- i18n/                       arut-i18n: Fluent locales and Rust localization
-|       `-- macros/                 arut-i18n-macros: checked error message keys
+|   |-- session/                    arut-product-session
+|   `-- i18n/                       arut-i18n
+|       `-- macros/                 arut-i18n-macros
 |-- transports/
-|   |-- connect-http/               arut-transport-connect-http: Connect framing
-|   `-- ipc/                        arut-transport-ipc: Unix sockets over Connect
+|   |-- connect-http/               arut-transport-connect-http
+|   `-- ipc/                        arut-transport-ipc
 |-- runtimes/
-|   |-- local/                      arut-runtime-local: native ports, generic node driver, arutd root
-|   |-- host-polled/                arut-runtime-host-polled: memory ports, host-polled spawner and observation
-|   `-- browser/                    TypeScript host time and entropy callbacks
+|   |-- local/                      arut-runtime-local, arutd
+|   |-- host-polled/                arut-runtime-host-polled
+|   `-- browser/                    @arut/runtime-browser
 |-- bindings/
-|   |-- ffi/                        arut_ffi: explicit exports and watch bridge
-|   |-- swift/, kotlin/, dotnet/    native observation adapters
-|   `-- typescript/                 observations, wasm bootstrap, React hook
+|   |-- ffi/                        arut_ffi
+|   |-- swift/, kotlin/, dotnet/
+|   `-- typescript/                 @arut/bindings-typescript
 |-- surfaces/
-|   |-- linux/                  arut-linux: relm4 composition root and views
-|   |-- apple/, android/, windows/
+|   |-- linux/                      arut-linux
+|   |-- apple/shared/               Swift package and app sources
+|   |-- android/, windows/
 |   `-- web/, chromium/, vscode/
 `-- tools/
-    |-- bindings/                   arut-binding-exports: native public aliases and factory forwarding
-    |-- conformance/                arut-conformance: shared port suites
-    |-- i18n/                       arut-i18n-gen: native resources and typed accessors
-    `-- layers/                     arut-layers: dependency directions, composition ownership, isolated graphs, unsafe lints
+    |-- dev/                        arut-dev: i18n, layers, bindings
+    `-- conformance/                arut-conformance: shared port tests
 ```
 
-Do not add generic `shared`, `common`, `utils`, or `services` buckets. The existing `surfaces/apple/shared` is a Swift package shared by the Apple application targets. Rust crates document themselves with `//!` comments at their entry point. Repository prose lives in `CONTEXT.md`, `ARCHITECTURE.md`, and `docs/`; no `README.md` files are maintained.
+Foreign generated packages live under ignored `bindings/generated`. No README files are maintained. Rust crates document their contracts with `//!` comments. Do not add generic `shared`, `common`, `utils`, or `services` buckets; `surfaces/apple/shared` is the existing package shared by Apple app targets.
 
-Surfaces outside the current release stay in the tree and stay compiling where this machine can compile them, but they are not on the release's bar. Nothing in the build assumes every surface is present.
+## Tooling and verification
 
-## Ecosystems and tools
+Mise owns the pinned toolchains and task graph. Cargo builds Rust, pnpm builds and checks the TypeScript workspace, buf checks Protobuf, and BoltFFI packages foreign bindings. Gradle and XcodeGen are scoped to platform tasks. Machine-specific tuning belongs in ignored `mise.local.toml`.
 
-Languages in the repository: Rust, Protobuf, Swift, Kotlin, C#, TypeScript. Each exists because a surface needs it; none exists for tooling. Tools: mise (toolchains and tasks), cargo, pnpm, buf (proto lint and breaking checks), BoltFFI (all foreign bindings), `tools/i18n` (Fluent to native string resources), gradle and xcodegen for their platforms. Protobuf compiles through `protox` in the build script, so no `protoc` binary is installed. Anything else is a dependency, not a project. Every tool is pinned in `mise.toml` and locked with checksums in `mise.lock`; platform toolchains are scoped to the tasks that need them. `mise run check` is the one gate for humans and CI and fans out to `check:rust`, `check:wasm`, `check:proto`, `check:i18n`, `check:deps`, `check:ts`, `check:layers`, and `check:bindings`; generation tasks declare sources and outputs so they are skipped when nothing changed. Machine-specific tuning such as build parallelism lives in `mise.local.toml`, which is not committed.
+`tools/dev` is one binary crate, `arut-dev`, with `i18n`, `layers`, and `bindings` subcommands. Each accepts `--check`; layers always checks without writing. Mise calls these commands, and CI calls the same mise tasks. `tools/conformance` remains a test crate.
 
-The dependencies that carry real weight, and what each replaces: iroh, `iroh-blobs`, `iroh-gossip` (identity, discovery, NAT traversal, relay, transport encryption, blob transfer, ephemeral replication); BoltFFI (every foreign binding); `rig` (model providers); `relm4` (the Linux surface); `fluent-bundle` and `fluent-syntax` (one string source for every surface); `keyring` (desktop secrets); `figment` (the config chain); `tracing` with OpenTelemetry and the OpenFeature SDK (telemetry and flags). Rejected with reasons in the ADRs: UniFFI, Diplomat, typeshare, `nami` and the other Rust reactive frameworks, `irpc`, libp2p, CRDT libraries.
+`mise run check` runs formatting, Clippy, nextest, doctests, cargo-machete, cargo-deny, isolated wasm builds, buf lint/breaking, localization and binding generation checks, layer checks, and TypeScript checks. `mise run build` builds GTK, `arutd`, and web/Chromium/VS Code bundles. Both gates run before every commit with `CARGO_BUILD_JOBS=4 NEXTEST_TEST_THREADS=4`.
 
-## Verification
+CI cancels superseded runs per branch. Linux runs on every push and pull request; Android runs only when `surfaces/android`, `bindings/kotlin`, `bindings/ffi`, `features`, `product`, `substrates`, `protocols`, `runtimes`, or `Cargo.lock` changes. macOS builds on version tags. Native Android, Apple, and Windows compilation remains unverified on this Linux machine.
 
-- Machines are tested with input vectors and a fake clock, no I/O.
-- Every `RpcChannel`, `FactLog`, and `BlobStore` implementation passes one shared conformance suite.
-- Protocol compatibility is tested against the previous two minor versions before release.
-- CI builds and tests Linux and Android on every commit and macOS on tag.
-- Surfaces carry smoke tests in v1; platform UI tests grow with each surface.
-
-## Constraints worth knowing
-
-- BoltFFI's wasm target does not use wasm-bindgen; futures and streams are host-polled. Anything in the wasm core needing HTTP must go through a host callback. `rig` and `reqwest` do not run there.
-- BoltFFI packs iOS, macOS, and Android natively and has a JNI-based desktop JVM target; watchOS and visionOS need either an upstream contribution or a pure-Swift client.
-- libadwaita ignores the system GTK theme, which is why the Linux surface does not use it (ADR 0013).
-- Local-only automatic failover needs a coordinator that does not exist yet; hand-off stays explicit until one does.
-
-## Deliberately not done
-
-- No CRDTs. No global application snapshot. No service locator. No hand-written bindings. No English strings from the core. No feature-specific transport code. No cloud authority in the backend. No rich text until it has its own protocol version.
+The consolidation verified 116 nextest tests, all doctests, both gates, and the separately invoked display-backed GTK chat test. Conformance covers registry/HTTP/IPC RPC, memory/redb logs and key-value storage, and memory blobs. The generated wasm package passes a Node smoke test for draft/start/send/list, transcript ranges, and timestamps; TypeScript checks pass. Native regeneration and compilation must verify the additive transcript timestamp in Swift, Kotlin, and C#.

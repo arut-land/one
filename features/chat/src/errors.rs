@@ -3,7 +3,7 @@
 //! Every variant carries the data a surface needs to decide what to say and
 //! what to offer; none of them carries the sentence. The `#[error("…")]`
 //! attributes exist only so `Display` can put something in a log or a span --
-//! no surface reads them, and adding a language touches surfaces only.
+//! surfaces select strings from the shared Fluent source through native resources.
 //!
 //! `arut_rpc::Status` keeps its developer text for exactly that reason: it is
 //! the transport's own diagnostic, so it is projected here through its code and
