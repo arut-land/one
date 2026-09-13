@@ -4,9 +4,9 @@ Implementation vocabulary used in code, ADRs, and `ARCHITECTURE.md`. Product lan
 
 ## Scopes and ownership
 
-**Scope**: A typed ownership boundary in the core: node, workspace, conversation, operation. Each scope is a Rust struct that holds `Arc`s to its parent and constructs its children. There is no runtime service container.
+**Scope**: A typed ownership boundary in the core: node, workspace, conversation, operation. The current structs are `Node<R>` and `Workspace<R>`; a workspace holds an `Arc` to its node. Conversation and operation ownership structs are Phase 2 targets. There is no runtime service container.
 
-**Scope handle**: The unit a surface observes. One handle per scope instance (`Conversations`, `Conversation(id)`, `Composer(scope)`, `Operation(id)`, `Availability`), each with its own watch. Surfaces observe only the handles they render.
+**Scope handle**: The unit a surface observes. Current handles expose conversation summaries, chat metadata and transcript ranges, composer state, and availability, with separate watches. Operation and connectivity handles are targets.
 
 **Ownership tier**: Who owns a piece of state: product (shared across every surface), feature (one feature's projections and rules), or surface (disposable presentation such as sidebar collapse, stored in the platform's own store and never synced).
 
@@ -20,19 +20,21 @@ Implementation vocabulary used in code, ADRs, and `ARCHITECTURE.md`. Product lan
 
 ## Commands, facts, and the log
 
-**`Command` trait**: The typed contract a mutating command implements: scope, fact type, outcome type, idempotency, precondition, and `apply`. Generic machinery acts on it without a per-command switch.
+**`Command` trait**: The typed contract a mutating command implements: scope, fact and projection types, rejection type, epoch, precondition, expiry, and `apply(current, now)`. Generic machinery acts on it without a per-command switch.
 
-**`Authority<C>`**: The generic authority over one command type: dedup by command ID, epoch fencing, precondition check, apply, append. The composer authority was its first instance.
+**`Authority<C>`**: The generic authority over one command type: dedup by command ID, epoch fencing, precondition check, apply, append. Chat uses it for durable exchanges; the composer has a separate ephemeral authority.
 
-**`Projection` trait**: A pure reducer from facts to a bounded state. Testable with no I/O.
+**`Projection` trait**: A pure reducer from facts to state; it also reports scope revisions and whether an operation is open. Testable with no I/O.
 
-**`FactLog`**: The storage port for ordered facts: append, outcome-of, read-from-cursor, snapshot, compact. Not a key-value store.
+**`FactLog`**: Synchronous ordered storage with atomic `commit`, append, retry lookup, cursor reads, snapshots, and compaction. Implemented by memory and redb.
 
-**`BlobStore`**: The content-addressed storage port for attachments and previews.
+**`BlobStore`**: The BLAKE3-addressed byte-storage port. Memory implements it; persistent attachments and previews remain Phase 1 work.
 
-**`KeyValue`**: The storage port for small unordered state: settings, pairing records, cursors.
+**`KeyValue`**: The storage port for small unordered state, currently used for local draft recovery. Settings, pairing records, and cursors are future consumers.
 
-**Sequence** (`Seq`): The position of a fact in a conversation's log, assigned by the authority.
+**Sequence**: The ordered position in a feature's fact log, assigned atomically by storage during authority acceptance.
+
+**Acceptance timestamp**: `accepted_at_ms`, Unix milliseconds read from `Clock` inside authority acceptance and retained in facts, transcript messages, and FFI values. Zero means an older fact did not record it.
 
 **Cursor**: A position in a log or stream that a consumer acknowledges and resumes from.
 
@@ -40,13 +42,15 @@ Implementation vocabulary used in code, ADRs, and `ARCHITECTURE.md`. Product lan
 
 ## Sans-I/O
 
-**Machine**: A state machine that takes typed inputs and returns typed effects and never performs I/O. Authority, session negotiation, stream resume, and draft replication are machines.
+**Machine**: A state machine that takes typed inputs and returns typed effects and never performs I/O. ADR 0005 proposes it for reconnection and ordering rules; the current authority calls storage directly.
+(target; not yet in code)
 
 **Effect**: A typed instruction a machine returns for its driver to perform: append, send, persist, set timer, emit state.
+(target; not yet in code)
 
-**Driver**: The runtime code that feeds a machine inputs and performs its effects on a real executor.
+**Driver**: Runtime code that schedules RPC or observation on a host executor. A driver for the target machine interface does not exist yet.
 
-**Port**: A narrow trait a feature depends on for an external effect: clock, model provider, file store, process host, spawner. Runtimes implement ports; features never name a runtime.
+**Port**: A narrow trait a feature depends on for an external effect: clock, identity, persistence, drafts, process host, or spawner. Model-provider ports remain targets. Runtimes implement ports; features never name a runtime.
 
 **Capability bundle**: A supertrait combining the ports one feature needs, with a blanket impl, so a runtime that lacks a port cannot construct that feature.
 
@@ -64,17 +68,18 @@ Implementation vocabulary used in code, ADRs, and `ARCHITECTURE.md`. Product lan
 
 **Connect framing**: The wire format on top of `RpcChannel` for HTTP-carried routes: Connect protocol envelopes, content types, and error JSON. Chosen for browser reach and interoperability.
 
-**Transport**: An implementation of `RpcChannel` over some I/O: memory, IPC pipe, WebSocket, QUIC, WebRTC data channel.
+**Transport**: An implementation of `RpcChannel`. Current channels are the in-process registry, Connect HTTP, and Unix IPC. Iroh and browser relay routes remain targets.
 
-**Layer**: A wrapper around a channel that attaches or reads metadata: auth, epoch, trace context, protocol version.
+**Layer**: A target wrapper around a channel for auth, epoch, trace context, or protocol-version metadata. Current channels carry metadata without those policies.
 
 **Metadata**: The typed key-value side channel on requests and responses. Never carries product meaning.
 
-**Endpoint**: A node's iroh identity and connection point. Its Ed25519 public key is the product-level device key; other nodes dial it by key.
+**Endpoint**: A Phase 1 target for a node's iroh identity and connection point. Its Ed25519 public key is the product-level device key; other nodes dial it by key.
 
-**Gossip topic**: An `iroh-gossip` pub/sub topic among a person's paired nodes, used for ephemeral state such as drafts and presence. Best effort, unordered, never a carrier of facts.
+**Gossip topic**: A Phase 1 target using an `iroh-gossip` pub/sub topic among a person's paired nodes, used for ephemeral state such as drafts and presence. Best effort, unordered, never a carrier of facts.
 
 **Route policy**: What is ours above iroh's connection choice: which channel a feature prefers (gossip, stream, relay store). Direct-versus-relay selection and failover belong to iroh.
+(target; not yet in code)
 
 ## Hosting
 
@@ -86,9 +91,9 @@ Implementation vocabulary used in code, ADRs, and `ARCHITECTURE.md`. Product lan
 
 ## Bindings and surfaces
 
-**Binding**: The per-ecosystem adapter from scope handles to native observation: `@Observable`, `StateFlow`, `INotifyPropertyChanged`, `useSyncExternalStore`, GTK properties. Generated where possible; owns no product transitions.
+**Binding**: The per-ecosystem adapter from scope handles to native observation: Swift `ObservableObject`/`@Published`, Kotlin `StateFlow`, C# callbacks, React `useSyncExternalStore`, and GTK/GLib observation. Generated where possible; owns no product transitions.
 
-**FFI substrate**: Arut's thin wrapper over BoltFFI that adds the watch-to-event bridge and the handle conventions. The only crate that depends on `boltffi` directly besides features that annotate data types.
+**FFI binding**: `bindings/ffi` exports handles and bridges watches to BoltFFI callback streams. Features and product/session also depend on BoltFFI to annotate their projection types.
 
 **Projection type**: A Rust struct a surface reads. Annotated for FFI in place; never mirrored.
 
@@ -97,5 +102,6 @@ Implementation vocabulary used in code, ADRs, and `ARCHITECTURE.md`. Product lan
 **Descriptor**: Generated static metadata for a service and its methods, the input to the manifest.
 
 **Compatibility window**: The range of minor versions within which a session and a node agree to talk: two minors. Outside it, a typed unsupported result.
+(target; not yet in code)
 
 **Additive evolution**: Within a protocol version, fields are only added; removed numbers stay reserved. Conceptual breaks start a new package version with explicit translation.

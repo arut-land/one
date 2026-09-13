@@ -6,26 +6,27 @@ ADRs record decisions that are hard to reverse, surprising without context, and 
 | --- | --- | --- |
 | [0001](0001-conversation-authority-on-creating-node.md) | A conversation is authoritative on the node that created it | Accepted |
 | [0002](0002-backend-is-relay-not-truth.md) | The backend pairs, relays, and stores encrypted backups; never the source of truth | Accepted |
-| [0003](0003-device-keys-and-end-to-end-encryption.md) | Device keys, linked-device root key, end-to-end encryption from v1 | Accepted |
+| [0003](0003-device-keys-and-end-to-end-encryption.md) | Device keys, linked-device root key, end-to-end encryption from v1 | Accepted, amended by 0019 |
 | [0004](0004-commands-are-carried-envelopes.md) | Commands are signed envelopes any paired device may carry | Accepted |
 | [0005](0005-sans-io-machines-and-ports.md) | Sans-I/O machines, async ports, executor from the composition root | Accepted |
 | [0006](0006-typed-scopes-not-a-service-container.md) | Typed scopes and capability bundles, no service container | Accepted |
 | [0007](0007-scope-handles-and-generated-bindings.md) | One observable handle per scope, generated bindings over BoltFFI | Accepted |
 | [0008](0008-generated-service-layer-from-protobuf.md) | Service layer generated from Protobuf descriptors | Accepted |
-| [0009](0009-connect-framing-over-rpc-channel.md) | Connect framing over `RpcChannel`; transports are adapters | Accepted |
-| [0010](0010-storage-as-three-ports.md) | Storage is three narrow ports; directory tree first | Accepted |
+| [0009](0009-connect-framing-over-rpc-channel.md) | Connect framing over `RpcChannel`; transports are adapters | Accepted, amended by 0019 |
+| [0010](0010-storage-as-three-ports.md) | Storage is three narrow ports; directory tree first | Accepted, amended by 0023 |
 | [0011](0011-hosting-mode-is-a-port.md) | Hosting mode is a port chosen per platform | Accepted |
-| [0012](0012-single-route-with-health-failover.md) | One active route with health failover in v1 | Accepted |
-| [0013](0013-gtk4-without-libadwaita-on-linux.md) | GTK4 without libadwaita on Linux | Accepted |
+| [0012](0012-single-route-with-health-failover.md) | One active route with health failover in v1 | Accepted, amended by 0019 |
+| [0013](0013-gtk4-without-libadwaita-on-linux.md) | GTK4 without libadwaita on Linux | Accepted, amended by 0020 |
 | [0014](0014-model-access-through-rig.md) | Model access through `rig` behind a port | Accepted |
 | [0015](0015-protobuf-contracts-and-compatibility-window.md) | Protobuf contracts, additive evolution, two-minor window | Accepted |
-| [0016](0016-typed-errors-no-strings-from-core.md) | Typed errors; surfaces own user-facing strings | Accepted |
+| [0016](0016-typed-errors-no-strings-from-core.md) | Typed errors; surfaces own user-facing strings | Accepted, amended by 0022 |
 | [0017](0017-license-split.md) | FSL for product crates, MIT/Apache-2.0 for substrates | Accepted |
 | [0018](0018-drafts-are-ephemeral-last-writer-wins.md) | Drafts are ephemeral, last-writer-wins, not facts | Accepted |
 | [0019](0019-iroh-for-connectivity.md) | Connectivity, identity, relay, and blob transfer use iroh | Accepted, amends 0003, 0009, 0012 |
 | [0020](0020-relm4-for-the-linux-surface.md) | The Linux surface is written with relm4 | Accepted, amends 0013 |
 | [0021](0021-no-rust-reactive-framework-in-the-core.md) | No Rust reactive framework in the core | Accepted |
 | [0022](0022-fluent-as-the-single-string-source.md) | One Fluent string source generated into native resources | Accepted, amends 0016 |
+| [0023](0023-redb-default-node-storage.md) | Native node persistence uses redb; memory remains for tests and wasm | Accepted, amends 0010 |
 
 The records that shaped the first vertical slice live in git history before the reset commit and are not authoritative.
 

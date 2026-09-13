@@ -1,6 +1,6 @@
 # Arut Product Requirements
 
-Status: living document. Vocabulary follows `CONTEXT.md`.
+Status: target requirements, not a claim that these capabilities are implemented. Current status is in `docs/ROADMAP.md`; vocabulary follows `CONTEXT.md`.
 
 ## What Arut is
 
@@ -34,7 +34,7 @@ The daily driver. Three surfaces, one feature set, real sync.
 - macOS, SwiftUI.
 - Android, Jetpack Compose.
 
-Every other surface compiles and may be demonstrated but is not held to the v1 bar.
+Other existing surfaces are outside the v1 bar. Linux and TypeScript builds are verified locally; native Apple, Android, and Windows builds require their platform toolchains.
 
 ### Capabilities
 
@@ -44,7 +44,7 @@ Every other surface compiles and may be demonstrated but is not held to the v1 b
 - A composer per conversation and a pending composer for new conversations. Drafts carry text and small attachments with previews, synchronized across devices, last writer wins.
 - A node picker on the empty composer: choose which paired node will run the conversation. Phones can run conversations themselves.
 - Pairing between a person's devices by QR code or short code.
-- Two routes: direct on the local network, and relay through the backend. Automatic failover on health.
+- Two routes: direct on the local network, and relay through the backend. Iroh owns direct/relay selection and failover (ADR 0019).
 - End-to-end encryption between paired devices. Backups through the backend that the backend cannot read.
 - One model provider through an OpenAI-compatible endpoint, with the person's own key stored in the executing node's platform keychain.
 - Peer-assisted delivery: a command sent to an unreachable node is carried by any paired device or the backend and delivered when the node returns.
@@ -55,7 +55,7 @@ Every other surface compiles and may be demonstrated but is not held to the v1 b
 - Hand-off of a running conversation to another node.
 - Rich text in the composer.
 - Accounts, sign-in, key escrow, push notifications.
-- Internationalization; v1 is English only.
+- Additional translations; the localization machinery is implemented, but v1 is English only.
 - iOS, Windows, VS Code, JetBrains, browser extensions, terminal, watches.
 - Multi-user sharing.
 
@@ -100,12 +100,12 @@ Ordered by dependency, detailed in `docs/ROADMAP.md`.
 2. **Harness.** Tools, approvals from any surface, first external harness through an open protocol.
 3. **Backend accounts.** Sign-in, key escrow, push notifications, cloud nodes as paired devices.
 4. **Surfaces.** iOS and iPadOS, Windows, VS Code, JetBrains, browser extensions, terminal, then watches and messaging integrations.
-5. **Routes.** WebRTC, Bluetooth, parallel probing, per-feature route selection.
+5. **Routes.** Browser relay reach, Bluetooth if needed, and per-feature preferences above iroh. Connection probing and failover belong to iroh (ADR 0019).
 6. **Organizations.** Sharing, permissions, tenant policy, on-premises backend.
 
 ## Business constraints
 
 - Open source, built in public. Announcements lag the code; the code does not lag.
 - Product crates under FSL-1.1-Apache-2.0. Substrate and generator crates under MIT or Apache-2.0.
-- One backend binary deployable to any host that runs a process.
+- A deployable pairing/backup service alongside the iroh relay; no backend is implemented yet.
 - Solo maintainer. Every design choice is weighed against maintenance cost first.
