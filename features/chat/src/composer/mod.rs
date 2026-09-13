@@ -27,7 +27,7 @@ impl ComposerScope {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ComposerSnapshot {
+pub(crate) struct ComposerSnapshot {
     pub scope: ComposerScope,
     pub authority_epoch: u64,
     pub text: String,
@@ -46,7 +46,7 @@ impl ComposerSnapshot {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ReplaceComposer {
+pub(crate) struct ReplaceComposer {
     pub scope: ComposerScope,
     pub command_id: String,
     pub authority_epoch: u64,
@@ -55,7 +55,7 @@ pub struct ReplaceComposer {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum ReplaceOutcome {
+pub(crate) enum ReplaceOutcome {
     Applied {
         snapshot: ComposerSnapshot,
         duplicate: bool,

@@ -63,29 +63,30 @@ impl ComposerAuthority {
             last_command: None,
         })
     }
+    fn state<'a>(
+        &self,
+        scopes: &'a mut HashMap<ComposerScope, ScopeState>,
+        scope: &ComposerScope,
+    ) -> Result<&'a mut ScopeState, StorageError> {
+        Ok(match scopes.entry(scope.clone()) {
+            std::collections::hash_map::Entry::Occupied(entry) => entry.into_mut(),
+            std::collections::hash_map::Entry::Vacant(entry) => entry.insert(self.load(scope)?),
+        })
+    }
     pub fn snapshot(&self, scope: &ComposerScope) -> Result<ComposerSnapshot, StorageError> {
-        let mut scopes = self.inner.lock().unwrap();
-        if !scopes.contains_key(scope) {
-            scopes.insert(scope.clone(), self.load(scope)?);
-        }
-        Ok(scopes[scope].watch.get())
+        let mut scopes = self.inner.lock().map_err(|_| StorageError::Corrupt)?;
+        Ok(self.state(&mut scopes, scope)?.watch.get())
     }
     pub fn changes(
         &self,
         scope: &ComposerScope,
     ) -> Result<Arc<Subscription<ComposerSnapshot>>, StorageError> {
-        let mut scopes = self.inner.lock().unwrap();
-        if !scopes.contains_key(scope) {
-            scopes.insert(scope.clone(), self.load(scope)?);
-        }
-        Ok(scopes[scope].watch.subscribe_values())
+        let mut scopes = self.inner.lock().map_err(|_| StorageError::Corrupt)?;
+        Ok(self.state(&mut scopes, scope)?.watch.subscribe_values())
     }
     pub fn replace(&self, command: ReplaceComposer) -> Result<ReplaceOutcome, StorageError> {
-        let mut scopes = self.inner.lock().unwrap();
-        if !scopes.contains_key(&command.scope) {
-            scopes.insert(command.scope.clone(), self.load(&command.scope)?);
-        }
-        let state = scopes.get_mut(&command.scope).unwrap();
+        let mut scopes = self.inner.lock().map_err(|_| StorageError::Corrupt)?;
+        let state = self.state(&mut scopes, &command.scope)?;
         let mut snapshot = state.watch.get();
         if command.authority_epoch != snapshot.authority_epoch {
             return Ok(ReplaceOutcome::AuthorityMismatch {
@@ -123,11 +124,8 @@ impl ComposerAuthority {
         consumed: u64,
     ) -> Result<(), StorageError> {
         let scope = ComposerScope::pending(pending_id);
-        let mut scopes = self.inner.lock().unwrap();
-        if !scopes.contains_key(&scope) {
-            scopes.insert(scope.clone(), self.load(&scope)?);
-        }
-        let mut snapshot = scopes[&scope].watch.get();
+        let mut scopes = self.inner.lock().map_err(|_| StorageError::Corrupt)?;
+        let mut snapshot = self.state(&mut scopes, &scope)?.watch.get();
         if snapshot.revision <= consumed {
             snapshot = ComposerSnapshot::empty(scope.clone());
             snapshot.revision = consumed.checked_add(1).ok_or(StorageError::Corrupt)?;
@@ -152,11 +150,8 @@ impl ComposerAuthority {
         commit: impl FnOnce() -> Result<T, E>,
     ) -> Result<Result<(T, ComposerSnapshot), PromoteError>, E> {
         let scope = ComposerScope::pending(pending_id);
-        let mut scopes = self.inner.lock().unwrap();
-        if !scopes.contains_key(&scope) {
-            scopes.insert(scope.clone(), self.load(&scope)?);
-        }
-        let pending = scopes[&scope].watch.get();
+        let mut scopes = self.inner.lock().map_err(|_| StorageError::Corrupt)?;
+        let pending = self.state(&mut scopes, &scope)?.watch.get();
         if pending.revision != revision {
             return Ok(Err(PromoteError::RevisionConflict(pending)));
         }

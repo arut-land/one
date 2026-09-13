@@ -78,7 +78,7 @@ pub trait FactLog<F: Fact>: Send + Sync {
                 Ok(fact.take())
             }
         })?;
-        Ok(appended.or(duplicate).expect("append decides once"))
+        appended.or(duplicate).ok_or(StorageError::Corrupt)
     }
     /// Refresh, inspect a retry, and optionally append under one storage lock.
     /// `decide` runs once after fencing and cursor validation; it must not

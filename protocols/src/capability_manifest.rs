@@ -5,18 +5,18 @@ use crate::capability::v1::{
 };
 use arut_rpc::{Request, Response, RpcFuture, ServiceRegistration, StreamingKind};
 
-pub struct CapabilityServiceImpl {
+struct CapabilityServiceImpl {
     registrations: Vec<ServiceRegistration>,
 }
 
 impl CapabilityServiceImpl {
-    pub fn new(registrations: impl IntoIterator<Item = ServiceRegistration>) -> Self {
+    fn new(registrations: impl IntoIterator<Item = ServiceRegistration>) -> Self {
         Self {
             registrations: registrations.into_iter().collect(),
         }
     }
 
-    pub fn manifest(&self) -> CapabilityManifest {
+    fn manifest(&self) -> CapabilityManifest {
         let mut services = self
             .registrations
             .iter()

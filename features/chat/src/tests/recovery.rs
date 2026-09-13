@@ -1,4 +1,4 @@
-use crate::ports::NativeIds;
+use crate::test_support::TestIds;
 use crate::{
     ChatServiceImpl,
     composer::{ComposerAuthority, ComposerScope, ReplaceComposer},
@@ -36,7 +36,7 @@ fn restart_recovers_transcript_operations_drafts_and_send_deduplication() {
     let service = ChatServiceImpl::new(
         composer.clone(),
         Arc::new(directory.log()),
-        Arc::new(NativeIds),
+        Arc::new(TestIds),
     )
     .unwrap();
     let first = block_on(service.start_chat(Request::new(StartChatRequest {
@@ -72,7 +72,7 @@ fn restart_recovers_transcript_operations_drafts_and_send_deduplication() {
     let recovered = ChatServiceImpl::new(
         recovered_composer.clone(),
         Arc::new(directory.log()),
-        Arc::new(NativeIds),
+        Arc::new(TestIds),
     )
     .unwrap();
     assert!(
@@ -149,7 +149,7 @@ fn committed_promotion_recovers_after_cleanup_failure_without_erasing_later_edit
         expected_revision: 1,
         text: "accepted".into(),
     };
-    let service = ChatServiceImpl::new(composer.clone(), log.clone(), Arc::new(NativeIds)).unwrap();
+    let service = ChatServiceImpl::new(composer.clone(), log.clone(), Arc::new(TestIds)).unwrap();
     store.fail.store(true, Ordering::Relaxed);
     assert!(block_on(service.start_chat(Request::new(request.clone()))).is_err());
     assert_eq!(service.projection().conversations.len(), 1);
@@ -158,7 +158,7 @@ fn committed_promotion_recovers_after_cleanup_failure_without_erasing_later_edit
 
     store.fail.store(false, Ordering::Relaxed);
     let composer = Arc::new(ComposerAuthority::with_store(store.clone()));
-    let service = ChatServiceImpl::new(composer.clone(), log.clone(), Arc::new(NativeIds)).unwrap();
+    let service = ChatServiceImpl::new(composer.clone(), log.clone(), Arc::new(TestIds)).unwrap();
     let cleared = composer.snapshot(&scope).unwrap();
     assert_eq!(cleared.revision, 2);
     assert!(cleared.text.is_empty());
@@ -180,6 +180,6 @@ fn committed_promotion_recovers_after_cleanup_failure_without_erasing_later_edit
     drop(service);
     drop(composer);
     let composer = Arc::new(ComposerAuthority::with_store(store));
-    let _service = ChatServiceImpl::new(composer.clone(), log, Arc::new(NativeIds)).unwrap();
+    let _service = ChatServiceImpl::new(composer.clone(), log, Arc::new(TestIds)).unwrap();
     assert_eq!(composer.snapshot(&scope).unwrap().text, "keep this");
 }

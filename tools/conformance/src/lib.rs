@@ -1,8 +1,8 @@
 //! Behavioral suites shared by every implementation of each port.
 //!
 //! RPC checks cover unary and server streams over the registry, TCP Connect, and
-//! Unix IPC. Fact-log and key-value checks cover memory, directory, and redb;
-//! blob checks cover memory and directory. They exercise retries, fencing,
+//! Unix IPC. Fact-log and key-value checks cover memory and redb;
+//! blob checks cover memory. They exercise retries, fencing,
 //! atomic decisions, compaction, content addressing, and independent writers.
 
 use arut_rpc::{

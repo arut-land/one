@@ -1,7 +1,8 @@
 //! Chat commands, transcript projections, composer drafts, and services.
 //! `compose` requires the IdSource, Persist, Drafts, and Clock capability bundle.
 //!
-//! Accepted mock exchanges append message and operation lifecycle facts atomically.
+//! Accepted mock exchanges append message and operation lifecycle facts atomically,
+//! stamped by the Clock port inside the authority transaction.
 //! UUIDv7 command IDs deduplicate retries; projections replay on restart. Clients
 //! keep immutable messages keyed by ID and expose exclusive range reads separately
 //! from watched status and error metadata.
@@ -22,7 +23,8 @@ pub mod ports;
 mod projection;
 mod service;
 pub use client::{ChatClient, ChatStarted};
-pub use facts::ChatProjection;
+#[cfg(test)]
+pub(crate) use facts::ChatProjection;
 pub use projection::{ChatMessage, ChatRole, ChatState, ChatStatus};
 #[cfg(test)]
 pub(crate) use service::ChatServiceImpl;

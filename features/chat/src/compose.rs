@@ -72,17 +72,14 @@ impl ChatClients {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{
-        ports::{Clock, NativeIds},
-        test_support::MemoryPorts,
-    };
+    use crate::{ports::Clock, test_support::MemoryPorts, test_support::TestIds};
     use arut_protocol::chat::v1::StartChatRequest;
     use arut_rpc::{Request, RpcRegistry};
     use futures_executor::block_on;
 
     #[test]
     fn direct_and_remote_clients_share_services_and_manifest_descriptors() {
-        let mut ports = MemoryPorts::new(Arc::new(NativeIds));
+        let mut ports = MemoryPorts::new(Arc::new(TestIds));
         ports.now = 123;
         assert_eq!(ports.now(), 123);
         let feature = compose(Arc::new(ports)).unwrap();

@@ -3,16 +3,6 @@ pub trait IdSource: Send + Sync + 'static {
     fn new_id(&self) -> String;
 }
 
-#[cfg(test)]
-/// Available only where the platform has a clock and entropy of its own.
-pub(crate) struct NativeIds;
-#[cfg(test)]
-impl IdSource for NativeIds {
-    fn new_id(&self) -> String {
-        uuid::Uuid::now_v7().to_string()
-    }
-}
-
 /// Ordered facts in a stable feature-owned namespace.
 pub trait Persist<F: arut_storage::Fact> {
     fn log(
@@ -39,11 +29,4 @@ impl<
     R: IdSource + Persist<arut_protocol::chat::v1::ChatFact> + Drafts + Clock + Send + Sync + 'static,
 > ChatRuntime for R
 {
-}
-
-#[cfg(test)]
-impl Clock for NativeIds {
-    fn now(&self) -> u64 {
-        123
-    }
 }

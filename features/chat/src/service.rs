@@ -127,19 +127,15 @@ impl ChatService for ChatServiceImpl {
 mod tests {
     use super::*;
     use crate::composer::{ComposerScope, ReplaceComposer};
-    use crate::ports::NativeIds;
+    use crate::test_support::TestIds;
     use arut_protocol::chat::v1::ChatServiceClient;
     use arut_rpc::Request;
     use arut_storage::MemoryLog;
     use futures_executor::block_on;
 
     fn service(composer: Arc<ComposerAuthority>) -> ChatServiceImpl {
-        ChatServiceImpl::new(
-            composer,
-            Arc::new(MemoryLog::default()),
-            Arc::new(NativeIds),
-        )
-        .expect("empty memory log")
+        ChatServiceImpl::new(composer, Arc::new(MemoryLog::default()), Arc::new(TestIds))
+            .expect("empty memory log")
     }
 
     #[test]
