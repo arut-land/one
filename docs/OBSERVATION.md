@@ -14,7 +14,7 @@ The useful optimization is to bound notification work before it reaches the UI s
 | --- | --- | --- |
 | Swift | One consumer task and `.bufferingNewest(1)` | Retains bounded delivery over BoltFFI callbacks. Tests cover cancellation, replacement, initial reads, and bursts. |
 | Kotlin / Android | `callbackFlow.conflate()` into `StateFlow` | `awaitClose` owns FFI cleanup when collection is canceled. Replaces manual channel and subscription bookkeeping; conflation was already present. An initial signal reads after subscription setup. |
-| TypeScript / React | One pending microtask and `useSyncExternalStore` | Retains the existing scheduling strategy. Reads the initial and replacement snapshots after subscription setup. |
+| TypeScript / React | One pending microtask and `useSyncExternalStore` | Subscription generations reject late callbacks. Replacement clears obsolete pending invalidations while retaining one scheduled microtask. Reads after subscription setup. |
 | .NET adapter | Coalesced `SynchronizationContext.Post` | Binds callbacks to their subscription generation so canceled callbacks cannot masquerade as current ones. Reads after subscribing. |
 | Windows / WinUI | Coalesced `DispatcherQueue.TryEnqueue` per subscription | Bounds pending dispatcher work and rejects callbacks from previous conversations. Reads composer text once per refresh. |
 | Linux / GTK | Rust watch stream consumed on GLib | Already uses native Rust watch coalescing and component-owned tasks. No foreign binding or extra stream adapter is needed. |
@@ -33,3 +33,14 @@ mise run check:ts
 The Kotlin test project compiles the actual observer source on the JVM, using the coroutine test dispatcher. The .NET project compiles the actual observer with a queued synchronization context. Neither requires generated native bindings. Their burst, initial-read, replacement, and disposal checks complement the Swift and TypeScript tests. TypeScript tests run in the existing workspace check gate.
 
 These are adapter tests, not complete Android or Windows application tests. This macOS machine lacks the Android SDK/NDK and WinUI runtime. The Windows view changes still need a Windows build and UI check. Burst tests check adapter refresh counts: 10,000 queued invalidations require one refresh in the TypeScript and .NET tests, and at most two in Kotlin because a suspended collector can already own one signal. No end-to-end latency or throughput benchmark has been recorded.
+
+## Adapter contract evidence
+
+| Adapter | Mechanism | Bounded coalescing test | Stale rejection test | No initial gap test |
+| --- | --- | --- | --- | --- |
+| Swift | One consumer, capacity-one AsyncStream, task cancellation, subscribe then read | `burstReadsLatestSnapshotOnce` | `replacingAndStoppingDiscardQueuedNotifications` | `subscriptionClosesInitialReadGap` |
+| Kotlin / Android | Conflated callbackFlow, canceled collector, initial signal after subscribe | `burstAndLifecycle` | `burstAndLifecycle` | `burstAndLifecycle` |
+| .NET | One pending context post, generation-checked callback, read after subscribe | `BurstReplacementAndDisposal` | `BurstReplacementAndDisposal` | `BurstReplacementAndDisposal` |
+| TypeScript | One microtask, generation-checked callback, read after subscribe | `a burst refreshes once and dispose suppresses queued work` | `replacement rejects stale callbacks and queued invalidations` | `subscribe precedes the initial and replacement snapshots` |
+
+Kotlin can consume one signal already held by the collector plus one conflated signal. Its work stays bounded at two reads per queued burst. Canceled collectors cannot publish into the replacement observation. TypeScript previously reused one callback across subscriptions, allowing late callbacks to schedule unnecessary replacement reads; the generation check now rejects them.

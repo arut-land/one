@@ -55,3 +55,27 @@ test("pending work reads the replacement source", async () => {
   assert.equal(observer.getSnapshot(), "new");
   observer.dispose();
 });
+
+test("replacement rejects stale callbacks and queued invalidations", async () => {
+  let stale;
+  let current;
+  let reads = 0;
+  const observer = new ObservableState(() => "old", callback => {
+    stale = callback;
+    return { cancel() {} };
+  });
+  stale();
+  observer.observe(() => { reads++; return "new"; }, callback => {
+    current = callback;
+    return { cancel() {} };
+  });
+  await flush();
+  stale();
+  await flush();
+  assert.equal(reads, 1);
+  current();
+  stale();
+  await flush();
+  assert.equal(reads, 2);
+  observer.dispose();
+});

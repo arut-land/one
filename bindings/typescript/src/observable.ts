@@ -13,6 +13,8 @@ export class ObservableState<T> implements ObservableStore<T> {
   private stream: StreamCancellable<bigint>;
   private disposed = false;
   private refreshPending = false;
+  private generation = 0;
+  private dirty = false;
   private value: T;
 
   constructor(
@@ -20,7 +22,7 @@ export class ObservableState<T> implements ObservableStore<T> {
     subscribe: (invalidate: () => void) => StreamCancellable<bigint>,
   ) {
     this.read = read;
-    this.stream = subscribe(this.invalidate);
+    this.stream = subscribe(this.invalidator());
     this.value = read();
   }
 
@@ -29,9 +31,11 @@ export class ObservableState<T> implements ObservableStore<T> {
     subscribe: (invalidate: () => void) => StreamCancellable<bigint>,
   ): void {
     if (this.disposed) throw new Error("observable state is disposed");
+    this.generation++;
+    this.dirty = false;
     this.stream.cancel();
     this.read = read;
-    this.stream = subscribe(this.invalidate);
+    this.stream = subscribe(this.invalidator());
     this.value = read();
     [...this.listeners].forEach((listener) => listener());
   }
@@ -50,12 +54,22 @@ export class ObservableState<T> implements ObservableStore<T> {
     this.stream.cancel();
   }
 
+  private invalidator(): () => void {
+    const generation = this.generation;
+    return () => {
+      if (generation === this.generation) this.invalidate();
+    };
+  }
+
   private invalidate = (): void => {
-    if (this.disposed || this.refreshPending) return;
+    if (this.disposed) return;
+    this.dirty = true;
+    if (this.refreshPending) return;
     this.refreshPending = true;
     queueMicrotask(() => {
       this.refreshPending = false;
-      if (this.disposed) return;
+      if (this.disposed || !this.dirty) return;
+      this.dirty = false;
       this.value = this.read();
       [...this.listeners].forEach((listener) => listener());
     });
