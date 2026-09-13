@@ -73,7 +73,7 @@ fn source_of<'a>(locales: &'a [Locale], tag: &str) -> &'a BTreeMap<String, Messa
 /// `product/i18n/src/generated.rs`: a `Message` enum with one variant per
 /// message, its key, and its Fluent arguments.
 #[must_use]
-pub fn rust(default_locale: &str, locales: &[Locale]) -> String {
+pub(crate) fn rust(default_locale: &str, locales: &[Locale]) -> String {
     let messages = source_of(locales, default_locale);
     let mut out = String::new();
     let _ = writeln!(out, "//! {BANNER}");
@@ -178,7 +178,7 @@ fn rust_type(kind: Kind) -> &'static str {
 
 /// `surfaces/apple/shared/Sources/ArutSurface/Generated/L10n.swift`.
 #[must_use]
-pub fn swift(default_locale: &str, locales: &[Locale]) -> String {
+pub(crate) fn swift(default_locale: &str, locales: &[Locale]) -> String {
     let messages = source_of(locales, default_locale);
     let mut out = String::new();
     let _ = writeln!(out, "// {BANNER}");
@@ -233,7 +233,7 @@ fn swift_type(kind: Kind) -> &'static str {
 
 /// `surfaces/android/src/main/kotlin/dev/arut/surface/generated/L10n.kt`.
 #[must_use]
-pub fn kotlin(default_locale: &str, locales: &[Locale], package: &str) -> String {
+pub(crate) fn kotlin(default_locale: &str, locales: &[Locale], package: &str) -> String {
     let messages = source_of(locales, default_locale);
     let mut out = String::new();
     let _ = writeln!(out, "// {BANNER}");
@@ -326,7 +326,7 @@ fn kotlin_type(kind: Kind) -> &'static str {
 
 /// `surfaces/windows/Generated/L10n.cs`.
 #[must_use]
-pub fn csharp(default_locale: &str, locales: &[Locale]) -> String {
+pub(crate) fn csharp(default_locale: &str, locales: &[Locale]) -> String {
     let messages = source_of(locales, default_locale);
     let mut out = String::new();
     let _ = writeln!(out, "// {BANNER}");
@@ -398,7 +398,7 @@ fn csharp_type(kind: Kind) -> &'static str {
 
 /// `bindings/typescript/src/generated/l10n.ts`.
 #[must_use]
-pub fn typescript(default_locale: &str, locales: &[Locale]) -> String {
+pub(crate) fn typescript(default_locale: &str, locales: &[Locale]) -> String {
     let messages = source_of(locales, default_locale);
     let mut out = String::new();
     let _ = writeln!(out, "// {BANNER}");

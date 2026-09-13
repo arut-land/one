@@ -9,20 +9,18 @@ pub mod hosting;
 pub use failure::SessionError;
 /// Feature handles and renderable projections exposed by a product session.
 pub mod chat {
-    pub use arut_feature_chat::composer::product::{ComposerClient, ComposerState, ComposerStatus};
+    pub use arut_feature_chat::composer::{ComposerClient, ComposerState, ComposerStatus};
     pub use arut_feature_chat::errors::{ChatError, ComposerError, NodeFailure};
-    pub use arut_feature_chat::product::{
-        ChatClient, ChatMessage, ChatRole, ChatState, ChatStatus,
-    };
+    pub use arut_feature_chat::{ChatClient, ChatMessage, ChatRole, ChatState, ChatStatus};
 }
 /// Observation contract shared by the session and its feature handles.
 pub use arut_watch::Subscription;
 pub mod scopes;
-use arut_feature_chat::composer::authority::ComposerAuthority;
-use arut_feature_chat::composer::service::ComposerServiceImpl;
+use arut_feature_chat::ChatServiceImpl;
+use arut_feature_chat::composer::ComposerAuthority;
+use arut_feature_chat::composer::ComposerServiceImpl;
 use arut_feature_chat::ports::IdSource;
-use arut_feature_chat::product::{ChatClient, ChatStarted};
-use arut_feature_chat::service::ChatServiceImpl;
+use arut_feature_chat::{ChatClient, ChatStarted};
 use arut_protocol::capability::v1::{
     CapabilityServiceClient, GetCapabilitiesRequest, ServiceCapability,
 };

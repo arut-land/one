@@ -1,5 +1,7 @@
+//! Composer intents and observation over the generated service contract.
 use super::ComposerScope;
-use super::service::{scope_from_wire, scope_to_wire};
+use super::projection::{ComposerState, ComposerStatus};
+use super::wire::{scope_from_wire, scope_to_wire};
 use crate::errors::ComposerError;
 use crate::ports::IdSource;
 use arut_protocol::chat::composer::v1::{
@@ -12,24 +14,6 @@ use futures_util::lock::Mutex as AsyncMutex;
 use futures_util::{FutureExt, StreamExt};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
-
-#[boltffi::data]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ComposerStatus {
-    Connecting,
-    Synced,
-    Failed,
-}
-
-#[boltffi::data]
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ComposerState {
-    pub text: String,
-    pub revision: u64,
-    pub status: ComposerStatus,
-    /// Set exactly when `status` is `Failed`; a surface reads the variant.
-    pub error: Option<ComposerError>,
-}
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum SnapshotKind {

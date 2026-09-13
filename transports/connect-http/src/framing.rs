@@ -6,7 +6,7 @@ use base64::{
 use serde_json::{Value, json};
 pub const MAX_MESSAGE: usize = 8 * 1024 * 1024;
 
-pub fn envelope(flags: u8, body: &[u8]) -> Result<Vec<u8>, Status> {
+pub(crate) fn envelope(flags: u8, body: &[u8]) -> Result<Vec<u8>, Status> {
     if body.len() > MAX_MESSAGE {
         return Err(message_limit());
     }
@@ -18,11 +18,11 @@ pub fn envelope(flags: u8, body: &[u8]) -> Result<Vec<u8>, Status> {
     Ok(bytes)
 }
 
-pub fn message_limit() -> Status {
+pub(crate) fn message_limit() -> Status {
     Status::new(Code::ResourceExhausted, "message exceeds limit")
 }
 
-pub fn end_envelope(error: Option<Status>) -> Vec<u8> {
+pub(crate) fn end_envelope(error: Option<Status>) -> Vec<u8> {
     let end = error.map_or_else(|| json!({}), |error| json!({"error": error_json(&error)}));
     envelope(2, end.to_string().as_bytes()).unwrap_or_else(|_| {
         envelope(
@@ -33,7 +33,7 @@ pub fn end_envelope(error: Option<Status>) -> Vec<u8> {
     })
 }
 
-pub fn take(buffer: &mut Vec<u8>) -> Result<Option<(u8, Vec<u8>)>, Status> {
+pub(crate) fn take(buffer: &mut Vec<u8>) -> Result<Option<(u8, Vec<u8>)>, Status> {
     if buffer.len() < 5 {
         return Ok(None);
     }
@@ -56,11 +56,11 @@ pub fn take(buffer: &mut Vec<u8>) -> Result<Option<(u8, Vec<u8>)>, Status> {
     Ok(Some((flags, body)))
 }
 
-pub fn error_json(error: &Status) -> Value {
+pub(crate) fn error_json(error: &Status) -> Value {
     json!({"code": code_name(error.code), "message": error.message,
         "details": if error.details.is_empty() { vec![] } else { vec![json!({"type": "arut.rpc.StatusDetails", "value": STANDARD.encode(&error.details)})] }})
 }
-pub fn parse_error(value: &Value) -> Status {
+pub(crate) fn parse_error(value: &Value) -> Status {
     let code = [
         Code::Cancelled,
         Code::InvalidArgument,
@@ -112,7 +112,7 @@ fn code_name(code: Code) -> &'static str {
         Code::Unauthenticated => "unauthenticated",
     }
 }
-pub fn http_status(code: Code) -> u16 {
+pub(crate) fn http_status(code: Code) -> u16 {
     match code {
         Code::Cancelled => 499,
         Code::InvalidArgument | Code::OutOfRange | Code::FailedPrecondition => 400,
@@ -125,5 +125,36 @@ pub fn http_status(code: Code) -> u16 {
         Code::Internal => 500,
         Code::Unavailable => 503,
         Code::Unauthenticated => 401,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn framing_handles_fragmentation_limits_and_invalid_flags() {
+        use super::*;
+        let envelope = envelope(0, b"message").unwrap();
+        let mut buffer = vec![];
+        for byte in &envelope[..envelope.len() - 1] {
+            buffer.push(*byte);
+            assert!(take(&mut buffer).unwrap().is_none());
+        }
+        buffer.push(*envelope.last().unwrap());
+        assert_eq!(take(&mut buffer).unwrap(), Some((0, b"message".to_vec())));
+        assert!(buffer.is_empty());
+        assert!(take(&mut vec![1, 0, 0, 0, 0]).is_err());
+        let mut too_large = vec![0];
+        too_large.extend_from_slice(&((MAX_MESSAGE + 1) as u32).to_be_bytes());
+        assert!(take(&mut too_large).is_err());
+    }
+
+    #[test]
+    fn outbound_envelopes_reject_oversized_messages() {
+        assert_eq!(
+            super::envelope(0, &vec![0; super::MAX_MESSAGE + 1])
+                .unwrap_err()
+                .code,
+            arut_rpc::Code::ResourceExhausted
+        );
     }
 }

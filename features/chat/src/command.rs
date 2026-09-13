@@ -1,20 +1,20 @@
 use crate::facts::ChatProjection;
-use arut_authority::{Command, Projection};
-use arut_protocol::chat::v1::ChatFact;
+use arut_authority::Command;
+use arut_protocol::chat::v1::{ChatFact, ChatMessage, ChatRole, OperationFact, OperationPhase};
 
-pub struct PendingDraft {
-    pub scope_id: String,
-    pub revision: u64,
+pub(crate) struct PendingDraft {
+    pub(crate) scope_id: String,
+    pub(crate) revision: u64,
 }
 
-pub struct ChatCommand {
-    pub command_id: String,
-    pub chat_id: String,
-    pub pending_scope: Option<PendingDraft>,
-    pub text: String,
+pub(crate) struct ChatCommand {
+    pub(crate) command_id: String,
+    pub(crate) chat_id: String,
+    pub(crate) pending_scope: Option<PendingDraft>,
+    pub(crate) text: String,
 }
 #[derive(Debug)]
-pub enum Rejection {
+pub(crate) enum Rejection {
     ConversationMissing,
     ConversationExists,
 }
@@ -40,17 +40,55 @@ impl Command for ChatCommand {
         if self.pending_scope.is_some() && exists {
             return Err(Rejection::ConversationExists);
         }
-        Ok(current.exchange(self.chat_id, self.pending_scope, self.text, self.command_id))
+        Ok(Self::exchange(
+            current,
+            self.chat_id,
+            self.pending_scope,
+            self.text,
+            self.command_id,
+        ))
     }
 }
-impl Projection for ChatProjection {
-    type Fact = ChatFact;
-    type Scope = String;
-    fn reduce(&mut self, fact: &ChatFact) {
-        self.apply(fact);
+
+impl ChatCommand {
+    /// One command commits an atomic batch of transcript and operation facts.
+    fn exchange(
+        current: &ChatProjection,
+        chat_id: String,
+        pending: Option<PendingDraft>,
+        text: String,
+        operation_id: String,
+    ) -> ChatFact {
+        let next = current
+            .conversation(&chat_id)
+            .map_or(0, |conversation| conversation.messages.len()) as u64;
+        ChatFact {
+            chat_id,
+            pending_revision: pending.as_ref().map(|pending| pending.revision),
+            pending_scope_id: pending.map_or_else(String::new, |pending| pending.scope_id),
+            messages: vec![
+                message(next + 1, ChatRole::User, text.clone()),
+                message(next + 2, ChatRole::Assistant, crate::domain::respond(&text)),
+            ],
+            operations: vec![
+                operation(&operation_id, OperationPhase::Started),
+                operation(&operation_id, OperationPhase::Completed),
+            ],
+        }
     }
-    fn revision(&self, scope: &String) -> u64 {
-        self.conversation(scope)
-            .map_or(0, |conversation| conversation.messages.len() as u64 / 2)
+}
+
+fn message(id: u64, role: ChatRole, text: String) -> ChatMessage {
+    ChatMessage {
+        id,
+        role: role as i32,
+        text,
+    }
+}
+
+fn operation(id: &str, phase: OperationPhase) -> OperationFact {
+    OperationFact {
+        operation_id: id.to_owned(),
+        phase: phase as i32,
     }
 }

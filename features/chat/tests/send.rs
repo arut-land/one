@@ -1,7 +1,7 @@
-use arut_feature_chat::composer::authority::ComposerAuthority;
-use arut_feature_chat::composer::service::ComposerServiceImpl;
+use arut_feature_chat::composer::ComposerAuthority;
+use arut_feature_chat::composer::ComposerServiceImpl;
 use arut_feature_chat::ports::NativeIds;
-use arut_feature_chat::product::{ChatClient, ChatStatus};
+use arut_feature_chat::{ChatClient, ChatStatus};
 use arut_protocol::chat::composer::v1::*;
 use arut_protocol::chat::v1::*;
 use arut_rpc::{Cancellation, Code, Request, Response, RpcFuture, RpcStream, Status};

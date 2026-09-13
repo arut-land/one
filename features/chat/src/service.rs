@@ -1,22 +1,19 @@
-use crate::command::{ChatCommand, PendingDraft, Rejection};
-use crate::composer::authority::{ComposerAuthority, PromoteError};
-use crate::ports::IdSource;
-use crate::{composer::ComposerScope, facts::ChatProjection};
-use arut_authority::{Authority, Outcome};
+//! Converts generated service requests and outcomes at the chat boundary.
+use crate::authority::{ChatAuthority, CommitError};
+use crate::command::Rejection;
+use crate::composer::ComposerAuthority;
+use crate::{ChatProjection, ports::IdSource};
 use arut_protocol::chat::v1::{
     ChatFact, ChatService, ListConversationsRequest, ListConversationsResponse, SendMessageRequest,
     SendMessageResponse, StartChatRequest, StartChatResponse,
 };
 use arut_rpc::{Code, Request, Response, RpcFuture, Status};
 use arut_storage::{FactLog, StorageError};
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use uuid::Uuid;
 
 pub struct ChatServiceImpl {
-    composer: Arc<ComposerAuthority>,
-    authority: Authority<ChatCommand>,
-    start_gate: Mutex<()>,
-    ids: Arc<dyn IdSource>,
+    authority: ChatAuthority,
 }
 impl ChatServiceImpl {
     pub fn new(
@@ -24,63 +21,24 @@ impl ChatServiceImpl {
         log: Arc<dyn FactLog<ChatFact>>,
         ids: Arc<dyn IdSource>,
     ) -> Result<Self, StorageError> {
-        let authority = Authority::<ChatCommand>::open(log, 1)?;
-        for (scope, revision) in &authority.projection().consumed_drafts {
-            composer.recover_pending(scope, *revision)?;
-        }
         Ok(Self {
-            ids,
-            composer,
-            authority,
-            start_gate: Mutex::new(()),
+            authority: ChatAuthority::new(composer, log, ids)?,
         })
     }
     pub fn projection(&self) -> ChatProjection {
         self.authority.projection()
     }
-    fn commit(&self, command: ChatCommand) -> Result<ChatFact, CommitError> {
-        let chat_id = command.chat_id.clone();
-        let pending_scope = command
-            .pending_scope
-            .as_ref()
-            .map(|pending| pending.scope_id.clone());
-        match self.authority.execute(command)? {
-            Outcome::Applied(record) | Outcome::Duplicate(record) => {
-                if (pending_scope.is_none()
-                    && (record.fact.chat_id != chat_id || !record.fact.pending_scope_id.is_empty()))
-                    || pending_scope.is_some_and(|scope| record.fact.pending_scope_id != scope)
-                {
-                    return Err(CommitError::CommandConflict);
-                }
-                Ok(record.fact)
-            }
-            Outcome::RevisionConflict { .. } => Err(CommitError::RevisionConflict),
-            Outcome::AuthorityMismatch { .. } => Err(CommitError::AuthorityMismatch),
-            Outcome::Superseded => Err(CommitError::Superseded),
-            Outcome::Rejected(rejection) => Err(CommitError::Rejected(rejection)),
-        }
-    }
-}
-
-/// Why an accepted command could not become a fact, before any surface wording.
-#[derive(Debug)]
-enum CommitError {
-    Storage(StorageError),
-    Rejected(Rejection),
-    RevisionConflict,
-    AuthorityMismatch,
-    Superseded,
-    CommandConflict,
-}
-impl From<StorageError> for CommitError {
-    fn from(error: StorageError) -> Self {
-        Self::Storage(error)
-    }
 }
 impl From<CommitError> for Status {
     fn from(error: CommitError) -> Self {
         match error {
-            CommitError::Storage(error) => storage(error),
+            CommitError::Storage(error) => Status::new(Code::Internal, error.to_string()),
+            CommitError::PendingRevisionConflict => {
+                Status::new(Code::Aborted, "pending composer revision changed")
+            }
+            CommitError::PendingTextMismatch => {
+                Status::new(Code::FailedPrecondition, "pending composer text changed")
+            }
             CommitError::Rejected(Rejection::ConversationMissing) => {
                 Self::new(Code::NotFound, "conversation not found")
             }
@@ -113,35 +71,14 @@ fn validate_command_id(value: &str) -> Result<(), Status> {
     Ok(())
 }
 
-fn start_response(
-    composer: &ComposerAuthority,
-    fact: ChatFact,
-) -> Result<StartChatResponse, Status> {
-    Ok(StartChatResponse {
-        composer: Some(
-            composer
-                .snapshot(&ComposerScope::chat(&fact.chat_id))
-                .map_err(storage)?
-                .into(),
-        ),
-        chat_id: fact.chat_id,
-        messages: fact.messages,
-    })
-}
-fn storage(error: StorageError) -> Status {
-    Status::new(Code::Internal, error.to_string())
-}
 impl ChatService for ChatServiceImpl {
     fn list_conversations(
         &self,
         _: Request<ListConversationsRequest>,
     ) -> RpcFuture<Response<ListConversationsResponse>> {
-        let conversations = self
-            .authority
-            .read_projection(|projection| projection.conversations.clone());
+        let conversations = self.authority.conversations();
         Box::pin(async move { Ok(Response::new(ListConversationsResponse { conversations })) })
     }
-
     fn send_message(
         &self,
         request: Request<SendMessageRequest>,
@@ -149,13 +86,9 @@ impl ChatService for ChatServiceImpl {
         let message = request.message;
         let result = (|| {
             validate_command_id(&message.command_id)?;
-
-            let fact = self.commit(ChatCommand {
-                command_id: message.command_id,
-                chat_id: message.chat_id,
-                pending_scope: None,
-                text: message.text,
-            })?;
+            let fact = self
+                .authority
+                .send(message.command_id, message.chat_id, message.text)?;
             Ok(Response::new(SendMessageResponse {
                 messages: fact.messages,
             }))
@@ -167,60 +100,26 @@ impl ChatService for ChatServiceImpl {
         request: Request<StartChatRequest>,
     ) -> RpcFuture<Response<StartChatResponse>> {
         let message = request.message;
-        let _start = self.start_gate.lock().unwrap();
         let result = (|| {
             validate_command_id(&message.command_id)?;
             if message.pending_scope_id.is_empty() {
                 return Err(Status::invalid_argument("pending scope is required"));
             }
-            if let Some(record) = self
-                .authority
-                .outcome_of(&message.command_id)
-                .map_err(storage)?
-            {
-                if record.fact.pending_scope_id != message.pending_scope_id {
-                    return Err(CommitError::CommandConflict.into());
-                }
-                if let Some(revision) = record.fact.pending_revision {
-                    self.composer
-                        .recover_pending(&message.pending_scope_id, revision)
-                        .map_err(storage)?;
-                }
-                return Ok(Response::new(start_response(&self.composer, record.fact)?));
-            }
-            let chat_id = self.ids.new_id();
-            let command = ChatCommand {
-                command_id: message.command_id.clone(),
-                chat_id: chat_id.clone(),
-                pending_scope: Some(PendingDraft {
-                    scope_id: message.pending_scope_id.clone(),
-                    revision: message.expected_revision,
-                }),
-                text: message.text.clone(),
-            };
-            let result = self.composer.promote_pending(
-                &message.pending_scope_id,
+            let (fact, snapshot) = self.authority.start(
+                message.command_id,
+                message.pending_scope_id,
                 message.expected_revision,
-                &message.text,
-                &chat_id,
-                || self.commit(command),
+                message.text,
             )?;
-            match result {
-                Ok((fact, _)) => Ok(Response::new(start_response(&self.composer, fact)?)),
-                Err(PromoteError::RevisionConflict(_)) => Err(Status::new(
-                    Code::Aborted,
-                    "pending composer revision changed",
-                )),
-                Err(PromoteError::TextMismatch(_)) => Err(Status::new(
-                    Code::FailedPrecondition,
-                    "pending composer text changed",
-                )),
-            }
+            Ok(Response::new(StartChatResponse {
+                chat_id: fact.chat_id,
+                messages: fact.messages,
+                composer: Some(snapshot.into()),
+            }))
         })();
         Box::pin(async move { result })
     }
 }
-
 #[cfg(test)]
 mod tests {
     use super::*;

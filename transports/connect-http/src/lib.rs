@@ -10,7 +10,8 @@
 //! handlers. IPC reuses this framing and router.
 
 #![cfg(not(target_arch = "wasm32"))]
-pub mod framing;
+mod framing;
+pub use framing::MAX_MESSAGE;
 mod server;
 use arut_rpc::{Code, Metadata, Request, Response, RpcChannel, RpcFuture, RpcStream, Status};
 use base64::{Engine, engine::general_purpose::STANDARD};
@@ -68,7 +69,7 @@ fn io(error: reqwest::Error) -> Status {
 async fn bounded_body(response: reqwest::Response) -> Result<Vec<u8>, Status> {
     if response
         .content_length()
-        .is_some_and(|length| length > framing::MAX_MESSAGE as u64)
+        .is_some_and(|length| length > MAX_MESSAGE as u64)
     {
         return Err(framing::message_limit());
     }
@@ -76,7 +77,7 @@ async fn bounded_body(response: reqwest::Response) -> Result<Vec<u8>, Status> {
     let mut body = Vec::new();
     while let Some(chunk) = stream.next().await {
         let chunk = chunk.map_err(io)?;
-        if chunk.len() > framing::MAX_MESSAGE - body.len() {
+        if chunk.len() > MAX_MESSAGE - body.len() {
             return Err(framing::message_limit());
         }
         body.extend_from_slice(&chunk);
@@ -98,7 +99,7 @@ pub(crate) fn metadata(headers: &axum::http::HeaderMap) -> Metadata {
 }
 impl RpcChannel for HttpRpcChannel {
     fn unary(&self, procedure: &str, request: Request<Vec<u8>>) -> RpcFuture<Response<Vec<u8>>> {
-        if request.message.len() > framing::MAX_MESSAGE {
+        if request.message.len() > MAX_MESSAGE {
             return Box::pin(async { Err(framing::message_limit()) });
         }
         let request = self

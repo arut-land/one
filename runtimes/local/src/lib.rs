@@ -19,10 +19,10 @@ mod blocking;
 #[cfg(unix)]
 pub mod child;
 pub mod hosting;
-use arut_feature_chat::composer::authority::ComposerAuthority;
-use arut_feature_chat::composer::service::ComposerServiceImpl;
+use arut_feature_chat::ChatServiceImpl;
+use arut_feature_chat::composer::ComposerAuthority;
+use arut_feature_chat::composer::ComposerServiceImpl;
 pub use arut_feature_chat::ports::NativeIds;
-use arut_feature_chat::service::ChatServiceImpl;
 use arut_protocol::capability::v1::CapabilityServiceRouter;
 use arut_protocol::capability_manifest::CapabilityServiceImpl;
 use arut_protocol::chat::composer::v1::ComposerServiceRouter;
@@ -123,7 +123,7 @@ mod tests {
     use futures_util::StreamExt;
 
     fn wire_scope(scope: &ComposerScope) -> arut_protocol::chat::composer::v1::ComposerScope {
-        arut_feature_chat::composer::service::scope_to_wire(scope)
+        scope.into()
     }
 
     #[test]

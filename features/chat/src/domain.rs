@@ -1,4 +1,4 @@
-pub fn respond(message: &str) -> String {
+pub(crate) fn respond(message: &str) -> String {
     format!("You said: {message}")
 }
 

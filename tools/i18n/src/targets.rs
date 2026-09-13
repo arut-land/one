@@ -106,7 +106,7 @@ fn xml_text(text: &str) -> String {
 /// Written through `serde_json` over sorted maps, so the bytes are a function
 /// of the input alone.
 #[must_use]
-pub fn xcstrings(source_locale: &str, locales: &[Locale]) -> String {
+pub(crate) fn xcstrings(source_locale: &str, locales: &[Locale]) -> String {
     let ids: Vec<&String> = {
         let mut ids: Vec<&String> = locales
             .iter()
@@ -169,7 +169,7 @@ fn unit(value: &str) -> serde_json::Value {
 
 /// One Android `values/strings.xml` (or `values-<lang>/strings.xml`).
 #[must_use]
-pub fn strings_xml(locale: &Locale) -> String {
+pub(crate) fn strings_xml(locale: &Locale) -> String {
     let mut out = String::from("<?xml version=\"1.0\" encoding=\"utf-8\"?>\n");
     let _ = writeln!(out, "<!-- {BANNER} -->");
     out.push_str("<resources>\n");
@@ -206,7 +206,7 @@ pub fn strings_xml(locale: &Locale) -> String {
 /// the shape WinUI's own plural resources take and what `ResourceLoader`
 /// lookups by suffix expect.
 #[must_use]
-pub fn resw(locale: &Locale) -> String {
+pub(crate) fn resw(locale: &Locale) -> String {
     let mut entries: BTreeMap<String, (String, Option<&'static str>)> = BTreeMap::new();
     for (id, message) in &locale.messages {
         let name = resource_name(id);

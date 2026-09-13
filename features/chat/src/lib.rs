@@ -10,11 +10,17 @@
 //! Projection types declare their FFI data once here. Typed errors leave sentence
 //! selection to surfaces; tracing records stream cursors without draft content.
 
-pub mod command;
+mod authority;
+mod client;
+mod command;
 pub mod composer;
-pub mod domain;
+mod domain;
 pub mod errors;
-pub mod facts;
+mod facts;
 pub mod ports;
-pub mod product;
-pub mod service;
+mod projection;
+mod service;
+pub use client::{ChatClient, ChatStarted};
+pub use facts::ChatProjection;
+pub use projection::{ChatMessage, ChatRole, ChatState, ChatStatus};
+pub use service::ChatServiceImpl;

@@ -19,13 +19,13 @@ use fluent_syntax::ast;
 use fluent_syntax::parser;
 
 /// Everything one locale contributes, keyed by message id.
-pub struct Locale {
+pub(crate) struct Locale {
     pub tag: String,
     pub messages: BTreeMap<String, Message>,
 }
 
 /// A message is either one pattern or one plural selection over patterns.
-pub enum Message {
+pub(crate) enum Message {
     Simple(Pattern),
     /// Fluent plural categories, in CLDR order, each already carrying whatever
     /// text surrounded the selector.
@@ -37,19 +37,19 @@ pub enum Message {
 
 /// A pattern is literal text with argument placeholders punched through it.
 #[derive(Clone, Default)]
-pub struct Pattern {
+pub(crate) struct Pattern {
     pub parts: Vec<Part>,
 }
 
 #[derive(Clone)]
-pub enum Part {
+pub(crate) enum Part {
     Text(String),
     Argument(Argument),
 }
 
 /// What a generated accessor takes for one Fluent variable.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Kind {
+pub(crate) enum Kind {
     /// An integer: `u64`, `Int`, `Long`, `long`, `number`.
     Number,
     /// A date. It reaches Fluent already formatted, because `fluent-rs` has no
@@ -63,7 +63,7 @@ pub enum Kind {
 
 /// One Fluent variable and the type its accessor takes.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Argument {
+pub(crate) struct Argument {
     pub name: String,
     pub kind: Kind,
 }
@@ -71,14 +71,14 @@ pub struct Argument {
 impl Argument {
     /// Whether a target should emit its integer placeholder for this argument.
     #[must_use]
-    pub fn numeric(&self) -> bool {
+    pub(crate) fn numeric(&self) -> bool {
         self.kind == Kind::Number
     }
 }
 
 /// The CLDR plural categories Fluent, Apple and Android all share.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Category {
+pub(crate) enum Category {
     Zero,
     One,
     Two,
@@ -110,7 +110,7 @@ impl Category {
     }
 
     #[must_use]
-    pub fn name(self) -> &'static str {
+    pub(crate) fn name(self) -> &'static str {
         match self {
             Self::Zero => "zero",
             Self::One => "one",
@@ -124,7 +124,7 @@ impl Category {
 
 /// Why a message cannot be generated. Every one names the message, because the
 /// person reading it is looking at a `.ftl` file, not at this code.
-pub struct Refusal {
+pub(crate) struct Refusal {
     pub locale: String,
     pub file: String,
     pub message: String,
@@ -145,7 +145,7 @@ impl Message {
     /// Arguments sorted by name, so translations share accessor positions even
     /// when they reorder text or plural variants.
     #[must_use]
-    pub fn arguments(&self) -> Vec<Argument> {
+    pub(crate) fn arguments(&self) -> Vec<Argument> {
         let mut order: Vec<Argument> = Vec::new();
         let mut push = |argument: &Argument| {
             if !order.iter().any(|seen| seen.name == argument.name) {
@@ -167,7 +167,7 @@ impl Message {
 
     /// The argument a plural selects on, if this message is one.
     #[must_use]
-    pub fn selector(&self) -> Option<&Argument> {
+    pub(crate) fn selector(&self) -> Option<&Argument> {
         match self {
             Self::Simple(_) => None,
             Self::Plural { selector, .. } => Some(selector),
@@ -190,7 +190,7 @@ impl Pattern {
 ///
 /// Returns every refusal at once, so one run names all the work rather than one
 /// message per run.
-pub fn parse(tag: &str, resources: &[(&str, &str)]) -> Result<Locale, Vec<Refusal>> {
+pub(crate) fn parse(tag: &str, resources: &[(&str, &str)]) -> Result<Locale, Vec<Refusal>> {
     let mut messages = BTreeMap::new();
     let mut refusals = Vec::new();
     for (file, source) in resources {
@@ -283,7 +283,7 @@ pub fn parse(tag: &str, resources: &[(&str, &str)]) -> Result<Locale, Vec<Refusa
 /// # Errors
 ///
 /// Names the locale and the ids it is missing or holds alone.
-pub fn require_identical_key_sets(locales: &[Locale]) -> Result<(), String> {
+pub(crate) fn require_identical_key_sets(locales: &[Locale]) -> Result<(), String> {
     let Some(first) = locales.first() else {
         return Ok(());
     };

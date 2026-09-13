@@ -1,10 +1,10 @@
+//! Generated composer service implementation; converts calls to authority operations.
+use super::ReplaceComposer;
 use super::authority::ComposerAuthority;
-use super::{ComposerScope, ComposerSnapshot, ReplaceComposer, ReplaceOutcome};
+use super::wire::scope_from_wire;
 use arut_protocol::chat::composer::v1::{
-    ComposerAuthorityMismatch, ComposerCommitApplied, ComposerRevisionConflict,
-    ComposerScope as WireScope, ComposerService, ComposerSnapshot as WireSnapshot,
-    GetComposerRequest, GetComposerResponse, ReplaceComposerRequest, ReplaceComposerResponse,
-    WatchComposerRequest, WatchComposerResponse, composer_scope, replace_composer_response,
+    ComposerService, GetComposerRequest, GetComposerResponse, ReplaceComposerRequest,
+    ReplaceComposerResponse, WatchComposerRequest, WatchComposerResponse,
 };
 use arut_rpc::{Code, Request, Response, RpcFuture, RpcStream, Status};
 use std::sync::Arc;
@@ -100,56 +100,4 @@ fn storage(_: arut_storage::StorageError) -> Status {
 
 fn invalid_scope() -> Status {
     Status::new(Code::InvalidArgument, "composer scope is required")
-}
-
-pub fn scope_to_wire(scope: &ComposerScope) -> WireScope {
-    WireScope {
-        scope_id: Some(match scope {
-            ComposerScope::Pending(id) => composer_scope::ScopeId::PendingScopeId(id.clone()),
-            ComposerScope::Chat(id) => composer_scope::ScopeId::ChatId(id.clone()),
-        }),
-    }
-}
-
-pub fn scope_from_wire(scope: WireScope) -> Option<ComposerScope> {
-    match scope.scope_id? {
-        composer_scope::ScopeId::PendingScopeId(id) if !id.is_empty() => {
-            Some(ComposerScope::Pending(id))
-        }
-        composer_scope::ScopeId::ChatId(id) if !id.is_empty() => Some(ComposerScope::Chat(id)),
-        _ => None,
-    }
-}
-
-impl From<ComposerSnapshot> for WireSnapshot {
-    fn from(snapshot: ComposerSnapshot) -> Self {
-        Self {
-            scope: Some(scope_to_wire(&snapshot.scope)),
-            authority_epoch: snapshot.authority_epoch,
-            text: snapshot.text,
-            revision: snapshot.revision,
-        }
-    }
-}
-
-impl From<ReplaceOutcome> for replace_composer_response::Outcome {
-    fn from(outcome: ReplaceOutcome) -> Self {
-        match outcome {
-            ReplaceOutcome::Applied {
-                snapshot,
-                duplicate,
-            } => Self::Applied(ComposerCommitApplied {
-                snapshot: Some(snapshot.into()),
-                duplicate,
-            }),
-            ReplaceOutcome::RevisionConflict { snapshot } => {
-                Self::RevisionConflict(ComposerRevisionConflict {
-                    snapshot: Some(snapshot.into()),
-                })
-            }
-            ReplaceOutcome::AuthorityMismatch { current_epoch } => {
-                Self::AuthorityMismatch(ComposerAuthorityMismatch { current_epoch })
-            }
-        }
-    }
 }
