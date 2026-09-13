@@ -49,6 +49,10 @@ jobs:
     # color-scheme reading; Ubuntu 24.04 ships 4.14, so the job runs in a
     # Fedora container, which tracks current GTK.
     container: fedora:latest
+    # GitHub sets HOME=/github/home inside containers while the process runs as
+    # root; rustup refuses that mismatch, so the job pins HOME to root's home.
+    env:
+      HOME: /root
     steps:
       - name: Install GTK4 and build prerequisites
         run: dnf install -y gtk4-devel gcc gcc-c++ pkgconf-pkg-config git curl tar gzip xz unzip which
