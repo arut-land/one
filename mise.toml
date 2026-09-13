@@ -185,3 +185,18 @@ run = "swift test --package-path bindings/swift"
 [tasks.clean]
 description = "Remove every build output and generated package; the next task regenerates what it needs"
 run = "cargo clean && rm -rf bindings/generated node_modules surfaces/*/dist surfaces/*/node_modules bindings/typescript/node_modules"
+
+[tasks."check:observers-kotlin"]
+description = "Test Kotlin observation without the Android SDK or native FFI package"
+run = "gradle -p bindings/kotlin/observer-tests test"
+
+[tasks."check:observers-kotlin".tools]
+java = "temurin-17.0.20+101"
+gradle = "8.12.1"
+
+[tasks."check:observers-dotnet"]
+description = "Test .NET observation without WinUI or the native FFI package"
+run = "dotnet test bindings/dotnet/tests/Arut.Observer.Tests.csproj"
+
+[tasks."check:observers-dotnet".tools]
+dotnet = "8.0.425"

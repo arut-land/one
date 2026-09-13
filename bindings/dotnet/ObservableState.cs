@@ -21,7 +21,8 @@ public sealed class ObservableState<T> : IDisposable
     {
         this.read = read;
         value = read();
-        subscription = subscribe(Invalidate);
+        subscription = subscribe(revision => Invalidate(0, revision));
+        value = read();
     }
 
     public T Value => value;
@@ -36,14 +37,9 @@ public sealed class ObservableState<T> : IDisposable
         Interlocked.Increment(ref generation);
         subscription.Dispose();
         this.read = read;
-        Set(read());
         var observedGeneration = Volatile.Read(ref generation);
         subscription = subscribe(revision => Invalidate(observedGeneration, revision));
-    }
-
-    private void Invalidate(ulong revision)
-    {
-        Invalidate(Volatile.Read(ref generation), revision);
+        Set(read());
     }
 
     private void Invalidate(long observedGeneration, ulong revision)

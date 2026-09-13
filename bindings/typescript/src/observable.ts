@@ -20,8 +20,8 @@ export class ObservableState<T> implements ObservableStore<T> {
     subscribe: (invalidate: () => void) => StreamCancellable<bigint>,
   ) {
     this.read = read;
-    this.value = read();
     this.stream = subscribe(this.invalidate);
+    this.value = read();
   }
 
   observe(
@@ -31,8 +31,8 @@ export class ObservableState<T> implements ObservableStore<T> {
     if (this.disposed) throw new Error("observable state is disposed");
     this.stream.cancel();
     this.read = read;
-    this.value = read();
     this.stream = subscribe(this.invalidate);
+    this.value = read();
     [...this.listeners].forEach((listener) => listener());
   }
 
