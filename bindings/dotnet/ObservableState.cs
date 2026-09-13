@@ -7,11 +7,13 @@ namespace Arut.Bindings;
 public sealed class ObservableState<T> : IDisposable
 {
     private readonly SynchronizationContext? context = SynchronizationContext.Current;
+    private readonly object gate = new();
     private Func<T> read;
-    private IDisposable subscription;
+    private IDisposable? subscription;
     private long generation;
+    // Count invalidations locally: revisions can restart on a replacement source.
     private long requestedRevision;
-    private int disposed;
+    private bool disposed;
     private int refreshPending;
     private T value;
 
@@ -21,11 +23,11 @@ public sealed class ObservableState<T> : IDisposable
     {
         this.read = read;
         value = read();
-        subscription = subscribe(revision => Invalidate(0, revision));
-        value = read();
+        subscription = subscribe(_ => Invalidate(0));
+        Set(0, Volatile.Read(ref requestedRevision), read());
     }
 
-    public T Value => value;
+    public T Value { get { lock (gate) return value; } }
 
     public event Action? Changed;
 
@@ -33,19 +35,35 @@ public sealed class ObservableState<T> : IDisposable
         Func<T> read,
         Func<Action<ulong>, IDisposable> subscribe)
     {
-        if (Volatile.Read(ref disposed) != 0) throw new ObjectDisposedException(nameof(ObservableState<T>));
-        Interlocked.Increment(ref generation);
-        subscription.Dispose();
-        this.read = read;
-        var observedGeneration = Volatile.Read(ref generation);
-        subscription = subscribe(revision => Invalidate(observedGeneration, revision));
-        Set(read());
+        long observedGeneration;
+        IDisposable? previous;
+        lock (gate)
+        {
+            if (disposed) throw new ObjectDisposedException(nameof(ObservableState<T>));
+            observedGeneration = ++generation;
+            previous = subscription;
+            subscription = null;
+            this.read = read;
+        }
+        previous?.Dispose();
+        var next = subscribe(_ => Invalidate(observedGeneration));
+        bool retain;
+        lock (gate)
+        {
+            retain = !disposed && observedGeneration == generation;
+            if (retain) subscription = next;
+        }
+        if (retain) Set(observedGeneration, Volatile.Read(ref requestedRevision), read());
+        else next.Dispose();
     }
 
-    private void Invalidate(long observedGeneration, ulong revision)
+    private void Invalidate(long observedGeneration)
     {
-        if (Volatile.Read(ref disposed) != 0 || observedGeneration != Volatile.Read(ref generation)) return;
-        Interlocked.Exchange(ref requestedRevision, unchecked((long)revision));
+        lock (gate)
+        {
+            if (disposed || observedGeneration != generation) return;
+            Interlocked.Increment(ref requestedRevision);
+        }
         ScheduleRefresh();
     }
 
@@ -64,22 +82,48 @@ public sealed class ObservableState<T> : IDisposable
 
     private void Refresh()
     {
-        if (Volatile.Read(ref disposed) != 0) return;
+        Func<T> reader;
+        long observedGeneration;
+        lock (gate)
+        {
+            if (disposed) return;
+            reader = read;
+            observedGeneration = generation;
+        }
         var revision = Volatile.Read(ref requestedRevision);
-        Set(read());
-        Volatile.Write(ref refreshPending, 0);
-        if (revision != Volatile.Read(ref requestedRevision)) ScheduleRefresh();
+        try { Set(observedGeneration, revision, reader()); }
+        finally
+        {
+            Volatile.Write(ref refreshPending, 0);
+            if (revision != Volatile.Read(ref requestedRevision)) ScheduleRefresh();
+        }
     }
 
-    private void Set(T next)
+    private void Set(long observedGeneration, long revision, T next)
     {
-        if (EqualityComparer<T>.Default.Equals(value, next)) return;
-        value = next;
-        Changed?.Invoke();
+        Action? changed;
+        lock (gate)
+        {
+            // A read may run on the thread pool without a UI context. Do not
+            // publish it if replacement or disposal happened during that read.
+            if (disposed || observedGeneration != generation || revision != requestedRevision) return;
+            if (EqualityComparer<T>.Default.Equals(value, next)) return;
+            value = next;
+            changed = Changed;
+        }
+        changed?.Invoke();
     }
 
     public void Dispose()
     {
-        if (Interlocked.Exchange(ref disposed, 1) == 0) subscription.Dispose();
+        IDisposable? previous;
+        lock (gate)
+        {
+            if (disposed) return;
+            disposed = true;
+            previous = subscription;
+            subscription = null;
+        }
+        previous?.Dispose();
     }
 }

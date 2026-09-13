@@ -15,7 +15,7 @@ The useful optimization is to bound notification work before it reaches the UI s
 | Swift | One consumer task and `.bufferingNewest(1)` | Retains bounded delivery over BoltFFI callbacks. Tests cover cancellation, replacement, initial reads, and bursts. |
 | Kotlin / Android | `callbackFlow.conflate()` into `StateFlow` | `awaitClose` owns FFI cleanup when collection is canceled. Replaces manual channel and subscription bookkeeping; conflation was already present. An initial signal reads after subscription setup. |
 | TypeScript / React | One pending microtask and `useSyncExternalStore` | Subscription generations reject late callbacks. Replacement clears obsolete pending invalidations while retaining one scheduled microtask. Reads after subscription setup. |
-| .NET adapter | Coalesced `SynchronizationContext.Post` | Binds callbacks to their subscription generation so canceled callbacks cannot masquerade as current ones. Reads after subscribing. |
+| .NET adapter | Coalesced `SynchronizationContext.Post` | Checks the generation at callback entry and publication, including reads completed after replacement or disposal. Counts invalidations locally because source revisions can restart. Reads after subscribing. |
 | Windows / WinUI | Coalesced `DispatcherQueue.TryEnqueue` per subscription | Bounds pending dispatcher work and rejects callbacks from previous conversations. Reads composer text once per refresh. |
 | Linux / GTK | Direct watch refresh into GObject properties and a keyed gio::ListModel | One native GLib task per subscription, canceled with its component. No relm message queue between watch and refresh. |
 
@@ -40,7 +40,7 @@ These are adapter tests, not complete Android or Windows application tests. This
 | --- | --- | --- | --- | --- |
 | Swift | One consumer, capacity-one AsyncStream, task cancellation, subscribe then read | `burstReadsLatestSnapshotOnce` | `replacingAndStoppingDiscardQueuedNotifications` | `subscriptionClosesInitialReadGap` |
 | Kotlin / Android | Conflated callbackFlow, canceled collector, initial signal after subscribe | `burstAndLifecycle` | `burstAndLifecycle` | `burstAndLifecycle` |
-| .NET | One pending context post, generation-checked callback, read after subscribe | `BurstReplacementAndDisposal` | `BurstReplacementAndDisposal` | `BurstReplacementAndDisposal` |
+| .NET | One pending context post, generation-checked publication, read after subscribe | `BurstReplacementAndDisposal` | `ReplacementOrDisposalDuringReadRejectsStaleSnapshot` | `BurstReplacementAndDisposal`, `SetupReadCannotOverwriteNewerRefresh` |
 | TypeScript | One microtask, generation-checked callback, read after subscribe | `a burst refreshes once and dispose suppresses queued work` | `replacement rejects stale callbacks and queued invalidations` | `subscribe precedes the initial and replacement snapshots` |
 
 Kotlin can consume one signal already held by the collector plus one conflated signal. Its work stays bounded at two reads per queued burst. Canceled collectors cannot publish into the replacement observation. TypeScript previously reused one callback across subscriptions, allowing late callbacks to schedule unnecessary replacement reads; the generation check now rejects them.
@@ -61,3 +61,7 @@ The Linux crate owns this adapter because it has one consumer. `Tasks::observe` 
 Run `cargo test -p arut-linux` without a display. With Wayland available, run `cargo test -p arut-linux -- --ignored --test-threads=1`. Smoke launches can set `ARUT_LINUX_APP_ID=dev.arut.SmokeTest` and temporary XDG data/state paths to avoid activating an existing personal instance.
 
 The scheduler uses one native gtk-rs task per subscription. In glib 0.22.9 that is a task GSource plus a child waker GSource, both allocated at setup. Wakes mark the existing child ready; the bridge adds no source, task, thread, or allocation per invalidation. This is not literally a single GSource. Keeping GTK's scheduler avoids custom unsafe source dispatch and finalization code. No allocation or latency benchmark is claimed.
+
+The .NET adapter checks the generation again when publishing a completed read. This matters when no SynchronizationContext exists and refresh uses the thread pool. `ReplacementOrDisposalDuringReadRejectsStaleSnapshot` fails on the previous adapter for both replacement and disposal. `ReplacementRevisionRestartDoesNotLosePendingChange` proves a new source's revision can restart without losing an invalidation queued during the old read. A local invalidation counter drives rescheduling; source revision values do not cross subscription lifetimes.
+
+`SetupReadCannotOverwriteNewerRefresh` also covers a refresh completing while setup is still reading. Publication checks the local invalidation counter as well as the subscription generation, so the older setup snapshot cannot overwrite the newer value.
