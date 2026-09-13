@@ -1,9 +1,6 @@
 use crate::{observe::Tasks, strings};
-use arut_feature_chat::{
-    errors::ChatError,
-    product::{ChatClient, ChatMessage, ChatStatus},
-};
 use arut_i18n::Message;
+use arut_product_session::chat::{ChatClient, ChatError, ChatMessage, ChatStatus};
 use gtk::prelude::*;
 use relm4::{
     ComponentParts, ComponentSender, SimpleComponent,

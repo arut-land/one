@@ -63,7 +63,10 @@ fn main() {
         data,
         spawner: Arc::new(TokioSpawner(runtime.handle().clone())),
     };
-    let channel = match runtime.block_on(host.connect()) {
+    let channel = match runtime
+        .block_on(host.connect())
+        .map_err(arut_product_session::SessionError::from)
+    {
         Ok(channel) => channel,
         Err(error) => {
             eprintln!("{}", strings::rpc(&error));
@@ -74,7 +77,7 @@ fn main() {
     let session = Rc::new(ProductSession::remote(
         channel,
         "desktop",
-        Arc::new(arut_feature_chat::ports::NativeIds),
+        Arc::new(arut_runtime_local::NativeIds),
     ));
     let app = relm4::RelmApp::new("dev.arut.Arut");
     gtk::Window::set_default_icon_name("dev.arut.Arut");

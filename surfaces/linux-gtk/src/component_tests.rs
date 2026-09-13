@@ -46,7 +46,7 @@ fn watches_preserve_message_widgets_and_bind_independent_drafts() {
     let _guard = context.acquire().unwrap();
     let session = Rc::new(ProductSession::local(
         "component-test",
-        Arc::new(arut_feature_chat::ports::NativeIds),
+        Arc::new(arut_runtime_local::NativeIds),
     ));
     let chat = session.chat();
     let transcript = Transcript::builder().launch(chat.clone()).detach();

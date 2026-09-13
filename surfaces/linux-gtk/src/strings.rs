@@ -10,14 +10,12 @@
 //! GTK gives us the person's language list, so the negotiation happens here
 //! rather than in the core, which never learns the locale.
 
-use arut_feature_chat::{
-    composer::product::ComposerStatus,
-    errors::{ChatError, ComposerError, NodeFailure},
-    product::{ChatRole, ChatStatus},
-};
 use arut_i18n::{Localizer, Message};
 use arut_product_session::FeatureAvailability;
-use arut_rpc::{Code, Status};
+use arut_product_session::SessionError;
+use arut_product_session::chat::{
+    ChatError, ChatRole, ChatStatus, ComposerError, ComposerStatus, NodeFailure,
+};
 use gtk::glib;
 use std::sync::OnceLock;
 
@@ -129,18 +127,18 @@ pub fn chat_error(error: ChatError) -> String {
 
 /// The connect-time transport statuses, which happen before any scope exists to
 /// carry a typed failure.
-pub fn rpc(error: &Status) -> String {
-    show(&match error.code {
-        Code::Unavailable => Message::RpcErrorUnavailable,
-        Code::Cancelled => Message::RpcErrorCancelled,
-        Code::InvalidArgument | Code::OutOfRange => Message::RpcErrorRejected,
-        Code::DeadlineExceeded => Message::RpcErrorTimedOut,
-        Code::NotFound => Message::RpcErrorNotFound,
-        Code::AlreadyExists => Message::RpcErrorAlreadyExists,
-        Code::PermissionDenied | Code::Unauthenticated => Message::RpcErrorDenied,
-        Code::ResourceExhausted => Message::RpcErrorExhausted,
-        Code::FailedPrecondition | Code::Aborted => Message::RpcErrorChanged,
-        Code::Unimplemented => Message::RpcErrorUnsupported,
-        Code::Internal => Message::RpcErrorInternal,
+pub fn rpc(error: &SessionError) -> String {
+    show(&match error {
+        SessionError::Unavailable => Message::RpcErrorUnavailable,
+        SessionError::Cancelled => Message::RpcErrorCancelled,
+        SessionError::Rejected => Message::RpcErrorRejected,
+        SessionError::TimedOut => Message::RpcErrorTimedOut,
+        SessionError::NotFound => Message::RpcErrorNotFound,
+        SessionError::AlreadyExists => Message::RpcErrorAlreadyExists,
+        SessionError::Denied => Message::RpcErrorDenied,
+        SessionError::Exhausted => Message::RpcErrorExhausted,
+        SessionError::Changed => Message::RpcErrorChanged,
+        SessionError::Unsupported => Message::RpcErrorUnsupported,
+        SessionError::Internal => Message::RpcErrorInternal,
     })
 }

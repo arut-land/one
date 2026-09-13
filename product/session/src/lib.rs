@@ -4,7 +4,19 @@
 //! availability. A weak registration callback avoids a cycle between the registry
 //! and its chats. Surfaces own selection and disposable observers.
 
+mod failure;
 pub mod hosting;
+pub use failure::SessionError;
+/// Feature handles and renderable projections exposed by a product session.
+pub mod chat {
+    pub use arut_feature_chat::composer::product::{ComposerClient, ComposerState, ComposerStatus};
+    pub use arut_feature_chat::errors::{ChatError, ComposerError, NodeFailure};
+    pub use arut_feature_chat::product::{
+        ChatClient, ChatMessage, ChatRole, ChatState, ChatStatus,
+    };
+}
+/// Observation contract shared by the session and its feature handles.
+pub use arut_watch::Subscription;
 pub mod scopes;
 use arut_feature_chat::composer::authority::ComposerAuthority;
 use arut_feature_chat::composer::service::ComposerServiceImpl;
@@ -18,7 +30,7 @@ use arut_protocol::capability_manifest::CapabilityServiceImpl;
 use arut_protocol::chat::composer::v1::{COMPOSER_SERVICE_DESCRIPTOR, ComposerServiceClient};
 use arut_protocol::chat::v1::{CHAT_SERVICE_DESCRIPTOR, ChatServiceClient};
 use arut_rpc::{Cancellation, Request, RpcChannel, ServiceMetadata, ServiceRegistration};
-use arut_watch::{Subscription, Watch};
+use arut_watch::Watch;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, Weak};
 
@@ -145,7 +157,7 @@ pub enum FeatureAvailability {
 }
 
 impl ProductSession {
-    pub async fn initialize(&self) -> Result<(), arut_rpc::Status> {
+    pub async fn initialize(&self) -> Result<(), SessionError> {
         let response = self
             .chats
             .workspace
