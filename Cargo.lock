@@ -33,13 +33,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "arut-binding-exports"
-version = "0.1.0"
-dependencies = [
- "syn 2.0.119",
-]
-
-[[package]]
 name = "arut-conformance"
 version = "0.1.0"
 dependencies = [
@@ -50,6 +43,18 @@ dependencies = [
  "axum",
  "futures-util",
  "tokio",
+]
+
+[[package]]
+name = "arut-dev"
+version = "0.1.0"
+dependencies = [
+ "arut-i18n",
+ "fluent-syntax",
+ "quote",
+ "serde_json",
+ "syn 2.0.119",
+ "toml",
 ]
 
 [[package]]
@@ -83,15 +88,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "arut-i18n-gen"
-version = "0.1.0"
-dependencies = [
- "arut-i18n",
- "fluent-syntax",
- "serde_json",
-]
-
-[[package]]
 name = "arut-i18n-macros"
 version = "0.1.0"
 dependencies = [
@@ -99,16 +95,6 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.119",
-]
-
-[[package]]
-name = "arut-layers"
-version = "0.1.0"
-dependencies = [
- "quote",
- "serde_json",
- "syn 2.0.119",
- "toml",
 ]
 
 [[package]]

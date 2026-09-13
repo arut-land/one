@@ -15,10 +15,8 @@ members = [
     "substrates/storage",
     "substrates/watch",
     "surfaces/linux",
-    "tools/bindings",
+    "tools/dev",
     "tools/conformance",
-    "tools/i18n",
-    "tools/layers",
     "transports/connect-http",
     "transports/ipc",
 ]
