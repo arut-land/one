@@ -1,5 +1,5 @@
 [package]
-name = "arut-i18n-gen"
+name = "arut-dev"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -8,6 +8,9 @@ license.workspace = true
 arut-i18n.workspace = true
 fluent-syntax = "0.12.0"
 serde_json = "1.0.145"
+toml = "1.1"
+syn = { version = "2", features = ["full", "visit"] }
+quote = "1"
 
 [lints]
 workspace = true

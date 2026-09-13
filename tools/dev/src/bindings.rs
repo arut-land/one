@@ -208,12 +208,11 @@ fn imports(root: &Path) -> Result<Vec<String>> {
     }
     Ok(violations)
 }
-fn main() -> Result<()> {
+pub(crate) fn run(check: bool) -> Result<()> {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"))
         .parent()
         .and_then(Path::parent)
         .ok_or("missing repository")?;
-    let check = std::env::args().any(|a| a == "--check");
     let mut violations = imports(root)?;
     for (file, contents) in generated(root)? {
         let path = root.join(file);

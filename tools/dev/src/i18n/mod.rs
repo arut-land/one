@@ -23,7 +23,7 @@ mod targets;
 use std::io::Write as _;
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode, Stdio};
-use std::{env, fs, io};
+use std::{fs, io};
 
 use arut_i18n::{DEFAULT_LOCALE, available_locales, locale_resources};
 
@@ -47,8 +47,7 @@ const KOTLIN_L10N: &str = "surfaces/android/src/main/kotlin/dev/arut/surface/gen
 const CSHARP_L10N: &str = "surfaces/windows/Generated/L10n.cs";
 const TYPESCRIPT_L10N: &str = "bindings/typescript/src/generated/l10n.ts";
 
-fn main() -> ExitCode {
-    let arguments: Vec<String> = env::args().skip(1).collect();
+pub(crate) fn run(arguments: &[String]) -> ExitCode {
     let check = arguments.iter().any(|argument| argument == "--check");
     let root = arguments
         .iter()
@@ -99,7 +98,7 @@ fn repository_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
         .ancestors()
         .nth(2)
-        .expect("tools/i18n sits two levels below the repository root")
+        .expect("tools/dev sits two levels below the repository root")
         .to_path_buf()
 }
 
@@ -359,7 +358,7 @@ mod tests {
 
     fn tempdir() -> std::path::PathBuf {
         let root = std::env::temp_dir().join(format!(
-            "arut-i18n-gen-{}-{:?}",
+            "arut-dev-i18n-{}-{:?}",
             std::process::id(),
             std::thread::current().id()
         ));

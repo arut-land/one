@@ -243,7 +243,7 @@ fn check() -> Result<BTreeSet<String>> {
     }
     Ok(violations)
 }
-fn main() -> Result<()> {
+pub(crate) fn run() -> Result<()> {
     let violations = check()?;
     for violation in &violations {
         eprintln!("{violation}");

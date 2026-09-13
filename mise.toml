@@ -51,9 +51,9 @@ dotnet = "10"
 
 [tasks.i18n]
 description = "Generate every surface's string resources and typed accessors from product/i18n/locales"
-sources = ["product/i18n/locales/**/*.ftl", "tools/i18n/src/**/*.rs"]
+sources = ["product/i18n/locales/**/*.ftl", "tools/dev/src/**/*.rs"]
 outputs = ["product/i18n/src/generated.rs", "bindings/typescript/src/generated/l10n.ts"]
-run = "cargo run --quiet -p arut-i18n-gen"
+run = "cargo run --quiet -p arut-dev -- i18n"
 
 [tasks.install]
 description = "Install the JavaScript workspace (regenerates the wasm package first if stale)"
@@ -78,15 +78,15 @@ run = [
 
 [tasks.bindings]
 description = "Generate native public exports over the FFI binding packages"
-run = "cargo run --quiet -p arut-binding-exports"
+run = "cargo run --quiet -p arut-dev -- bindings"
 
 [tasks."check:bindings"]
 description = "Check generated binding facades and forbid direct FFI imports in surfaces"
-run = "cargo run --quiet -p arut-binding-exports -- --check"
+run = "cargo run --quiet -p arut-dev -- bindings --check"
 
 [tasks."check:layers"]
 description = "Enforce architectural dependency and executor boundaries"
-run = "cargo run --quiet -p arut-layers"
+run = "cargo run --quiet -p arut-dev -- layers --check"
 
 [tasks."check:wasm"]
 description = "Build the isolated wasm core crates; check:layers guards their graphs"
@@ -98,7 +98,7 @@ run = ["buf lint", "buf breaking --against '.git#branch=master'"]
 
 [tasks."check:i18n"]
 description = "Fail if a generated string resource disagrees with product/i18n/locales (ADR 0022)"
-run = "cargo run --quiet -p arut-i18n-gen -- --check"
+run = "cargo run --quiet -p arut-dev -- i18n --check"
 
 [tasks."check:deps"]
 description = "Licenses, advisories, and duplicate versions across the Rust graph"
