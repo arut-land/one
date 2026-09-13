@@ -5,7 +5,9 @@
 //! and its chats. Local feature and remote channel constructors assemble the
 //! required capability client. Surfaces own selection and disposable observers.
 
+mod availability;
 mod failure;
+pub use availability::{FeatureAvailability, SessionAvailability};
 pub mod hosting;
 pub use failure::SessionError;
 /// Feature handles and renderable projections exposed by a product session.
@@ -22,9 +24,7 @@ pub mod scopes;
 use arut_feature_chat::ports::IdSource;
 use arut_feature_chat::{ChatClient, ChatClients, ChatObserver};
 use arut_protocol::capability::v1::CapabilityServiceClient;
-use arut_protocol::capability::v1::{GetCapabilitiesRequest, ServiceCapability};
 use arut_protocol::capability_manifest::capability_client;
-use arut_protocol::chat::composer::v1::COMPOSER_SERVICE_DESCRIPTOR;
 use arut_rpc::{Cancellation, Request};
 use arut_watch::Watch;
 use std::collections::HashMap;
@@ -158,27 +158,6 @@ impl SessionChats {
     }
 }
 
-#[boltffi::data]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct SessionAvailability {
-    pub composer: FeatureAvailability,
-}
-
-/// Typed availability with a typed reason; surfaces own every word of it.
-#[boltffi::data]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum FeatureAvailability {
-    /// No manifest has been read yet.
-    Unknown,
-    Available,
-    /// The node advertises the service but reports it as unavailable now.
-    ReportedUnavailable,
-    /// The node's manifest does not carry the service.
-    NotAdvertised,
-    /// The manifest could not be read from the node.
-    ManifestUnreachable,
-}
-
 impl ProductSession {
     /// Compose a session from a local feature and its served capability descriptors.
     pub fn from_chat(
@@ -309,32 +288,8 @@ impl ProductSession {
     }
 
     pub async fn refresh_capabilities(&self) -> SessionAvailability {
-        let service = &self.capability_service;
-        let composer = match service
-            .get_capabilities(Request::new(GetCapabilitiesRequest {}))
-            .await
-        {
-            Ok(response) => response
-                .message
-                .manifest
-                .and_then(|manifest| manifest.services.into_iter().find(is_composer_service))
-                .map_or(FeatureAvailability::NotAdvertised, feature_availability),
-            Err(_) => FeatureAvailability::ManifestUnreachable,
-        };
-        self.availability.set(SessionAvailability { composer })
-    }
-}
-
-fn is_composer_service(service: &ServiceCapability) -> bool {
-    service.package == COMPOSER_SERVICE_DESCRIPTOR.package
-        && service.service == COMPOSER_SERVICE_DESCRIPTOR.name
-}
-
-fn feature_availability(service: ServiceCapability) -> FeatureAvailability {
-    if service.available {
-        FeatureAvailability::Available
-    } else {
-        FeatureAvailability::ReportedUnavailable
+        self.availability
+            .set(availability::read(&self.capability_service).await)
     }
 }
 

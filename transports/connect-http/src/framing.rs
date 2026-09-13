@@ -43,10 +43,7 @@ pub(crate) fn take(buffer: &mut Vec<u8>) -> Result<Option<(u8, Vec<u8>)>, Status
     }
     let length = u32::from_be_bytes(buffer[1..5].try_into().unwrap()) as usize;
     if length > MAX_MESSAGE {
-        return Err(Status::new(
-            Code::ResourceExhausted,
-            "message exceeds limit",
-        ));
+        return Err(message_limit());
     }
     if buffer.len() < length + 5 {
         return Ok(None);
@@ -81,19 +78,19 @@ pub(crate) fn parse_error(value: &Value) -> Status {
     .find(|code| Some(code_name(*code)) == value["code"].as_str())
     .unwrap_or(Code::Internal);
     let mut status = Status::new(code, value["message"].as_str().unwrap_or("RPC failed"));
-    // Connect writes detail values with the unpadded standard alphabet;
-    // accept the padded form too rather than dropping a well-formed detail.
     status.details = value["details"][0]["value"]
         .as_str()
-        .and_then(|s| {
-            STANDARD_NO_PAD
-                .decode(s)
-                .or_else(|_| STANDARD.decode(s))
-                .ok()
-        })
+        .and_then(|value| decode_binary(value.as_bytes()))
         .unwrap_or_default();
     status
 }
+pub(crate) fn decode_binary(value: &[u8]) -> Option<Vec<u8>> {
+    STANDARD_NO_PAD
+        .decode(value)
+        .or_else(|_| STANDARD.decode(value))
+        .ok()
+}
+
 fn code_name(code: Code) -> &'static str {
     match code {
         Code::Cancelled => "cancelled",

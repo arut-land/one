@@ -64,19 +64,15 @@ impl ChatCommand {
         let next = current
             .conversation(&chat_id)
             .map_or(0, |conversation| conversation.messages.len()) as u64;
+        let reply = format!("You said: {text}");
         ChatFact {
             accepted_at_ms,
             chat_id,
             pending_revision: pending.as_ref().map(|pending| pending.revision),
             pending_scope_id: pending.map_or_else(String::new, |pending| pending.scope_id),
             messages: vec![
-                message(next + 1, ChatRole::User, text.clone(), accepted_at_ms),
-                message(
-                    next + 2,
-                    ChatRole::Assistant,
-                    format!("You said: {text}"),
-                    accepted_at_ms,
-                ),
+                message(next + 1, ChatRole::User, text, accepted_at_ms),
+                message(next + 2, ChatRole::Assistant, reply, accepted_at_ms),
             ],
             operations: vec![
                 operation(&operation_id, OperationPhase::Started),

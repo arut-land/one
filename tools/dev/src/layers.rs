@@ -20,12 +20,15 @@ fn allowed(from: &str, to: &str) -> bool {
     match from.split('/').next().unwrap_or(from) {
         "features" => matches!(layer, "substrates" | "protocols"),
         "product" => matches!(layer, "product" | "features" | "substrates" | "protocols"),
-        "substrates" => !matches!(layer, "features" | "product"),
+        "substrates" => matches!(layer, "substrates" | "protocols"),
         "transports" => to == "protocols/rpc",
         "bindings" if from == "bindings/ffi" => {
             matches!(layer, "product" | "features" | "substrates")
         }
-        "runtimes" => layer != "surfaces",
+        "runtimes" => matches!(
+            layer,
+            "runtimes" | "features" | "product" | "substrates" | "protocols" | "transports"
+        ),
         "surfaces" => matches!(layer, "runtimes" | "product" | "bindings"),
         "protocols" => layer == "protocols",
         "backend" => matches!(layer, "protocols" | "substrates" | "transports"),
@@ -314,10 +317,17 @@ mod tests {
             ("features/new", "product/i18n"),
             ("product/session", "runtimes/local"),
             ("substrates/watch", "features/chat"),
+            ("substrates/storage", "runtimes/local"),
+            ("substrates/storage", "transports/connect-http"),
+            ("substrates/watch", "surfaces/linux"),
+            ("substrates/authority", "bindings/ffi"),
+            ("substrates/watch", "tools/dev"),
             ("transports/ipc", "product/session"),
             ("bindings/ffi", "protocols/rpc"),
             ("surfaces/new", "transports/ipc"),
             ("runtimes/local", "surfaces/new"),
+            ("runtimes/local", "tools/dev"),
+            ("runtimes/local", "unknown/new"),
         ] {
             assert!(!allowed(from, to) && !exception(from, to), "{from} -> {to}");
         }

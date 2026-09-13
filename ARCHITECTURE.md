@@ -33,7 +33,7 @@ runtimes/              local native drivers, host-polled memory ports, browser c
 tools/                 development commands and shared conformance suites
 ```
 
-Features depend on substrates and protocols. Product depends on features, substrates, protocols, and other product crates. Rust surfaces consume product clients directly; foreign surfaces import their binding package. Composition roots select runtimes. Transport implementations depend on RPC contracts, not product behavior. A binding does not select a host mode on behalf of a view.
+Substrates depend only on substrates and protocols. Runtimes compose features, product, substrates, protocols, transports, and other runtimes. Features depend on substrates and protocols. Product depends on features, substrates, protocols, and other product crates. Rust surfaces consume product clients directly; foreign surfaces import their binding package. Composition roots select runtimes. Transport implementations depend on RPC contracts, not product behavior. A binding does not select a host mode on behalf of a view.
 
 `arut-dev layers --check` reads Cargo metadata, including optional, target-specific, build, and development edges. It rejects forbidden dependencies, Tokio executor features and wasm-bindgen in isolated core graphs, and weakened `unsafe_code` lints. Parsed Rust source also rejects feature `ServiceImpl` names in product and runtimes and `Authority` names in runtimes, including aliases and macro bodies. Tests are checked too.
 

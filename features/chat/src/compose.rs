@@ -27,14 +27,15 @@ pub struct ChatFeature {
 }
 impl ChatFeature {
     pub fn routers(&self) -> impl Iterator<Item = Arc<dyn RpcService>> {
-        self.routers.clone().into_iter()
+        self.routers.iter().cloned()
     }
     pub fn clients(&self) -> ChatClients {
         self.clients.clone()
     }
     /// The manifest uses the very descriptors served by this feature.
     pub fn registrations(&self) -> impl Iterator<Item = ServiceRegistration> {
-        self.routers()
+        self.routers
+            .iter()
             .map(|router| ServiceRegistration::new(router.descriptor(), ServiceMetadata::default()))
     }
 }

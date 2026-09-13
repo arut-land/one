@@ -1,4 +1,4 @@
-use crate::{framing, metadata};
+use crate::{framing, metadata::decode as metadata};
 use arut_rpc::{Request, RpcChannel, Status};
 use axum::{
     Router,
@@ -8,8 +8,6 @@ use axum::{
     response::{IntoResponse, Response},
     routing::post,
 };
-use base64::{Engine, engine::general_purpose::STANDARD};
-use futures_util::StreamExt;
 use std::sync::Arc;
 
 pub fn router(channel: Arc<dyn RpcChannel>) -> Router {
@@ -28,11 +26,7 @@ fn failure(error: Status) -> Response {
 }
 fn headers(response: &mut Response, metadata: &arut_rpc::Metadata) {
     for (key, value) in metadata.iter() {
-        let value = if key.ends_with("-bin") {
-            STANDARD.encode(value)
-        } else {
-            String::from_utf8_lossy(value).into_owned()
-        };
+        let value = crate::metadata::encode_value(key, value);
         if let (Ok(name), Ok(value)) = (HeaderName::try_from(key), HeaderValue::try_from(value)) {
             response.headers_mut().insert(name, value);
         }
@@ -92,20 +86,7 @@ async fn invoke(
             Default::default(),
         ),
     };
-    let output = futures_util::stream::unfold((stream, false), |(mut stream, ended)| async move {
-        if ended {
-            return None;
-        }
-        let (body, ended) = match stream.next().await {
-            Some(Ok(body)) => match framing::envelope(0, &body) {
-                Ok(envelope) => (envelope, false),
-                Err(error) => (framing::end_envelope(Some(error)), true),
-            },
-            Some(Err(error)) => (framing::end_envelope(Some(error)), true),
-            None => (framing::end_envelope(None), true),
-        };
-        Some((Ok::<_, std::convert::Infallible>(body), (stream, ended)))
-    });
+    let output = crate::streaming::encode(stream);
     let mut response = (
         [("content-type", "application/connect+proto")],
         Body::from_stream(output),

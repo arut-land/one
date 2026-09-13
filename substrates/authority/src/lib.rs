@@ -14,7 +14,6 @@
 //! is what makes a duplicate legible in a trace; nothing a person wrote is ever
 //! recorded. No subscriber is installed here.
 
-//! Generic acceptance with pure command application and projection reduction.
 use arut_storage::{Fact, FactLog, Record, Snapshot, StorageError};
 use prost::Message;
 use std::{
@@ -200,15 +199,19 @@ impl<C: Command> Authority<C> {
                     return Err(Outcome::RevisionConflict { current });
                 }
             }
-            Precondition::Epoch(epoch) if epoch != self.epoch => {
-                return Err(Outcome::AuthorityMismatch {
-                    current_epoch: self.epoch,
-                });
+            Precondition::Epoch(epoch) => {
+                if epoch != self.epoch {
+                    return Err(Outcome::AuthorityMismatch {
+                        current_epoch: self.epoch,
+                    });
+                }
             }
-            Precondition::OperationOpen(id) if !projection.operation_open(&id) => {
-                return Err(Outcome::Superseded);
+            Precondition::OperationOpen(id) => {
+                if !projection.operation_open(&id) {
+                    return Err(Outcome::Superseded);
+                }
             }
-            _ => {}
+            Precondition::None => {}
         }
         command.apply(projection, now).map_err(Outcome::Rejected)
     }

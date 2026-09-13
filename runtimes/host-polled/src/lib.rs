@@ -45,8 +45,8 @@ impl HostPolledSpawner {
     /// Polls up to `budget` ready tasks and reports how many ran.
     ///
     /// Zero means nothing was ready: the host should wait for its next callback
-    /// rather than spin. A full budget means work was still ready when the tick
-    /// stopped, so the host should tick again before it yields the frame.
+    /// rather than spin. A full budget means more work may be ready; the next
+    /// tick checks without exceeding the per-call budget.
     pub fn tick(&self) -> usize {
         let mut polled = 0;
         while polled < self.budget && self.executor.try_tick() {
