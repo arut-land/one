@@ -21,7 +21,7 @@ pub mod child;
 pub mod hosting;
 use arut_feature_chat::composer::authority::ComposerAuthority;
 use arut_feature_chat::composer::service::ComposerServiceImpl;
-use arut_feature_chat::ports::NativeIds;
+pub use arut_feature_chat::ports::NativeIds;
 use arut_feature_chat::service::ChatServiceImpl;
 use arut_protocol::capability::v1::CapabilityServiceRouter;
 use arut_protocol::capability_manifest::CapabilityServiceImpl;

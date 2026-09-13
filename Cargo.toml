@@ -17,6 +17,7 @@ members = [
     "surfaces/linux-gtk",
     "tools/conformance",
     "tools/i18n",
+    "tools/layers",
     "transports/connect-http",
     "transports/ipc",
 ]

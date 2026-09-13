@@ -1,4 +1,4 @@
-use arut_watch::Subscription;
+use arut_product_session::Subscription;
 use gtk::glib;
 use std::{future::Future, sync::Arc};
 

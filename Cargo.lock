@@ -95,15 +95,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "arut-layers"
+version = "0.1.0"
+dependencies = [
+ "quote",
+ "serde_json",
+ "syn 2.0.119",
+ "toml",
+]
+
+[[package]]
 name = "arut-linux-gtk"
 version = "0.1.0"
 dependencies = [
- "arut-feature-chat",
  "arut-i18n",
  "arut-product-session",
- "arut-rpc",
  "arut-runtime-local",
- "arut-watch",
  "ashpd",
  "futures-util",
  "gtk4",

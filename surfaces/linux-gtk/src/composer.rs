@@ -1,10 +1,6 @@
 use crate::{observe::Tasks, strings};
-use arut_feature_chat::{
-    composer::product::{ComposerClient, ComposerStatus},
-    errors::ComposerError,
-    product::ChatClient,
-};
 use arut_i18n::Message;
+use arut_product_session::chat::{ChatClient, ComposerClient, ComposerError, ComposerStatus};
 use gtk::{glib, prelude::*};
 use relm4::{Component, ComponentParts, ComponentSender};
 use std::{cell::Cell, rc::Rc};

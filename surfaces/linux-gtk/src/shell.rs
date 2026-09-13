@@ -7,8 +7,8 @@ use crate::{
     strings,
     transcript::Transcript,
 };
-use arut_feature_chat::product::ChatClient;
 use arut_i18n::Message;
+use arut_product_session::chat::ChatClient;
 use arut_product_session::{FeatureAvailability, ProductSession};
 use gtk::{glib, prelude::*};
 use relm4::{Component, ComponentController, ComponentParts, ComponentSender, Controller};
@@ -37,7 +37,7 @@ pub enum Msg {
     Select(String),
     ChatId(u64, Option<String>),
     Availability(FeatureAvailability),
-    Initialized(Result<(), arut_rpc::Status>),
+    Initialized(Result<(), arut_product_session::SessionError>),
 }
 
 #[relm4::component(pub)]

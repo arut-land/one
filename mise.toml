@@ -73,16 +73,13 @@ run = [
   "cargo machete",
 ]
 
+[tasks."check:layers"]
+description = "Enforce architectural dependency and executor boundaries"
+run = "cargo run --quiet -p arut-layers"
+
 [tasks."check:wasm"]
-description = "Build the isolated wasm core crates and reject wasm-bindgen in their graphs"
-run = '''
-set -eu
-cargo check -p arut_ffi -p arut-i18n --target wasm32-unknown-unknown
-graph="$(cargo tree -p arut_ffi -p arut-i18n --target wasm32-unknown-unknown --prefix none --format '{p}')"
-case "$graph" in
-  *"wasm-bindgen v"*) echo 'wasm-bindgen reached an isolated wasm graph' >&2; exit 1 ;;
-esac
-'''
+description = "Build the isolated wasm core crates; check:layers guards their graphs"
+run = "cargo check -p arut_ffi -p arut-i18n --target wasm32-unknown-unknown"
 
 [tasks."check:proto"]
 description = "Lint Protobuf contracts and reject breaking changes against master"
@@ -103,7 +100,7 @@ run = "pnpm check"
 
 [tasks.check]
 description = "Everything CI checks, in one command"
-depends = ["check:rust", "check:wasm", "check:proto", "check:i18n", "check:deps", "check:ts"]
+depends = ["check:layers", "check:rust", "check:wasm", "check:proto", "check:i18n", "check:deps", "check:ts"]
 
 # ---------------------------------------------------------------------------
 # Build and run.
