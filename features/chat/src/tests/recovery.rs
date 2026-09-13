@@ -5,7 +5,7 @@ use crate::{
 };
 use arut_protocol::chat::v1::{ChatService, SendMessageRequest, StartChatRequest};
 use arut_rpc::Request;
-use arut_storage::Directory;
+use arut_storage::Redb;
 use futures_executor::block_on;
 use std::sync::Arc;
 fn transcript(service: &ChatServiceImpl, chat_id: &str) -> usize {
@@ -21,7 +21,8 @@ fn transcript(service: &ChatServiceImpl, chat_id: &str) -> usize {
 fn restart_recovers_transcript_operations_drafts_and_send_deduplication() {
     let path = std::env::temp_dir().join(format!("arut-recovery-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&path);
-    let directory = Arc::new(Directory::open(&path).unwrap());
+    std::fs::create_dir_all(&path).unwrap();
+    let directory = Arc::new(Redb::open(path.join("node.redb")).unwrap());
     let composer = Arc::new(ComposerAuthority::with_store(directory.clone()));
     composer
         .replace(ReplaceComposer {
@@ -34,7 +35,7 @@ fn restart_recovers_transcript_operations_drafts_and_send_deduplication() {
         .unwrap();
     let service = ChatServiceImpl::new(
         composer.clone(),
-        Arc::new(directory.log("chat").unwrap()),
+        Arc::new(directory.log()),
         Arc::new(NativeIds),
     )
     .unwrap();
@@ -65,10 +66,12 @@ fn restart_recovers_transcript_operations_drafts_and_send_deduplication() {
         .unwrap();
     drop(service);
     drop(composer);
+    drop(directory);
+    let directory = Arc::new(Redb::open(path.join("node.redb")).unwrap());
     let recovered_composer = Arc::new(ComposerAuthority::with_store(directory.clone()));
     let recovered = ChatServiceImpl::new(
         recovered_composer.clone(),
-        Arc::new(directory.log("chat").unwrap()),
+        Arc::new(directory.log()),
         Arc::new(NativeIds),
     )
     .unwrap();

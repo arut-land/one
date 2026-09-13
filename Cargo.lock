@@ -204,7 +204,6 @@ dependencies = [
  "blake3",
  "prost",
  "redb",
- "tempfile",
  "tracing",
 ]
 

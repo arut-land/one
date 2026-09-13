@@ -1,5 +1,6 @@
 ---
 status: accepted
+amended-by: 0023
 ---
 
 # Storage is three narrow ports; the first implementation is a directory tree
