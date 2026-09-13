@@ -34,9 +34,12 @@ dir = "{{config_root}}/bindings/ffi"
 run = "rm -rf ../generated/apple && boltffi pack apple --deny-skipped"
 
 [tasks."ffi:android"]
-description = "Generate and package the Android bindings (needs the NDK)"
+description = "Generate and package the Android bindings (needs the NDK; ANDROID_NDK_HOME must be set)"
 dir = "{{config_root}}/bindings/ffi"
-run = "rm -rf ../generated/android && boltffi pack android --deny-skipped"
+run = [
+  "rustup target add aarch64-linux-android armv7-linux-androideabi x86_64-linux-android i686-linux-android",
+  "rm -rf ../generated/android && boltffi pack android --deny-skipped",
+]
 
 [tasks."ffi:csharp"]
 description = "Generate and package the .NET bindings"
