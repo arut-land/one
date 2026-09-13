@@ -1,4 +1,4 @@
-use crate::{conversation_model::ConversationItem, observe::Tasks, strings};
+use crate::app::{conversation_model::ConversationItem, observe::Tasks, strings};
 use arut_i18n::Message;
 use arut_product_session::ProductSession;
 use gtk::{gio, prelude::*};

@@ -1,6 +1,6 @@
 //! Desktop decoration policy. GTK's native window negotiation wins; explicit
 //! portal layouts follow, with environment signals only as a fallback.
-use crate::observe::Tasks;
+use crate::app::observe::Tasks;
 use ashpd::desktop::settings::Settings as Portal;
 use futures_util::StreamExt;
 use gtk::{gdk, glib, prelude::*};

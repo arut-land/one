@@ -1,6 +1,6 @@
 //! Opt-in visual fixtures for review.sh. Actions never register in a normal run.
 //! Messages go through the child node; only the typed error is injected.
-use crate::shell::{Msg, Shell};
+use crate::app::shell::{Msg, Shell};
 use arut_product_session::{ProductSession, SessionError};
 use gtk::{gio, glib, prelude::*};
 use relm4::ComponentSender;
@@ -83,7 +83,7 @@ pub fn install(
                     widget.is::<gtk::ListView>() && widget.accessible_role() == gtk::AccessibleRole::Log
                 }).unwrap().downcast::<gtk::ListView>().unwrap();
                 let model = list.model().unwrap().downcast::<gtk::NoSelection>().unwrap()
-                    .model().unwrap().downcast::<crate::message_model::Messages>().unwrap();
+                    .model().unwrap().downcast::<crate::app::message_model::Messages>().unwrap();
                 let time = glib::real_time() as u64 / 1000 + 300_000;
                 model.refresh(|last| vec![
                     ChatMessage { id: last + 1, role: ChatRole::Assistant,

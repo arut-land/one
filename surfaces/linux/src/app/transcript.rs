@@ -1,4 +1,4 @@
-use crate::{
+use crate::app::{
     message_model::Messages,
     observe::{Tasks, ViewState},
     strings,
@@ -132,7 +132,7 @@ impl SimpleComponent for Transcript {
         });
         actions.add_action(&latest);
         root.insert_action_group("transcript", Some(&actions));
-        crate::theme::reveal_motion(&widgets.latest);
+        crate::app::theme::reveal_motion(&widgets.latest);
         let state = ViewState::default();
         state
             .bind_property("status", &widgets.status, "label")

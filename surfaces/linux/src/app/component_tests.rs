@@ -1,5 +1,5 @@
 //! Display-backed checks of the watch/component boundary. No screenshots.
-use crate::{
+use crate::app::{
     availability::Availability,
     composer::{Composer, Msg as ComposerMsg},
     conversations::Conversations,
@@ -58,13 +58,35 @@ fn recycled_models_search_and_ordered_drafts_work_over_ipc() {
         child::ChildHost,
         hosting::{TokioSpawner, desktop_executor},
     };
+    // Set GTK's process-wide policy before loading GTK, and keep navigation
+    // preferences out of the user's state directory even for a manual test run.
+    if std::env::var_os("ARUT_GTK_TEST_CHILD").is_none() {
+        let directory =
+            std::env::temp_dir().join(format!("arut-gtk-display-{}", std::process::id()));
+        std::fs::create_dir(&directory).unwrap();
+        let name = format!(
+            "{}::recycled_models_search_and_ordered_drafts_work_over_ipc",
+            module_path!().split_once("::").unwrap().1
+        );
+        let result = std::process::Command::new(std::env::current_exe().unwrap())
+            .args(["--exact", &name, "--ignored", "--test-threads=1"])
+            .env("ARUT_GTK_TEST_CHILD", "1")
+            .env("G_DEBUG", "fatal-criticals")
+            .env("XDG_STATE_HOME", directory.join("state"))
+            .env("XDG_DATA_HOME", directory.join("data"))
+            .env("TMPDIR", &directory)
+            .status();
+        std::fs::remove_dir_all(&directory).unwrap();
+        assert!(result.unwrap().success(), "GTK component child failed");
+        return;
+    }
     glib::log_set_always_fatal(glib::LogLevels::LEVEL_ERROR | glib::LogLevels::LEVEL_CRITICAL);
     let _app = relm4::RelmApp::<()>::new("dev.arut.ComponentTest");
     let wrapped = gtk::Label::new(Some(
         &"A paragraph that must wrap when the sidebar opens. ".repeat(20),
     ));
     wrapped.set_wrap(true);
-    let column = crate::layout::Column::new(&wrapped, 880);
+    let column = crate::app::layout::Column::new(&wrapped, 880);
     assert_eq!(column.request_mode(), gtk::SizeRequestMode::HeightForWidth);
     assert!(
         column.measure(gtk::Orientation::Vertical, 320).1
@@ -230,18 +252,18 @@ fn recycled_models_search_and_ordered_drafts_work_over_ipc() {
         "unmounted composer must stop watching"
     );
     window.close();
-    let shell = crate::shell::Shell::builder()
+    let shell = crate::app::shell::Shell::builder()
         .launch(session.clone())
         .detach();
     WidgetExt::realize(shell.widget());
     drain(&context);
-    shell.emit(crate::shell::Msg::Select(chat.id().unwrap()));
+    shell.emit(crate::app::shell::Msg::Select(chat.id().unwrap()));
     drain(&context);
     let draft: gtk::TextView = descendant(shell.widget());
     draft.buffer().set_text("preserved immediately");
-    shell.emit(crate::shell::Msg::Select(second.id().unwrap()));
+    shell.emit(crate::app::shell::Msg::Select(second.id().unwrap()));
     drain(&context);
-    shell.emit(crate::shell::Msg::Select(chat.id().unwrap()));
+    shell.emit(crate::app::shell::Msg::Select(chat.id().unwrap()));
     drain(&context);
     let restored: gtk::TextView = descendant(shell.widget());
     assert_eq!(

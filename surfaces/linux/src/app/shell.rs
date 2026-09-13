@@ -1,4 +1,4 @@
-use crate::{
+use crate::app::{
     availability::Availability,
     composer::{Composer, Msg as ComposerMsg},
     conversations::{Conversations, Msg as ConversationsMsg},
@@ -30,8 +30,8 @@ pub struct Shell {
     restore_pending: bool,
     error: String,
     _tasks: Tasks,
-    _theme: crate::theme::Theme,
-    _decorations: Option<crate::decorations::Decorations>,
+    _theme: crate::app::theme::Theme,
+    _decorations: Option<crate::app::decorations::Decorations>,
 }
 
 #[derive(Debug, Clone)]
@@ -170,7 +170,7 @@ impl Component for Shell {
             restore_pending: true,
             error: String::new(),
             _tasks: tasks,
-            _theme: crate::theme::Theme::install(&root),
+            _theme: crate::app::theme::Theme::install(&root),
             _decorations: None,
         };
         let conversations = model.conversations.widget();
@@ -178,7 +178,7 @@ impl Component for Shell {
         let transcript = model.transcript.widget();
         let composer = model.composer.widget();
         let widgets = view_output!();
-        model._decorations = Some(crate::decorations::Decorations::install(
+        model._decorations = Some(crate::app::decorations::Decorations::install(
             &root,
             &widgets.header,
             &widgets.toolbar,
@@ -190,17 +190,17 @@ impl Component for Shell {
             .downcast::<gtk::Box>()
             .unwrap();
         body_parent.remove(&widgets.body);
-        let column = crate::layout::Column::new(&widgets.body, 880);
+        let column = crate::app::layout::Column::new(&widgets.body, 880);
         body_parent.append(&column);
         let content = root.child().unwrap();
         root.set_child(None::<&gtk::Widget>);
-        let responsive = crate::layout::Column::new(&content, i32::MAX);
+        let responsive = crate::app::layout::Column::new(&content, i32::MAX);
         responsive.on_breakpoint({
             let sender = sender.clone();
             move |narrow| sender.input(Msg::Narrow(narrow))
         });
         root.set_child(Some(&responsive));
-        crate::theme::reveal_motion(&widgets.sidebar);
+        crate::app::theme::reveal_motion(&widgets.sidebar);
         widgets.sidebar.connect_child_revealed_notify({
             let request = model.search_focus.clone();
             let search = model.conversations.model().search.clone();
@@ -231,7 +231,7 @@ impl Component for Shell {
             ));
         }
         root.add_controller(shortcuts);
-        crate::review::install(&root, model.session.clone(), sender.clone());
+        crate::app::review::install(&root, model.session.clone(), sender.clone());
         root.connect_map(|window| {
             eprintln!("arut-linux: shell mapped");
             if let Some(clock) = window.frame_clock() {

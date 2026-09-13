@@ -1,4 +1,4 @@
-use crate::observe::Tasks;
+use crate::app::observe::Tasks;
 use ashpd::desktop::{
     Color,
     settings::{
