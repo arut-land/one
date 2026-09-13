@@ -9,6 +9,8 @@ node_modules/
 /surfaces/android/build/
 /surfaces/android/*/build/
 .gradle/
+.kotlin/
+/bindings/kotlin/observer-tests/build/
 
 # Apple
 DerivedData/

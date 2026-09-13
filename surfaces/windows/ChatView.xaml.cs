@@ -47,28 +47,39 @@ public sealed partial class ChatView : UserControl
     private void Observe()
     {
         var observedGeneration = generation;
-        void Enqueue(Action refresh) => DispatcherQueue.TryEnqueue(() =>
+        Action<ulong> Coalesce(Action refresh)
         {
-            if (observedGeneration == generation) refresh();
-        });
-        chatSubscription = chat.ChatChanges(_ => Enqueue(() =>
+            var pending = 0;
+            return _ =>
+            {
+                if (observedGeneration != Volatile.Read(ref generation) ||
+                    Interlocked.CompareExchange(ref pending, 1, 0) != 0) return;
+                if (!DispatcherQueue.TryEnqueue(() =>
+                {
+                    Interlocked.Exchange(ref pending, 0);
+                    if (observedGeneration == generation) refresh();
+                })) Interlocked.Exchange(ref pending, 0);
+            };
+        }
+        chatSubscription = chat.ChatChanges(Coalesce(() =>
         {
             foreach (var message in chat.MessagesAfter(messages.Count == 0 ? 0UL : messages[messages.Count - 1].Id)) messages.Add(message);
             UpdateError();
         }));
-        composerSubscription = composer.ComposerChanges(_ => Enqueue(() =>
+        composerSubscription = composer.ComposerChanges(Coalesce(() =>
         {
-            if (Composer.Text != composer.State().Text) Composer.Text = composer.State().Text;
+            var text = composer.State().Text;
+            if (Composer.Text != text) Composer.Text = text;
             UpdateError();
         }));
-        listSubscription = list.ListChanges(_ => Enqueue(() => History.ItemsSource = list.State()));
+        listSubscription = list.ListChanges(Coalesce(() => History.ItemsSource = list.State()));
         following = new CancellationTokenSource();
         _ = Follow(composer, following.Token);
     }
 
     private void StopObserving()
     {
-        generation++;
+        Interlocked.Increment(ref generation);
         chatSubscription?.Dispose(); composerSubscription?.Dispose(); listSubscription?.Dispose();
         following?.Cancel(); following?.Dispose(); following = null;
     }

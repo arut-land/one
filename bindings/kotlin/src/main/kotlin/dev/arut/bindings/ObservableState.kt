@@ -6,53 +6,41 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
-import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.callbackFlow
+import kotlinx.coroutines.flow.conflate
+import kotlinx.coroutines.flow.launchIn
+import kotlinx.coroutines.flow.onEach
 
 class ObservableState<T>(initial: T) : AutoCloseable {
     private val closed = AtomicBoolean()
     private val mutable = MutableStateFlow(initial)
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private var refresh: Job? = null
-    private var subscription: AutoCloseable? = null
 
     val state: StateFlow<T> = mutable.asStateFlow()
 
-    constructor(
-        read: () -> T,
-        subscribe: ((ULong) -> Unit) -> AutoCloseable,
-    ) : this(read()) {
+    constructor(read: () -> T, subscribe: ((ULong) -> Unit) -> AutoCloseable) : this(read()) {
         observe(read, subscribe)
     }
 
-    fun receive(value: T) {
-        mutable.value = value
-    }
+    fun receive(value: T) { mutable.value = value }
 
-    fun observe(
-        read: () -> T,
-        subscribe: ((ULong) -> Unit) -> AutoCloseable,
-    ) {
+    fun observe(read: () -> T, subscribe: ((ULong) -> Unit) -> AutoCloseable) {
         check(!closed.get()) { "observable state is closed" }
-        subscription?.close()
         refresh?.cancel()
-        val invalidations = Channel<Unit>(Channel.CONFLATED)
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
-        refresh = scope.launch {
-            for (ignored in invalidations) receive(read())
-        }
-        subscription = subscribe { invalidations.trySend(Unit) }
-        refresh?.invokeOnCompletion {
-            invalidations.close()
-            scope.cancel()
-        }
+        refresh = callbackFlow {
+            val subscription = subscribe { trySend(Unit) }
+            // Read after subscribing even when the source has no initial event.
+            trySend(Unit)
+            awaitClose { subscription.close() }
+        }.conflate().onEach { receive(read()) }.launchIn(scope)
     }
 
     override fun close() {
-        if (!closed.compareAndSet(false, true)) return
-        subscription?.close()
-        refresh?.cancel()
+        if (closed.compareAndSet(false, true)) scope.cancel()
     }
 }
