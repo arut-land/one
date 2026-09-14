@@ -57,27 +57,33 @@ final class ConversationState {
     /// actor, so nothing here crosses an isolation boundary.
     func run() async {
         await withTaskGroup(of: Void.self) { group in
-            group.addTask { @MainActor [self] in
-                await observing(handle.chatChanges()) {
-                    chat.refresh()
-                    messages.refresh()
-                    failure.refresh()
-                }
-            }
-            group.addTask { @MainActor [self] in
-                await observing(composer.composerChanges()) {
-                    draft.absorb(remote: composer.state().text)
-                    failure.refresh()
-                }
-            }
-            group.addTask { @MainActor [self] in
-                await following(
-                    initialize: { _ = try await composer.initialize() },
-                    follow: { try await composer.follow() },
-                    onFailure: { [weak self] _ in self?.reportTransportFailure() }
-                )
-            }
+            group.addTask { @MainActor in await self.followChat() }
+            group.addTask { @MainActor in await self.followComposer() }
+            group.addTask { @MainActor in await self.keepComposing() }
         }
+    }
+
+    private func followChat() async {
+        await observing(handle.chatChanges()) {
+            chat.refresh()
+            messages.refresh()
+            failure.refresh()
+        }
+    }
+
+    private func followComposer() async {
+        await observing(composer.composerChanges()) {
+            draft.absorb(remote: composer.state().text)
+            failure.refresh()
+        }
+    }
+
+    private func keepComposing() async {
+        await following(
+            initialize: { _ = try await composer.initialize() },
+            follow: { try await composer.follow() },
+            onFailure: { [weak self] _ in self?.reportTransportFailure() }
+        )
     }
 
     func send() async {

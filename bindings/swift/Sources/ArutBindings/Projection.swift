@@ -30,7 +30,7 @@ public final class Projection<Value> {
     ///
     /// The first read happens before the first revision, so a projection that
     /// changed between `init` and the subscription is not missed.
-    public func follow(_ changes: AsyncStream<UInt64>) async {
+    nonisolated(nonsending) public func follow(_ changes: AsyncStream<UInt64>) async {
         refresh()
         for await _ in changes {
             refresh()
@@ -82,7 +82,7 @@ public final class Rows<Row> {
     }
 
     /// Follows a generated revision stream until the owning task is cancelled.
-    public func follow(_ changes: AsyncStream<UInt64>) async {
+    nonisolated(nonsending) public func follow(_ changes: AsyncStream<UInt64>) async {
         refresh()
         for await _ in changes {
             refresh()

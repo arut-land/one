@@ -1,5 +1,9 @@
 plugins {
     alias(libs.plugins.android.application)
+    // The library plugin ships in the same AGP jar this project already puts
+    // on the build classpath; declaring it here, unapplied, is what lets the
+    // :bindings module apply it by alias with a checked version.
+    alias(libs.plugins.android.library) apply false
     alias(libs.plugins.kotlin.compose)
 }
 
