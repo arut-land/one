@@ -5,29 +5,36 @@ namespace Arut.Surface.Windows;
 
 /// <summary>
 /// The conversation list and which conversation this session shows. Rust owns
-/// the selection, so every surface on one session follows the same one; the
-/// only thing kept here is the visible filter over the list it publishes.
+/// the selection, narrows the list to the query and names the selected
+/// conversation, so what is left here is which view model is alive and how many
+/// of them stay that way.
 /// </summary>
 public sealed partial class ChatViewModel : ObservableObject, IAsyncDisposable
 {
+    /// <summary>How many visited conversations keep their handles and pumps.
+    /// Each costs two FFI handles and three pumps; Rust keeps every draft, so an
+    /// evicted conversation loses nothing but its warm start.</summary>
+    private const int Resident = 8;
+
     private readonly ProductSessionHandle session;
     private readonly ConversationsHandle list;
-    private readonly CancellationTokenSource lifetime = new();
-    private readonly List<ConversationViewModel> all = [];
+    private readonly Projection<ChatSummary[]> summaries;
+    private readonly EchoGuard echo = new();
+    /// <summary>Most recently shown last: the eviction order.</summary>
+    private readonly List<ConversationViewModel> resident = [];
     private ConversationViewModel pending;
-    private ChatSummary[] summaries = [];
-    private Task running = Task.CompletedTask;
-    private bool applying;
     private bool disposed;
 
     public ChatViewModel(ProductSessionHandle session)
     {
         this.session = session;
         list = session.Conversations();
+        summaries = new Projection<ChatSummary[]>(list.State, list.ListChanges);
         pending = Track(new ConversationViewModel(session.Chat()));
         Conversation = pending;
-        Search = "";
+        Search = list.Query();
         Title = L10n.Get(L10n.ActionNewConversation);
+        summaries.PropertyChanged += (_, _) => Refresh();
         Refresh();
     }
 
@@ -48,7 +55,7 @@ public sealed partial class ChatViewModel : ObservableObject, IAsyncDisposable
     public string HistoryEmptyLabel =>
         Search.Length == 0 ? L10n.Get(L10n.ChatHistoryEmpty) : L10n.Get(L10n.ConversationSearchEmpty);
 
-    public void Start() => running = PumpAsync();
+    public void Start() => summaries.Start();
 
     public void NewConversation()
     {
@@ -62,9 +69,9 @@ public sealed partial class ChatViewModel : ObservableObject, IAsyncDisposable
     {
         if (id == Conversation.Id)
             return;
-        // One view model per visited conversation, so a pending draft command
+        // One view model per resident conversation, so a pending draft command
         // can never be redirected to another conversation mid-flight.
-        var model = all.Find(candidate => candidate.Id == id);
+        var model = resident.Find(candidate => candidate.Id == id);
         if (model is null)
         {
             if (session.SelectChat(id) is not { } handle)
@@ -75,56 +82,48 @@ public sealed partial class ChatViewModel : ObservableObject, IAsyncDisposable
         Show(model);
     }
 
+    // Rust narrows the list; writing the query is the whole search here.
     partial void OnSearchChanged(string value)
     {
-        Refresh();
+        if (echo.IsApplying)
+            return;
+        list.SetQuery(value);
+        summaries.Refresh();
         OnPropertyChanged(nameof(HistoryEmptyLabel));
     }
 
     partial void OnSelectedIndexChanged(int value)
     {
-        if (applying || value < 0 || value >= Conversations.Count)
+        if (echo.IsApplying || value < 0 || value >= Conversations.Count)
             return;
         Open(Conversations[value].Id);
     }
 
-    private async Task PumpAsync()
-    {
-        try
-        {
-            await foreach (var _ in list.ListChanges(lifetime.Token))
-                Refresh();
-        }
-        catch (OperationCanceledException) when (lifetime.IsCancellationRequested) { }
-    }
-
-    // The whole filter. Rust publishes the ordered list; this chooses which of
-    // its rows are visible and where the selection sits among them.
     private void Refresh()
     {
         if (disposed)
             return;
-        summaries = list.State();
-        var rows = summaries
-            .Where(row => row.Title.Contains(Search, StringComparison.CurrentCultureIgnoreCase))
-            .ToArray();
-        applying = true;
-        Conversations.Clear();
-        foreach (var row in rows)
-            Conversations.Add(row);
+        var rows = summaries.Value;
         var selected = list.SelectedId();
-        SelectedIndex = selected is null ? -1 : Array.FindIndex(rows, row => row.Id == selected);
-        applying = false;
-        var current = Array.Find(summaries, row => row.Id == selected);
-        Title = string.IsNullOrEmpty(current.Title)
-            ? L10n.Get(L10n.ActionNewConversation)
-            : current.Title;
+        using (echo.Applying())
+        {
+            // The rows that stayed keep their containers, so the pane keeps its
+            // scroll offset and the selection never flickers through -1.
+            Reconcile.Apply(Conversations, rows, row => row.Id);
+            Search = list.Query();
+            SelectedIndex =
+                selected is null ? -1 : Array.FindIndex(rows, row => row.Id == selected);
+        }
+        // `null` means no conversation is named yet, so the surface shows its
+        // own label -- the only part of the title that is localized.
+        Title = list.Title() ?? L10n.Get(L10n.ActionNewConversation);
         OnPropertyChanged(nameof(IsHistoryEmpty));
+        OnPropertyChanged(nameof(HistoryEmptyLabel));
     }
 
     private ConversationViewModel Track(ConversationViewModel model)
     {
-        all.Add(model);
+        resident.Add(model);
         model.Start();
         return model;
     }
@@ -132,7 +131,24 @@ public sealed partial class ChatViewModel : ObservableObject, IAsyncDisposable
     private void Show(ConversationViewModel model)
     {
         Conversation = model;
+        resident.Remove(model);
+        resident.Add(model);
+        Evict();
         Refresh();
+    }
+
+    /// <summary>Drops the least recently shown conversations past the cap; the
+    /// pending one and the one on screen always stay.</summary>
+    private void Evict()
+    {
+        while (resident.Count > Resident)
+        {
+            var stale = resident.Find(model => model != Conversation && model != pending);
+            if (stale is null)
+                return;
+            resident.Remove(stale);
+            _ = stale.DisposeAsync();
+        }
     }
 
     public async ValueTask DisposeAsync()
@@ -140,15 +156,10 @@ public sealed partial class ChatViewModel : ObservableObject, IAsyncDisposable
         if (disposed)
             return;
         disposed = true;
-        lifetime.Cancel();
-        try
-        {
-            await running;
-        }
-        catch (OperationCanceledException) { }
-        foreach (var model in all)
+        await summaries.DisposeAsync();
+        foreach (var model in resident)
             await model.DisposeAsync();
+        resident.Clear();
         list.Dispose();
-        lifetime.Dispose();
     }
 }

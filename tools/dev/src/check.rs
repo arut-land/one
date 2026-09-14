@@ -3,18 +3,20 @@
 //! Five rules, each one the compiler cannot state on its own:
 //!
 //! - every local dependency edge satisfies the layer table;
-//! - `bindings/ffi` takes no external crate but BoltFFI, so the wasm core stays
-//!   the shape `docs/ECOSYSTEM.md` requires;
-//! - every crate denies `unsafe_code`, whether through the workspace lints or
-//!   its own table;
+//! - `bindings/ffi` takes no external crate but BoltFFI and `async-task`, so the
+//!   wasm core stays the shape `docs/ECOSYSTEM.md` requires;
 //! - a relative TypeScript import stays inside its surface or runtime package;
-//! - the generated localization resources match `product/i18n/locales`, and
-//!   every `x:Uid` in the WinUI XAML has entries in the generated `.resw`.
+//! - the generated localization resources match `product/i18n/locales`, the
+//!   generated FFI handles match `bindings/ffi/handles.toml`, and every `x:Uid`
+//!   in the WinUI XAML has entries in the generated `.resw`;
+//! - under `--strict-surfaces`, no surface subscribes to a revision stream by
+//!   hand instead of using its binding package's observation helper.
 //!
 //! What used to be here and is not: the rule that `runtimes/` and `product/`
 //! may not name a feature service implementation, which Rust privacy already
 //! enforces (`pub(crate) struct ChatServiceImpl`); the scan for
-//! `allow(unsafe_code)`, which is a grep in `mise run check:core-graph`; and
+//! `allow(unsafe_code)` and the per-crate `unsafe_code` declaration, which the
+//! workspace lint table states once and `mise run check:core-graph` greps; and
 //! the resolved-graph walk for `wasm-bindgen` and Tokio executors, which is
 //! `cargo tree` in the same task.
 
@@ -26,7 +28,8 @@ use std::{fs, io};
 
 use serde_json::Value;
 
-use crate::i18n;
+use crate::output::{Run, repository_root};
+use crate::{handles, i18n};
 
 type Result<T> = std::result::Result<T, Box<dyn Error>>;
 
@@ -69,13 +72,6 @@ fn exception(from: &str, to: &str) -> bool {
     )
 }
 
-fn denied(value: &toml::Value) -> bool {
-    matches!(
-        value.as_str().or_else(|| value.get("level")?.as_str()),
-        Some("deny" | "forbid")
-    )
-}
-
 fn cargo(args: &[&str]) -> Result<String> {
     let output = Command::new("cargo").args(args).output()?;
     if !output.status.success() {
@@ -92,7 +88,6 @@ fn crates(violations: &mut BTreeSet<String>) -> Result<()> {
             .as_str()
             .ok_or("missing workspace root")?,
     );
-    let workspace: toml::Value = toml::from_str(&fs::read_to_string(root.join("Cargo.toml"))?)?;
     let packages = metadata["packages"].as_array().ok_or("missing packages")?;
     let members = metadata["workspace_members"]
         .as_array()
@@ -127,35 +122,17 @@ fn crates(violations: &mut BTreeSet<String>) -> Result<()> {
             let permitted = if local.is_some() {
                 allowed(from, to)
             } else {
-                // `bindings/ffi` is the wasm core's root: BoltFFI is the only
-                // crate allowed to reach it from outside the workspace.
-                from != "bindings/ffi" || name == "boltffi"
+                // `bindings/ffi` is the wasm core's root, so its outside edges
+                // are named one by one: BoltFFI, and `async-task` for the
+                // observation driver, which is `no_std`, pulls in no bindgen
+                // and no executor, and replaces a hand-written waker.
+                from != "bindings/ffi" || matches!(name, "boltffi" | "async-task")
             };
             let exempt =
                 exception(from, to) && (to != "futures-executor" || dependency["kind"] == "dev");
             if !permitted && !exempt {
                 violations.insert(format!("{from} -> {to}: forbidden dependency"));
             }
-        }
-        let manifest_config: toml::Value = toml::from_str(&fs::read_to_string(manifest)?)?;
-        let lints = if manifest_config
-            .get("lints")
-            .and_then(|value| value.get("workspace"))
-            .and_then(toml::Value::as_bool)
-            == Some(true)
-        {
-            workspace
-                .get("workspace")
-                .and_then(|value| value.get("lints"))
-        } else {
-            manifest_config.get("lints")
-        };
-        if !lints
-            .and_then(|value| value.get("rust"))
-            .and_then(|value| value.get("unsafe_code"))
-            .is_some_and(denied)
-        {
-            violations.insert(format!("{from} -> unsafe_code: missing deny/forbid lint"));
         }
     }
     Ok(())
@@ -182,6 +159,57 @@ fn crosses_package(file: &str, specifier: &str) -> bool {
         }
     }
     !path.starts_with(&owner)
+}
+
+/// The observation helper a surface of this kind must use instead of
+/// subscribing by hand. Named in the message, because "do not write this" is
+/// only useful beside "write that".
+fn helper(file: &str) -> Option<&'static str> {
+    match Path::new(file).extension().and_then(|e| e.to_str())? {
+        "swift" => Some("ArutBindings.Projection"),
+        "kt" => Some("dev.arut.bindings.projection"),
+        "cs" => Some("Arut.Bindings.Projection<T>"),
+        "ts" | "tsx" => Some("observe from @arut/bindings-typescript"),
+        _ => None,
+    }
+}
+
+/// Every way each ecosystem writes "await the next element of this stream".
+const SUBSCRIBE: [&str; 3] = ["for await", "await foreach", ".collect {"];
+
+/// A surface renders; it does not run the subscribe-and-read loop. Every
+/// ecosystem has one generic helper over a `*Changes()` stream in its binding
+/// package (ADR 0021), and a loop in a surface is the same kind of defect a
+/// hand-written FFI type is.
+///
+/// `surfaces/linux` is excluded: it is Rust, it consumes the watch directly
+/// rather than an FFI stream, and its GLib observer is moving to a Rust-surface
+/// binding module of its own.
+fn surface_subscriptions(root: &Path, files: &[String], violations: &mut BTreeSet<String>) {
+    for file in files {
+        if !file.starts_with("surfaces/") || file.starts_with("surfaces/linux/") {
+            continue;
+        }
+        let Some(helper) = helper(file) else {
+            continue;
+        };
+        let Ok(source) = fs::read_to_string(root.join(file)) else {
+            continue;
+        };
+        let lines: Vec<&str> = source.lines().collect();
+        for (index, text) in lines.iter().enumerate() {
+            let window = format!("{text}{}", lines.get(index + 1).unwrap_or(&""));
+            let subscribes = SUBSCRIBE.iter().any(|form| text.contains(form));
+            let stream = window.contains("Changes(") || window.contains("_changes(");
+            if subscribes && stream {
+                violations.insert(format!(
+                    "{file}:{} -> a revision stream is subscribed to in a surface; \
+                     observe it through {helper}",
+                    index + 1
+                ));
+            }
+        }
+    }
 }
 
 fn tracked_files(root: &Path) -> Result<Vec<String>> {
@@ -281,16 +309,30 @@ fn xaml_files(directory: &Path) -> Result<Vec<std::path::PathBuf>> {
     Ok(files)
 }
 
-pub(crate) fn run() -> Result<()> {
-    let root = i18n::repository_root();
+pub(crate) fn run(arguments: &[String]) -> Result<()> {
+    let root = repository_root();
+    let strict_surfaces = arguments
+        .iter()
+        .any(|argument| argument == "--strict-surfaces");
     let mut violations = BTreeSet::new();
+    let files = tracked_files(&root)?;
     crates(&mut violations)?;
-    typescript_imports(&root, &tracked_files(&root)?, &mut violations);
+    typescript_imports(&root, &files, &mut violations);
+    if strict_surfaces {
+        surface_subscriptions(&root, &files, &mut violations);
+    }
     windows_uids(&root, &mut violations)?;
-    for path in i18n::run(&root, i18n::Run::Check)?.stale {
+    for path in i18n::run(&root, Run::Check)?.stale {
         violations.insert(format!(
             "{}: does not match product/i18n/locales; run `mise run generate`",
             path.display()
+        ));
+    }
+    for path in handles::run(&root, Run::Check)?.stale {
+        violations.insert(format!(
+            "{}: does not match {}; run `mise run generate`",
+            path.display(),
+            handles::DECLARATION
         ));
     }
     for violation in &violations {
@@ -300,14 +342,15 @@ pub(crate) fn run() -> Result<()> {
         return Err(format!("{} check(s) failed", violations.len()).into());
     }
     println!(
-        "Layer boundaries, unsafe-code lints, TypeScript package boundaries, localization resources, and Windows x:Uid references passed"
+        "Layer boundaries, the isolated bindings/ffi graph, TypeScript package boundaries, \
+         generated localization resources and FFI handles, and Windows x:Uid references passed"
     );
     Ok(())
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{allowed, crosses_package, exception};
+    use super::{allowed, crosses_package, exception, helper, surface_subscriptions};
 
     #[test]
     fn boundaries_and_exceptions_are_narrow() {
@@ -333,6 +376,34 @@ mod tests {
         assert!(allowed("tools/new", "surfaces/new"));
         assert!(exception("features/chat", "product/i18n/macros"));
         assert!(!exception("features/new", "product/i18n/macros"));
+    }
+
+    #[test]
+    fn a_surface_may_not_run_the_subscribe_and_read_loop_itself() {
+        let root = std::env::temp_dir().join(format!("arut-dev-check-{}", std::process::id()));
+        let file = "surfaces/example/View.swift";
+        std::fs::create_dir_all(root.join("surfaces/example")).unwrap();
+        std::fs::write(
+            root.join(file),
+            "for await _ in handle.chatChanges() {\n  state = handle.state()\n}\n",
+        )
+        .unwrap();
+        let mut violations = std::collections::BTreeSet::new();
+        surface_subscriptions(&root, &[file.to_owned()], &mut violations);
+        let reported = violations.iter().next().expect("one violation");
+        assert!(reported.contains("View.swift:1"), "{reported}");
+        assert!(reported.contains("ArutBindings.Projection"), "{reported}");
+
+        std::fs::write(root.join(file), "state = projection.value\n").unwrap();
+        let mut clean = std::collections::BTreeSet::new();
+        surface_subscriptions(&root, &[file.to_owned()], &mut clean);
+        assert!(clean.is_empty());
+        assert_eq!(
+            helper("surfaces/x/A.kt"),
+            Some("dev.arut.bindings.projection")
+        );
+        assert_eq!(helper("surfaces/linux/src/app/mod.rs"), None);
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     #[test]

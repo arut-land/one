@@ -1,9 +1,11 @@
 //! Foreign bindings over shared scope projections and host-supplied time and IDs.
 //!
-//! Each handle has an explicit `#[export] impl`. BoltFFI's source scanner does
-//! not expand macros: a macro-generated handle silently disappears from the
-//! bindings, even with `--deny-skipped`. Keep exports visible and share watch
-//! bridging through `ffi_subscription`.
+//! The handles are generated. `bindings/ffi/handles.toml` declares each scope
+//! and `arut-dev generate` writes `src/generated/handles.rs`, because BoltFFI's
+//! source scanner expands no macros: a handle behind a macro disappears from
+//! the bindings, even with `--deny-skipped`. What a person does stays
+//! hand-written in `src/intents.rs`, as a second `#[export] impl` block on the
+//! same handle (ADR 0021).
 //!
 //! An error crosses as its Fluent message id and its arguments, never as a
 //! sentence: the surface resolves the id in its own resource system, so the
@@ -12,223 +14,53 @@
 pub use arut_feature_chat::composer::{ComposerState, ComposerStatus};
 pub use arut_feature_chat::errors::{ChatError, ComposerError, NodeFailure};
 use arut_feature_chat::ports::{Clock, IdSource};
-use arut_feature_chat::{ChatClient, composer::ComposerClient};
 pub use arut_feature_chat::{ChatMessage, ChatRole, ChatState, ChatStatus};
-use arut_product_session::ProductSession;
-pub use arut_product_session::{ChatSummary, FeatureAvailability, SessionAvailability};
-use arut_watch::Subscription;
-use boltffi::{EventSubscription, export};
+pub use arut_product_session::{ChatSummary, FeatureAvailability, MatchRange, SessionAvailability};
+use boltffi::export;
 use std::sync::Arc;
 
+mod generated;
+mod intents;
 mod observation;
 
-pub struct ProductSessionHandle {
-    session: Arc<ProductSession>,
-}
-pub struct ChatHandle {
-    client: ChatClient,
-}
-pub struct ComposerHandle {
-    client: ComposerClient,
-}
-pub struct ConversationsHandle {
-    session: Arc<ProductSession>,
-}
-pub struct AvailabilityHandle {
-    session: Arc<ProductSession>,
+pub use generated::handles::{
+    AvailabilityHandle, ChatHandle, ComposerHandle, ConversationsHandle, ProductSessionHandle,
+};
+pub use intents::{create_browser_session, create_product_session};
+
+/// What a session composes. One line per feature: the manifest it advertises,
+/// the routers it serves and the clients its scopes hold all follow from it
+/// (ADR 0006, ADR 0025).
+pub(crate) type Features = (arut_product_session::feature::Chat,);
+
+/// One argument of the message a typed error names: the Fluent name that
+/// selects it, and the value it carries.
+///
+/// The order is the order the generated resources interpolate, so a surface
+/// that formats positionally passes the values straight through, and one that
+/// formats by name does not have to know the order at all.
+#[boltffi::data]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ErrorArg {
+    pub name: String,
+    pub value: String,
 }
 
-#[export]
-impl ProductSessionHandle {
-    pub async fn initialize(&self) -> bool {
-        self.session.initialize().await.is_ok()
-    }
-    pub fn chat(&self) -> ChatHandle {
-        ChatHandle {
-            client: self.session.chat(),
-        }
-    }
-    pub fn new_chat(&self) -> ChatHandle {
-        ChatHandle {
-            client: self.session.new_chat(),
-        }
-    }
-    pub fn select_chat(&self, id: String) -> Option<ChatHandle> {
-        self.session
-            .select_chat(&id)
-            .map(|client| ChatHandle { client })
-    }
-    pub fn conversations(&self) -> ConversationsHandle {
-        ConversationsHandle {
-            session: self.session.clone(),
-        }
-    }
-    pub fn availability(&self) -> AvailabilityHandle {
-        AvailabilityHandle {
-            session: self.session.clone(),
-        }
-    }
-}
-#[export]
-impl ConversationsHandle {
-    pub fn state(&self) -> Vec<ChatSummary> {
-        self.session.chat_summaries()
-    }
-    /// The conversation every surface on this session is showing.
-    pub fn selected_id(&self) -> Option<String> {
-        self.session.selected_id()
-    }
-    pub fn select(&self, id: Option<String>) {
-        self.session.select(id);
-    }
-    #[ffi_stream(item = u64, mode = "async")]
-    pub fn list_changes(&self) -> Arc<EventSubscription<u64>> {
-        ffi_subscription(self.session.conversations_changes())
-    }
-}
-#[export]
-impl AvailabilityHandle {
-    pub fn state(&self) -> SessionAvailability {
-        self.session.availability()
-    }
-    pub async fn refresh(&self) -> SessionAvailability {
-        self.session.refresh_capabilities().await
-    }
-    #[ffi_stream(item = u64, mode = "async")]
-    pub fn availability_changes(&self) -> Arc<EventSubscription<u64>> {
-        ffi_subscription(self.session.availability_changes())
-    }
-}
-#[export]
-impl ChatHandle {
-    pub fn state(&self) -> ChatState {
-        self.client.state()
-    }
-    pub fn messages_after(&self, after_id: u64) -> Vec<ChatMessage> {
-        self.client.messages_after(after_id)
-    }
-    pub fn composer(&self) -> ComposerHandle {
-        ComposerHandle {
-            client: self.client.composer(),
-        }
-    }
-    pub async fn send(&self, text: String) -> ChatState {
-        self.client.send(text).await
-    }
-    /// The Fluent message id for the current error, if there is one.
-    pub fn error_key(&self) -> Option<String> {
-        self.client
-            .state()
-            .error
-            .map(|error| error.message_key().to_owned())
-    }
-    /// The arguments the current error's message takes, in the order the
-    /// message names them. Empty for every message that takes none.
-    pub fn error_args(&self) -> Vec<String> {
-        self.client
-            .state()
-            .error
-            .map(chat_error_args)
-            .unwrap_or_default()
-    }
-    #[ffi_stream(item = u64, mode = "async")]
-    pub fn chat_changes(&self) -> Arc<EventSubscription<u64>> {
-        ffi_subscription(self.client.changes())
-    }
-}
-#[export]
-impl ComposerHandle {
-    pub async fn follow(&self) {
-        self.client.follow().await;
-    }
-    pub fn state(&self) -> ComposerState {
-        self.client.state()
-    }
-    pub async fn initialize(&self) -> ComposerState {
-        self.client.initialize().await
-    }
-    pub async fn replace(&self, text: String) -> ComposerState {
-        self.client.replace(text).await
-    }
-    /// The Fluent message id for the current error, if there is one.
-    pub fn error_key(&self) -> Option<String> {
-        self.client
-            .state()
-            .error
-            .map(|error| error.message_key().to_owned())
-    }
-    /// The arguments the current error's message takes, in the order the
-    /// message names them. Empty for every message that takes none.
-    pub fn error_args(&self) -> Vec<String> {
-        self.client
-            .state()
-            .error
-            .map(composer_error_args)
-            .unwrap_or_default()
-    }
-    #[ffi_stream(item = u64, mode = "async")]
-    pub fn composer_changes(&self) -> Arc<EventSubscription<u64>> {
-        ffi_subscription(self.client.changes())
-    }
-}
-/// For hosts with a clock and entropy of their own. BoltFFI exports every
-/// annotated item on every target, so wasm keeps the symbol and refuses it here
-/// rather than compiling an ID source that cannot work; browsers call
-/// `create_browser_session`.
-#[export]
-pub fn create_product_session(pending_scope_id: String) -> ProductSessionHandle {
-    #[cfg(not(target_arch = "wasm32"))]
-    {
-        session(
-            pending_scope_id,
-            Arc::new(arut_runtime_host_polled::NativeIds),
-            Arc::new(arut_runtime_host_polled::NativeClock),
-        )
-    }
-    #[cfg(target_arch = "wasm32")]
-    {
-        let _ = pending_scope_id;
-        panic!("a wasm host supplies time and IDs through create_browser_session")
+impl From<(String, String)> for ErrorArg {
+    fn from((name, value): (String, String)) -> Self {
+        Self { name, value }
     }
 }
 
-/// The two composer messages that name a value, and nothing else.
-fn composer_error_args(error: ComposerError) -> Vec<String> {
-    match error {
-        ComposerError::RevisionConflict { current } => vec![current.to_string()],
-        ComposerError::AuthorityChanged { current_epoch } => vec![current_epoch.to_string()],
-        _ => Vec::new(),
-    }
-}
-
-fn chat_error_args(error: ChatError) -> Vec<String> {
-    match error {
-        ChatError::Draft(error) => composer_error_args(error),
-        _ => Vec::new(),
-    }
-}
-
-fn ffi_subscription(source: Arc<Subscription<u64>>) -> Arc<EventSubscription<u64>> {
-    let target = Arc::new(EventSubscription::new(1));
-    let weak = Arc::downgrade(&target);
-    observation::observe(source, move |revision| {
-        let Some(target) = weak.upgrade() else {
-            return false;
-        };
-        if !target.is_active() {
-            return false;
-        }
-        target.push_event(revision);
-        true
-    });
-    target
-}
+/// Wall time and identities a host supplies, for platforms whose runtime owns
+/// both.
 #[export]
 pub trait HostIds: Send + Sync {
     fn new_id(&self) -> String;
     fn now(&self) -> u64;
 }
-struct BrowserIds(Arc<dyn HostIds>);
+
+pub(crate) struct BrowserIds(pub Arc<dyn HostIds>);
 impl IdSource for BrowserIds {
     fn new_id(&self) -> String {
         self.0.new_id()
@@ -239,42 +71,12 @@ impl Clock for BrowserIds {
         self.0.now()
     }
 }
-/// Browser hosts supply wall time and UUIDv7 identities.
-#[export]
-pub fn create_browser_session(
-    pending_scope_id: String,
-    ids: Arc<dyn HostIds>,
-) -> ProductSessionHandle {
-    let host = Arc::new(BrowserIds(ids));
-    session(pending_scope_id, host.clone(), host)
-}
-
-fn session(
-    pending_scope_id: String,
-    ids: Arc<dyn IdSource>,
-    clock: Arc<dyn Clock + Send + Sync>,
-) -> ProductSessionHandle {
-    let runtime = Arc::new(arut_runtime_host_polled::MemoryRuntime::new(
-        ids.clone(),
-        clock,
-    ));
-    let chat = arut_feature_chat::compose(runtime).expect("compose memory feature");
-    ProductSessionHandle {
-        session: Arc::new(ProductSession::from_chat(
-            &chat,
-            arut_product_session::SessionScope {
-                node_id: "local".into(),
-                workspace_id: "default".into(),
-                pending_scope_id,
-            },
-            ids,
-        )),
-    }
-}
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::intents::create_product_session;
+
     #[test]
     fn shared_projections_expose_conversations_drafts_and_send() {
         let session = create_product_session("test".into());
@@ -292,5 +94,44 @@ mod tests {
         );
         assert_eq!(list.state().len(), 1);
         assert_eq!(composer.state().text, "");
+    }
+
+    #[test]
+    fn a_typed_error_crosses_as_a_key_and_named_arguments() {
+        let session = create_product_session("test".into());
+        let chat = session.chat();
+        assert_eq!(chat.error_key(), None);
+        assert!(chat.error_args().is_empty());
+
+        let composer = chat.composer();
+        assert_eq!(
+            ErrorArg::from(("current".to_owned(), "4".to_owned())),
+            ErrorArg {
+                name: "current".into(),
+                value: "4".into()
+            }
+        );
+        assert_eq!(composer.error_key(), None);
+    }
+
+    #[test]
+    fn the_conversation_list_carries_its_own_search_and_selection() {
+        let session = create_product_session("test".into());
+        let list = session.conversations();
+        futures_executor::block_on(session.chat().send("Roadmap".into()));
+        let id = list.state()[0].id.clone();
+
+        list.select(Some(id.clone()));
+        assert_eq!(list.selected_id(), Some(id));
+        assert_eq!(list.title(), Some("Roadmap".to_owned()));
+
+        list.set_query("road".into());
+        assert_eq!(list.query(), "road");
+        assert_eq!(
+            list.state()[0].match_ranges,
+            [MatchRange { start: 0, end: 4 }]
+        );
+        list.set_query("nothing here".into());
+        assert!(list.state().is_empty());
     }
 }

@@ -1,18 +1,23 @@
 import type {
-  Changes,
+  ChatHandle,
   ChatMessage,
   ChatRole,
   ChatState,
-  ChatSummary,
+  ComposerHandle,
   ComposerState,
+  ConversationsHandle,
+  ErrorArg,
   ProductSessionHandle,
 } from "@arut/bindings-typescript";
+import { projectionPort, type PortMessage, type Wire } from "@arut/bindings-typescript/bridge";
 
-// What the chat UI needs from a node, in the shape of the generated session
-// handle rather than a shape of the view's own: the wasm session implements it
-// as itself, and a relay route (ADR 0009) implements it verbatim. Everything
-// the UI reads is a projection plus a revision stream; everything it does is an
-// intent that returns when the node has taken it.
+// What the chat UI needs from a node, stated as the generated handles state it:
+// every member below is `Pick`ed off the `.d.ts`, so a projection that gains a
+// field or an error that changes shape reaches this file as a type error rather
+// than as a second declaration to keep in step. The wasm session implements the
+// port as itself; a relay route (ADR 0009) and the editor bridge implement it
+// verbatim. Everything the UI reads is a projection plus a revision stream;
+// everything it does is an intent that returns when the node has taken it.
 
 export interface ChatPort {
   chat(): ChatScope;
@@ -21,36 +26,23 @@ export interface ChatPort {
   conversations(): ConversationsScope;
 }
 
-export interface ChatScope {
-  state(): ChatState;
-  messagesAfter(afterId: bigint): ChatMessage[];
+export interface ChatScope
+  extends Pick<
+    ChatHandle,
+    "state" | "messagesAfter" | "send" | "errorKey" | "errorArgs" | "chatChanges" | "dispose"
+  > {
   composer(): ComposerScope;
-  send(text: string): Promise<unknown>;
-  /** The Fluent id of the current error, and its arguments positionally. */
-  errorKey(): string | null;
-  errorArgs(): string[];
-  chatChanges(): Changes;
-  dispose(): void;
 }
 
-export interface ComposerScope {
-  state(): ComposerState;
-  replace(text: string): Promise<unknown>;
-  initialize(options?: { signal?: AbortSignal }): Promise<unknown>;
-  follow(options?: { signal?: AbortSignal }): Promise<unknown>;
-  errorKey(): string | null;
-  errorArgs(): string[];
-  composerChanges(): Changes;
-  dispose(): void;
-}
+export type ComposerScope = Pick<
+  ComposerHandle,
+  "state" | "replace" | "initialize" | "follow" | "errorKey" | "errorArgs" | "composerChanges" | "dispose"
+>;
 
-export interface ConversationsScope {
-  state(): ChatSummary[];
-  selectedId(): string | null;
-  select(id: string | null): void;
-  listChanges(): Changes;
-  dispose(): void;
-}
+export type ConversationsScope = Pick<
+  ConversationsHandle,
+  "state" | "selectedId" | "title" | "query" | "select" | "setQuery" | "listChanges" | "dispose"
+>;
 
 /**
  * `ChatRole.User`, restated. A view renders projections, so it must not import
@@ -63,152 +55,160 @@ export const userRole = 0 satisfies ChatRole;
 /** wasm in the page: the generated session already is the port. */
 export const wasmPort = (session: ProductSessionHandle): ChatPort => session;
 
+/** A projection whose typed error travels as its Fluent id (ADR 0016). */
+type Errored<T> = Omit<T, "error"> & { errorKey: string | null; errorArgs: ErrorArg[] };
+
 /**
- * One whole projection, as the VS Code extension host posts it.
+ * What the host publishes, one entry per name.
  *
- * Identifiers are decimal text because `structuredClone` carries `bigint` but
- * the webview's message channel is not guaranteed to, and no sentence crosses:
- * the error travels as its Fluent id (ADR 0016), which the webview formats
- * from the same catalog the host would have used.
+ * The two fields a surface writes -- the draft and the search query -- are
+ * entries of their own because a port holds its own value for an entry until
+ * the host carries exactly that value back, and the state around them keeps
+ * changing while the person is still typing.
  */
 export interface ChatProjection {
-  chat: Sent<ChatState, "lastMessageId">;
-  messages: Text<ChatMessage, "id" | "acceptedAtMs">[];
-  composer: Sent<ComposerState, "revision">;
-  conversations: ChatSummary[];
-  selectedId: string | null;
+  chat: Errored<ChatState>;
+  messages: ChatMessage[];
+  composer: Errored<Omit<ComposerState, "text">>;
+  draft: string;
+  conversations: ReturnType<ConversationsHandle["state"]>;
+  selection: { selectedId: string | null; title: string | null };
+  query: string;
 }
 
-/** A projection on the wire: identifiers as decimal text. */
-type Text<T, Ids extends keyof T> = Omit<T, Ids> & Record<Ids, string>;
-
-/** The same, for a state whose typed error travels as its message key. */
-type Sent<T extends { error: unknown }, Ids extends keyof T> =
-  Text<Omit<T, "error">, Exclude<Ids, "error">> & { errorKey: string | null; errorArgs: string[] };
+/** Every name the host publishes, in the order a first projection is built. */
+export const projected = [
+  "chat",
+  "messages",
+  "composer",
+  "draft",
+  "conversations",
+  "selection",
+  "query",
+] as const satisfies readonly (keyof ChatProjection)[];
 
 /** What the webview asks the host to do. */
-export type ChatCommand =
-  /** The page is mounted: post a projection, in case one was missed. */
-  | { type: "ready" }
-  | { type: "newChat" }
-  | { type: "select"; id: string | null }
-  | { type: "draft"; text: string }
-  | { type: "send"; text: string };
+export type ChatIntent =
+  | { name: "newChat" }
+  | { name: "select"; id: string | null }
+  | { name: "draft"; text: string }
+  | { name: "send"; text: string }
+  | { name: "query"; text: string };
+
+/**
+ * One intent off the bridge, or `null` for anything this surface does not name.
+ *
+ * The bridge carries `unknown`, because nothing in it knows what is projected;
+ * this is the one place that decides what a payload had to be.
+ */
+export function chatIntent(name: string, payload: unknown): ChatIntent | null {
+  switch (name) {
+    case "newChat":
+      return { name };
+    case "select":
+      return payload === null || typeof payload === "string" ? { name, id: payload } : null;
+    case "draft":
+    case "send":
+    case "query":
+      return typeof payload === "string" ? { name, text: payload } : null;
+    default:
+      return null;
+  }
+}
 
 export interface BridgePort extends ChatPort {
   /** Take one projection from the host. */
-  receive(projection: ChatProjection): void;
+  receive(values: Wire): void;
 }
 
 /**
  * A view over a node that lives somewhere else -- the VS Code extension host,
  * which keeps the session (ADR 0011) and posts whole projections.
  *
- * Reads answer from the last projection; intents are posted and echoed locally
- * so a text field bound to `ComposerState.text` never lags a keystroke, the
- * same contract `ComposerClient::replace` keeps in process.
+ * Reads answer from the last projection the generic port received; intents are
+ * posted, and the draft and the query are held locally until the host carries
+ * them back, so a control bound to one never lags a keystroke -- the same
+ * contract `ComposerClient::replace` keeps in process.
+ *
+ * `initial` is the projection the host encoded into the page, so the first
+ * render reads a real projection of a real session.
  */
-export function bridgePort(post: (command: ChatCommand) => void, initial: ChatProjection): BridgePort {
-  let projection = initial;
-  let echoed: string | null = null;
-  const chatChanges = new Revisions();
-  const composerChanges = new Revisions();
-  const listChanges = new Revisions();
+export function bridgePort(post: (message: PortMessage) => void, initial: Wire): BridgePort {
+  const port = projectionPort(initial, post);
+  const read = <K extends keyof ChatProjection>(name: K): ChatProjection[K] =>
+    port.state<ChatProjection[K]>(name);
+
+  const chatState = (): ChatState => {
+    const wire = read("chat");
+    return {
+      id: wire.id,
+      lastMessageId: wire.lastMessageId,
+      status: wire.status,
+      canSend: wire.canSend,
+      isSending: wire.isSending,
+      isEmpty: wire.isEmpty,
+      error: null,
+    };
+  };
+
+  const composerState = (): ComposerState => {
+    const wire = read("composer");
+    return { text: read("draft"), revision: wire.revision, status: wire.status, error: null };
+  };
 
   const composer = (): ComposerScope => ({
-    state: () => ({
-      ...projection.composer,
-      text: echoed ?? projection.composer.text,
-      revision: BigInt(projection.composer.revision),
-      error: null,
-    }),
+    state: composerState,
     replace: (text: string) => {
-      echoed = text;
-      composerChanges.bump();
-      post({ type: "draft", text });
-      return Promise.resolve();
+      port.echo("draft", text);
+      port.intent("draft", text);
+      return Promise.resolve(composerState());
     },
     // The host holds the subscription this port reports through.
-    initialize: () => Promise.resolve(),
+    initialize: () => Promise.resolve(composerState()),
     follow: () => Promise.resolve(),
-    errorKey: () => projection.composer.errorKey,
-    errorArgs: () => projection.composer.errorArgs,
-    composerChanges: () => composerChanges.stream(),
+    errorKey: () => read("composer").errorKey,
+    errorArgs: () => read("composer").errorArgs,
+    composerChanges: () => port.changes("composer", "draft"),
     dispose: () => {},
   });
 
-  const chat = (): ChatScope => ({
-    state: () => ({ ...projection.chat, lastMessageId: BigInt(projection.chat.lastMessageId), error: null }),
-    messagesAfter: (afterId: bigint) =>
-      projection.messages
-        .filter(message => BigInt(message.id) > afterId)
-        .map(message => ({ ...message, id: BigInt(message.id), acceptedAtMs: BigInt(message.acceptedAtMs) })),
+  const chat: ChatScope = {
+    state: chatState,
+    messagesAfter: (afterId: bigint) => read("messages").filter(message => message.id > afterId),
     composer,
     send: (text: string) => {
-      post({ type: "send", text });
-      return Promise.resolve();
+      port.intent("send", text);
+      return Promise.resolve(chatState());
     },
-    errorKey: () => projection.chat.errorKey,
-    errorArgs: () => projection.chat.errorArgs,
-    chatChanges: () => chatChanges.stream(),
+    errorKey: () => read("chat").errorKey,
+    errorArgs: () => read("chat").errorArgs,
+    chatChanges: () => port.changes("chat", "messages"),
     dispose: () => {},
-  });
+  };
 
   return {
-    chat,
+    chat: () => chat,
     newChat: () => {
-      post({ type: "newChat" });
-      return chat();
+      port.intent("newChat");
+      return chat;
     },
     selectChat: (id: string) => {
-      post({ type: "select", id });
-      return chat();
+      port.intent("select", id);
+      return chat;
     },
     conversations: () => ({
-      state: () => projection.conversations,
-      selectedId: () => projection.selectedId,
-      select: (id: string | null) => {
-        // Echoed the way a draft is, so a read right after a write is true
-        // before the host has answered.
-        projection = { ...projection, selectedId: id };
-        listChanges.bump();
-        post({ type: "select", id });
+      state: () => read("conversations"),
+      selectedId: () => read("selection").selectedId,
+      title: () => read("selection").title,
+      query: () => read("query"),
+      select: (id: string | null) => port.intent("select", id),
+      setQuery: (query: string) => {
+        port.echo("query", query);
+        port.intent("query", query);
       },
-      listChanges: () => listChanges.stream(),
+      listChanges: () => port.changes("conversations", "selection", "query"),
       dispose: () => {},
     }),
-    receive(next: ChatProjection) {
-      projection = next;
-      if (echoed === next.composer.text) echoed = null;
-      chatChanges.bump();
-      composerChanges.bump();
-      listChanges.bump();
-    },
+    receive: (values: Wire) => port.receive(values),
   };
-}
-
-/** A revision counter every reader can await, in place of a wasm stream. */
-class Revisions {
-  private revision = 0n;
-  private readonly waiting = new Set<(revision: bigint) => void>();
-
-  bump(): void {
-    this.revision += 1n;
-    const woken = [...this.waiting];
-    this.waiting.clear();
-    for (const wake of woken) wake(this.revision);
-  }
-
-  stream(): Changes {
-    const waiting = this.waiting;
-    return {
-      [Symbol.asyncIterator]: () => ({
-        next: () =>
-          new Promise<IteratorResult<bigint>>(resolve => {
-            waiting.add(revision => resolve({ value: revision, done: false }));
-          }),
-        return: () => Promise.resolve({ value: undefined, done: true }),
-      }),
-    };
-  }
 }

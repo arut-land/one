@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+#MISE description="Format, lint, test, prune, build the isolated wasm core, and check generated output"
+#MISE sources=["@group:rust"]
+#MISE tools={ "cargo:cargo-nextest" = "0.9.144", "cargo:cargo-machete" = "0.9.2" }
+# One task, because every step here takes cargo's build lock.
+set -euo pipefail
+
+cargo fmt --all --check
+cargo clippy --workspace --all-targets -- -D warnings
+cargo nextest run --workspace
+cargo test --doc --workspace
+cargo machete
+cargo check --target wasm32-unknown-unknown \
+  -p arut_ffi -p arut-i18n -p arut-feature-chat -p arut-product-session \
+  -p arut-watch -p arut-storage -p arut-authority
+cargo run --quiet -p arut-dev -- check --strict-surfaces

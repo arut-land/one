@@ -3,11 +3,15 @@
 //! No message id is typed by hand (ADR 0022), but the mechanism that enforces
 //! that differs per platform. Apple, Android and Windows each read a generated
 //! resource file, so all their consumers need is a checked way to name a key:
-//! a Swift function over `String(localized:)`, a C# `const string`. Android
-//! needs nothing at all, because AAPT2 generates `R.string` from the
-//! `strings.xml` this generator already emits. TypeScript has no resource
-//! format, so it gets the key union, the argument types, and the Fluent text
-//! itself.
+//! a Swift function over `String(localized:)`, a C# `const string`. TypeScript
+//! has no resource format, so it gets the key union, the argument types, the
+//! arguments each message interpolates, and the Fluent text itself.
+//!
+//! Android is the one platform that needs both halves. AAPT2 generates
+//! `R.string` from the `strings.xml` this generator already emits, which covers
+//! every key a layout names; what it cannot cover is the runtime lookup an
+//! error path does, from a Fluent id the core supplied to the resource that
+//! renders it. That map is [`kotlin`], so no surface writes it by hand.
 //!
 //! Every emitter here is a pure function of the catalog, like the resource
 //! emitters in [`crate::i18n::targets`], and for the same reason.
@@ -189,6 +193,48 @@ fn cldr_rule(tag: &str) -> &'static str {
     }
 }
 
+/// `bindings/kotlin/src/main/kotlin/dev/arut/bindings/generated/Messages.kt`.
+///
+/// The Fluent id a typed error names, mapped to the Android resource AAPT2
+/// generated from the `strings.xml` beside it. Both live in the binding
+/// library, so `R` is the library's own and the application gets the same
+/// strings through Gradle's resource merging.
+#[must_use]
+pub(crate) fn kotlin(default_locale: &str, locales: &[Locale]) -> String {
+    let messages = source_of(locales, default_locale);
+    let mut out = String::new();
+    let _ = writeln!(out, "// {BANNER}");
+    out.push_str(
+        "//\n\
+         // Every message id in product/i18n/locales, beside the Android resource\n\
+         // generated for it. A surface resolving a Fluent id the core supplied\n\
+         // reads this map; a key a layout names reaches R.string directly.\n\
+         \n\
+         package dev.arut.bindings.generated\n\
+         \n\
+         import dev.arut.bindings.R\n\
+         \n\
+         /** Android resource identifiers, keyed by the Fluent message id that names them. */\n\
+         object Messages {\n\
+         \x20   val byKey: Map<String, Int> =\n\
+         \x20       mapOf(\n",
+    );
+    for (id, message) in messages {
+        let kind = if message.selector().is_some() {
+            "plurals"
+        } else {
+            "string"
+        };
+        let _ = writeln!(
+            out,
+            "            \"{id}\" to R.{kind}.{},",
+            resource_name(id)
+        );
+    }
+    out.push_str("        )\n}\n");
+    out
+}
+
 /// `bindings/typescript/src/generated/l10n.ts`.
 ///
 /// A key union, the argument types each parameterised message needs, and one
@@ -236,6 +282,23 @@ pub(crate) fn typescript(default_locale: &str, locales: &[Locale]) -> String {
     }
     out.push_str(
         "}\n\
+         \n\
+         /** The arguments each message interpolates, in the order every generated\n\
+          * consumer reads them. A typed error crosses FFI carrying its values in\n\
+          * this order. */\n\
+         export const placeables: Record<MessageKey, readonly string[]> = {\n",
+    );
+    for (id, message) in messages {
+        let names = message
+            .arguments()
+            .iter()
+            .map(|argument| format!("\"{}\"", argument.name))
+            .collect::<Vec<_>>()
+            .join(", ");
+        let _ = writeln!(out, "  \"{id}\": [{names}],");
+    }
+    out.push_str(
+        "};\n\
          \n\
          /** Format one message. */\n\
          export function t(bundle: L10nBundle, key: Exclude<MessageKey, keyof Args>): string;\n\
@@ -289,7 +352,7 @@ pub(crate) fn typescript_catalog() -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{camel, csharp, pascal, swift, typescript, typescript_catalog};
+    use super::{camel, csharp, kotlin, pascal, swift, typescript, typescript_catalog};
     use crate::i18n::targets::tests::locale;
     use arut_i18n_catalog::Locale;
 
@@ -369,6 +432,32 @@ mod tests {
     }
 
     #[test]
+    fn kotlin_maps_every_id_to_the_android_resource_generated_for_it() {
+        let out = kotlin("en", &only(SOURCE));
+        assert!(
+            out.contains(
+                "\"composer-error-revision-conflict\" to R.string.composer_error_revision_conflict,"
+            ),
+            "{out}"
+        );
+        let plural = kotlin("en", &only(PLURAL));
+        assert!(
+            plural.contains("\"unread\" to R.plurals.unread,"),
+            "{plural}"
+        );
+    }
+
+    #[test]
+    fn typescript_names_the_arguments_each_message_interpolates() {
+        let out = typescript("en", &only(SOURCE));
+        assert!(out.contains("  \"welcome\": [\"who\"],"), "{out}");
+        assert!(
+            out.contains("  \"chat-error-no-conversation\": [],"),
+            "{out}"
+        );
+    }
+
+    #[test]
     fn a_plural_selector_is_numeric_in_every_accessor() {
         let locales = only(PLURAL);
         assert!(swift("en", &locales).contains("static func unread(count: Int) -> String"));
@@ -390,6 +479,7 @@ mod tests {
         let locales = only(SOURCE);
         assert_eq!(swift("en", &locales), swift("en", &only(SOURCE)));
         assert_eq!(csharp("en", &locales), csharp("en", &only(SOURCE)));
+        assert_eq!(kotlin("en", &locales), kotlin("en", &only(SOURCE)));
         assert_eq!(typescript("en", &locales), typescript("en", &only(SOURCE)));
     }
 }

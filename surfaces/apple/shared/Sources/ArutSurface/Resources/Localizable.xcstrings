@@ -1,6 +1,39 @@
 {
   "sourceLanguage": "en",
   "strings": {
+    "action-about": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "About Arut"
+          }
+        }
+      }
+    },
+    "action-app-help": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Arut Help"
+          }
+        }
+      }
+    },
+    "action-clear-search": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Clear the search"
+          }
+        }
+      }
+    },
     "action-close-history": {
       "extractionState": "manual",
       "localizations": {
@@ -52,6 +85,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Focus message field"
+          }
+        }
+      }
+    },
+    "action-main-menu": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Main menu"
           }
         }
       }
@@ -129,6 +173,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Previous conversation"
+          }
+        }
+      }
+    },
+    "action-quit": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Quit"
           }
         }
       }
@@ -650,6 +705,17 @@
         }
       }
     },
+    "label-keyboard-shortcuts": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Keyboard shortcuts"
+          }
+        }
+      }
+    },
     "label-message-status": {
       "extractionState": "manual",
       "localizations": {
@@ -679,6 +745,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Recent"
+          }
+        }
+      }
+    },
+    "label-shortcuts-general": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "General"
           }
         }
       }

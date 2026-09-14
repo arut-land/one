@@ -1,45 +1,25 @@
-import { useEffect, useState } from "react";
-import type { ChatMessage, ChatSummary } from "@arut/bindings-typescript";
+import { useEffect, useRef, useState } from "react";
+import type { ChatMessage } from "@arut/bindings-typescript";
 // Value imports name the module they come from: a webview renders a projection
 // and must not pull the wasm core in behind a barrel (ADR 0011).
-import { chatReader, followComposer, observe, type Changes } from "@arut/bindings-typescript/observable";
-import { useObservable } from "@arut/bindings-typescript/react";
+import { cursored, following } from "@arut/bindings-typescript/observable";
+import { useHandle, useOwned } from "@arut/bindings-typescript/react";
 import { errorMessage } from "@arut/bindings-typescript/strings";
 import type { ChatPort, ChatScope } from "./port";
-
-/**
- * One handle's projection, re-read whenever that handle reports a change.
- *
- * `source` identifies the handle: a new one builds a new store and the old one
- * is disposed, so nothing here ever shows a fabricated state while a handle is
- * being replaced -- every render reads a real projection of a real handle.
- */
-function useHandle<T>(source: object, read: () => T, changes: () => Changes): T {
-  return useObservable(useOwned(source, () => observe(read, changes)));
-}
-
-/** A handle held for as long as `key` stands, and disposed when it does not. */
-function useOwned<T extends { dispose(): void }>(key: unknown, open: () => T): T {
-  const [held, setHeld] = useState(() => ({ key, value: open() }));
-  let current = held;
-  if (!Object.is(current.key, key)) {
-    current.value.dispose();
-    current = { key, value: open() };
-    setHeld(current);
-  }
-  const value = current.value;
-  useEffect(() => () => value.dispose(), [value]);
-  return value;
-}
 
 /** Whatever the person is looking at, with the intents that change it. */
 export function useChat(port: ChatPort) {
   const conversations = useOwned(port, () => port.conversations());
   const list = useHandle(
     conversations,
-    (): { summaries: ChatSummary[]; selectedId: string | null } => ({
+    () => ({
+      // Every one of these is the core's answer, not this surface's: the search
+      // predicate, the window title, the unread rule and the match offsets are
+      // decided once in Rust and rendered by all five surfaces (ADR 0021).
       summaries: conversations.state(),
       selectedId: conversations.selectedId(),
+      title: conversations.title(),
+      query: conversations.query(),
     }),
     () => conversations.listChanges(),
   );
@@ -49,19 +29,28 @@ export function useChat(port: ChatPort) {
   // selection made elsewhere replaces it when the list reports the change.
   const [choice, choose] = useState({ id: list.selectedId, fresh: 0 });
   const [seen, markSeen] = useState(list.selectedId);
+  // The id the pending conversation on screen gained when it was established.
+  // The core selects it at that moment; the handle already open is that
+  // conversation, so it is kept rather than replaced mid-send.
+  const established = useRef<string | null>(null);
   let showing = choice;
   if (!Object.is(list.selectedId, seen)) {
     markSeen(list.selectedId);
-    if (!Object.is(list.selectedId, choice.id)) {
+    const adopted = choice.id === null && list.selectedId !== null && established.current === list.selectedId;
+    if (!adopted && !Object.is(list.selectedId, choice.id)) {
       showing = { id: list.selectedId, fresh: 0 };
       choose(showing);
     }
   }
-  const chat = useOwned(`${showing.id ?? ""}#${showing.fresh}`, () => open(port, showing.id, showing.fresh));
+  // Which conversation is on screen, across the moment a pending one is saved
+  // and gains an id of its own: that is one conversation, not two.
+  const chatKey = `${showing.id ?? ""}#${showing.fresh}`;
+  const chat = useOwned(chatKey, () => open(port, showing.id, showing.fresh));
   const composer = useOwned(chat, () => chat.composer());
-  useEffect(() => followComposer(composer), [composer]);
+  useEffect(() => following(composer), [composer]);
 
   const transcript = useHandle(chat, read(chat), () => chat.chatChanges());
+  established.current = transcript.id;
   const draft = useHandle(
     composer,
     () => ({ ...composer.state(), error: errorMessage(composer) }),
@@ -70,14 +59,18 @@ export function useChat(port: ChatPort) {
 
   return {
     chatId: transcript.id,
+    chatKey,
     messages: transcript.messages,
     history: list.summaries,
+    title: list.title,
+    query: list.query,
     isEmpty: transcript.isEmpty,
     sending: transcript.isSending,
     canSend: transcript.canSend,
     draft: draft.text,
     error: transcript.error ?? draft.error,
     setDraft: (text: string) => void composer.replace(text),
+    setQuery: (text: string) => conversations.setQuery(text),
     send: () => {
       if (draft.text.trim() !== "") void chat.send(draft.text);
     },
@@ -100,9 +93,10 @@ function open(port: ChatPort, selectedId: string | null, fresh: number): ChatSco
 
 /** The transcript, plus whatever sentence its error resolves to. */
 function read(chat: ChatScope) {
-  const transcript = chatReader(chat);
-  return (): Omit<ReturnType<typeof transcript>, "error"> & {
-    messages: ChatMessage[];
-    error: string | null;
-  } => ({ ...transcript(), error: errorMessage(chat) });
+  const messages = cursored<ChatMessage>(
+    () => chat.messagesAfter(0n),
+    afterId => chat.messagesAfter(afterId),
+    message => message.id,
+  );
+  return () => ({ ...chat.state(), messages: messages(), error: errorMessage(chat) });
 }

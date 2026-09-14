@@ -1,23 +1,31 @@
 package dev.arut.surface
 
+import android.provider.Settings
+import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.ArrowDownward
 import androidx.compose.material.icons.filled.Menu
+import androidx.compose.material3.Badge
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -32,106 +40,118 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.PermanentDrawerSheet
 import androidx.compose.material3.PermanentNavigationDrawer
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SmallFloatingActionButton
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.rememberDrawerState
+import androidx.compose.material3.windowsizeclass.WindowWidthSizeClass
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import dev.arut.bindings.ErrorSource
+import dev.arut.bindings.acceptedAt
+import dev.arut.bindings.generated.Messages
+import dev.arut.bindings.localized
 import dev.arut.ffi.ChatMessage
 import dev.arut.ffi.ChatRole
 import dev.arut.ffi.ChatSummary
 import java.text.DateFormat
-import java.util.Date
 import kotlinx.coroutines.launch
 
 @Composable
-fun ChatScreen(viewModel: ConversationViewModel) {
+fun ChatScreen(viewModel: ConversationViewModel, width: WindowWidthSizeClass) {
     val conversations by viewModel.conversations.collectAsStateWithLifecycle()
     val transcript by viewModel.transcript.collectAsStateWithLifecycle()
     val draft by viewModel.draft.collectAsStateWithLifecycle()
     val composerFailure by viewModel.composerFailure.collectAsStateWithLifecycle()
     val failure = transcript.failure ?: composerFailure
 
-    val title = conversations.summaries.firstOrNull { it.id == conversations.selectedId }?.title
-
-    // Material's own adaptive rule: a permanent list beside the conversation
-    // once there is room for both, a modal one when there is not.
-    BoxWithConstraints(Modifier.fillMaxSize()) {
-        if (maxWidth >= 840.dp) {
-            PermanentNavigationDrawer(
-                drawerContent = {
-                    PermanentDrawerSheet(Modifier.width(320.dp)) {
-                        ConversationList(
-                            summaries = conversations.summaries,
-                            selectedId = conversations.selectedId,
-                            onSelect = viewModel::select,
-                            onNew = viewModel::newConversation,
-                        )
-                    }
+    // Material's own adaptive rule, read off the window rather than measured by
+    // us: a permanent list beside the conversation once there is room for both.
+    if (width == WindowWidthSizeClass.Expanded) {
+        PermanentNavigationDrawer(
+            drawerContent = {
+                PermanentDrawerSheet(Modifier.width(320.dp)) {
+                    ConversationList(
+                        conversations = conversations,
+                        onSelect = viewModel::select,
+                        onSearch = viewModel::search,
+                        onNew = viewModel::newConversation,
+                    )
                 }
-            ) {
-                Conversation(
-                    transcript = transcript,
-                    draft = draft,
-                    failure = failure,
-                    title = title,
-                    onOpenList = null,
-                    onEdit = viewModel::edit,
-                    onSend = viewModel::send,
-                )
             }
-        } else {
-            val drawer = rememberDrawerState(DrawerValue.Closed)
-            val scope = rememberCoroutineScope()
-            ModalNavigationDrawer(
-                drawerState = drawer,
-                drawerContent = {
-                    ModalDrawerSheet {
-                        ConversationList(
-                            summaries = conversations.summaries,
-                            selectedId = conversations.selectedId,
-                            onSelect = { id ->
-                                viewModel.select(id)
-                                scope.launch { drawer.close() }
-                            },
-                            onNew = {
-                                viewModel.newConversation()
-                                scope.launch { drawer.close() }
-                            },
-                        )
-                    }
-                },
-            ) {
-                Conversation(
-                    transcript = transcript,
-                    draft = draft,
-                    failure = failure,
-                    title = title,
-                    onOpenList = { scope.launch { drawer.open() } },
-                    onEdit = viewModel::edit,
-                    onSend = viewModel::send,
-                )
-            }
+        ) {
+            Conversation(
+                transcript = transcript,
+                draft = draft,
+                failure = failure,
+                title = conversations.title,
+                onOpenList = null,
+                onEdit = viewModel::edit,
+                onSend = viewModel::send,
+            )
+        }
+    } else {
+        val drawer = rememberDrawerState(DrawerValue.Closed)
+        val scope = rememberCoroutineScope()
+        // Predictive back closes the pane before it leaves the app.
+        BackHandler(enabled = drawer.isOpen) { scope.launch { drawer.close() } }
+        ModalNavigationDrawer(
+            drawerState = drawer,
+            drawerContent = {
+                ModalDrawerSheet {
+                    ConversationList(
+                        conversations = conversations,
+                        onSelect = { id ->
+                            viewModel.select(id)
+                            scope.launch { drawer.close() }
+                        },
+                        onSearch = viewModel::search,
+                        onNew = {
+                            viewModel.newConversation()
+                            scope.launch { drawer.close() }
+                        },
+                    )
+                }
+            },
+        ) {
+            Conversation(
+                transcript = transcript,
+                draft = draft,
+                failure = failure,
+                title = conversations.title,
+                onOpenList = { scope.launch { drawer.open() } },
+                onEdit = viewModel::edit,
+                onSend = viewModel::send,
+            )
         }
     }
 }
 
 @Composable
 private fun ConversationList(
-    summaries: List<ChatSummary>,
-    selectedId: String?,
+    conversations: Conversations,
     onSelect: (String?) -> Unit,
+    onSearch: (String) -> Unit,
     onNew: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -143,10 +163,24 @@ private fun ConversationList(
                 modifier = Modifier.padding(start = 8.dp),
             )
         }
+        // Rust narrows the list; this field only carries the query to it.
+        OutlinedTextField(
+            value = conversations.query,
+            onValueChange = onSearch,
+            modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+            placeholder = { Text(stringResource(R.string.conversation_search_placeholder)) },
+            singleLine = true,
+            shape = RoundedCornerShape(24.dp),
+        )
         HorizontalDivider()
-        if (summaries.isEmpty()) {
+        if (conversations.summaries.isEmpty()) {
             Text(
-                text = stringResource(R.string.chat_history_empty),
+                text =
+                    if (conversations.query.isEmpty()) {
+                        stringResource(R.string.chat_history_empty)
+                    } else {
+                        stringResource(R.string.conversation_search_empty)
+                    },
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(16.dp),
@@ -154,15 +188,29 @@ private fun ConversationList(
             return@Column
         }
         LazyColumn {
-            items(summaries, key = { it.id }) { summary ->
-                NavigationDrawerItem(
-                    label = { Text(summary.title, maxLines = 2, overflow = TextOverflow.Ellipsis) },
-                    selected = summary.id == selectedId,
-                    onClick = { onSelect(summary.id) },
+            items(conversations.summaries, key = { it.id }) { summary ->
+                ConversationRow(
+                    summary = summary,
+                    selected = summary.id == conversations.selectedId,
+                    onSelect = onSelect,
                 )
             }
         }
     }
+}
+
+@Composable
+private fun ConversationRow(summary: ChatSummary, selected: Boolean, onSelect: (String?) -> Unit) {
+    val unread = stringResource(R.string.label_unread_messages)
+    val description = if (summary.unread) "${summary.title}. $unread" else summary.title
+    NavigationDrawerItem(
+        label = { Text(summary.title, maxLines = 2, overflow = TextOverflow.Ellipsis) },
+        // Rust decides what is unread; the badge only draws it.
+        badge = if (summary.unread) ({ Badge() }) else null,
+        selected = selected,
+        onClick = { onSelect(summary.id) },
+        modifier = Modifier.semantics { contentDescription = description },
+    )
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -170,12 +218,20 @@ private fun ConversationList(
 private fun Conversation(
     transcript: Transcript,
     draft: String,
-    failure: Failure?,
+    failure: ErrorSource?,
     title: String?,
     onOpenList: (() -> Unit)?,
     onEdit: (String) -> Unit,
     onSend: () -> Unit,
 ) {
+    val context = LocalContext.current
+    val snackbars = remember { SnackbarHostState() }
+    // The core names an error by Fluent id; the generated map turns it into
+    // this locale's sentence, and Material puts a transient one in a Snackbar.
+    val message = failure?.localized(context, Messages.byKey)
+    LaunchedEffect(message) {
+        if (message != null) snackbars.showSnackbar(message)
+    }
     Scaffold(
         topBar = {
             TopAppBar(
@@ -191,23 +247,16 @@ private fun Conversation(
                     }
                 },
             )
-        }
+        },
+        snackbarHost = { SnackbarHost(snackbars) },
     ) { insets ->
         Column(Modifier.padding(insets).fillMaxSize()) {
             Box(Modifier.weight(1f)) {
                 if (transcript.messages.isEmpty()) {
                     EmptyConversation()
                 } else {
-                    Messages(transcript.messages)
+                    MessageList(transcript.messages)
                 }
-            }
-            if (failure != null) {
-                Text(
-                    text = localized(failure.key, failure.arguments),
-                    color = MaterialTheme.colorScheme.error,
-                    style = MaterialTheme.typography.bodySmall,
-                    modifier = Modifier.padding(horizontal = 16.dp),
-                )
             }
             Composer(
                 draft = draft,
@@ -221,27 +270,63 @@ private fun Conversation(
 }
 
 @Composable
-private fun Messages(messages: List<ChatMessage>) {
+private fun MessageList(messages: List<ChatMessage>) {
     val scroll = rememberLazyListState()
+    val scope = rememberCoroutineScope()
+    val animate = animationsEnabled()
+    val nearBottom by remember(scroll) { derivedStateOf { scroll.isNearBottom() } }
+    // New activity follows the tail only while the reader is already there.
     LaunchedEffect(messages.lastOrNull()?.id) {
-        if (messages.isNotEmpty()) scroll.animateScrollToItem(messages.lastIndex)
+        if (messages.isNotEmpty() && nearBottom) {
+            scroll.scrollToLatest(messages.lastIndex, animate)
+        }
     }
-    LazyColumn(
-        state = scroll,
-        modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
-        verticalArrangement = Arrangement.spacedBy(4.dp),
-    ) {
-        items(messages, key = { it.id }) { message -> MessageBubble(message) }
+    Box(Modifier.fillMaxSize()) {
+        LazyColumn(
+            state = scroll,
+            modifier =
+                Modifier.fillMaxSize()
+                    .padding(horizontal = 16.dp)
+                    .semantics { liveRegion = LiveRegionMode.Polite },
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            items(messages, key = { it.id }) { message -> MessageBubble(message) }
+        }
+        AnimatedVisibility(
+            visible = !nearBottom,
+            modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp),
+        ) {
+            SmallFloatingActionButton(
+                onClick = { scope.launch { scroll.scrollToLatest(messages.lastIndex, animate) } }
+            ) {
+                Icon(
+                    Icons.Filled.ArrowDownward,
+                    contentDescription = stringResource(R.string.action_scroll_to_latest),
+                )
+            }
+        }
     }
 }
 
 @Composable
 private fun MessageBubble(message: ChatMessage) {
     val outgoing = message.role == ChatRole.USER
-    Column(Modifier.fillMaxWidth()) {
-        if (message.startsTimeGroup && message.acceptedAtMs > 0uL) {
+    val speaker =
+        if (outgoing) {
+            stringResource(R.string.chat_role_you)
+        } else {
+            stringResource(R.string.chat_role_assistant)
+        }
+    val stamp = timeOf(message)
+    val description =
+        if (stamp.isEmpty()) "$speaker: ${message.text}" else "$speaker: ${message.text}. $stamp"
+    // Rust says where a speaker's run ends; this only spaces after it.
+    Column(
+        Modifier.fillMaxWidth().padding(bottom = if (message.endsSpeakerGroup) 12.dp else 0.dp)
+    ) {
+        if (message.startsTimeGroup && stamp.isNotEmpty()) {
             Text(
-                text = timeOf(message.acceptedAtMs),
+                text = stamp,
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.align(Alignment.CenterHorizontally).padding(vertical = 8.dp),
@@ -259,7 +344,10 @@ private fun MessageBubble(message: ChatMessage) {
                     if (outgoing) MaterialTheme.colorScheme.onPrimaryContainer
                     else MaterialTheme.colorScheme.onSurfaceVariant,
                 shape = RoundedCornerShape(16.dp),
-                modifier = Modifier.widthIn(max = 560.dp),
+                modifier =
+                    Modifier.widthIn(max = 560.dp).semantics {
+                        contentDescription = description
+                    },
             ) {
                 Text(
                     text = message.text,
@@ -299,24 +387,28 @@ private fun Composer(
     onEdit: (String) -> Unit,
     onSend: () -> Unit,
 ) {
+    val label = stringResource(R.string.label_draft)
     Row(
-        Modifier.fillMaxWidth().padding(12.dp),
+        // `adjustResize` plus these insets keep the field above the keyboard and
+        // the navigation bar without a fixed margin.
+        Modifier.fillMaxWidth().imePadding().navigationBarsPadding().padding(12.dp),
         verticalAlignment = Alignment.Bottom,
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         OutlinedTextField(
             value = draft,
             onValueChange = onEdit,
-            modifier = Modifier.weight(1f),
+            modifier = Modifier.weight(1f).semantics { contentDescription = label },
             enabled = !isSending,
+            // Placeholder only: a floating label permanently consumes one of the
+            // seven lines this composer has.
             placeholder = { Text(stringResource(R.string.composer_placeholder)) },
-            label = { Text(stringResource(R.string.label_draft)) },
             shape = RoundedCornerShape(24.dp),
             maxLines = 7,
         )
         IconButton(onClick = onSend, enabled = canSend) {
             if (isSending) {
-                CircularProgressIndicator(Modifier.width(20.dp))
+                CircularProgressIndicator(Modifier.size(20.dp))
             } else {
                 Icon(
                     Icons.AutoMirrored.Filled.Send,
@@ -327,8 +419,36 @@ private fun Composer(
     }
 }
 
-private fun timeOf(acceptedAtMs: ULong): String =
-    DateFormat.getTimeInstance(DateFormat.SHORT).format(Date(acceptedAtMs.toLong()))
+/** Rust supplies the instant; Android supplies the words. */
+private fun timeOf(message: ChatMessage): String =
+    acceptedAt(message.acceptedAtMs)?.let { DateFormat.getTimeInstance(DateFormat.SHORT).format(it) }
+        ?: ""
+
+/**
+ * Whether this device animates at all. Compose has no reduced-motion flag of its
+ * own; `ANIMATOR_DURATION_SCALE` is what the system setting writes, and it is
+ * what every other Android app reads.
+ */
+@Composable
+private fun animationsEnabled(): Boolean {
+    val context = LocalContext.current
+    return remember(context) {
+        Settings.Global.getFloat(
+            context.contentResolver,
+            Settings.Global.ANIMATOR_DURATION_SCALE,
+            1f,
+        ) != 0f
+    }
+}
+
+private fun LazyListState.isNearBottom(): Boolean {
+    val last = layoutInfo.visibleItemsInfo.lastOrNull() ?: return true
+    return last.index >= layoutInfo.totalItemsCount - 1
+}
+
+private suspend fun LazyListState.scrollToLatest(index: Int, animate: Boolean) {
+    if (animate) animateScrollToItem(index) else scrollToItem(index)
+}
 
 @Preview
 @Composable

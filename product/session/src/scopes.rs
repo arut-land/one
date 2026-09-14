@@ -2,8 +2,11 @@
 //!
 //! Cancellation follows the ownership tree: workspaces create child scopes for
 //! conversations, and cancelling a parent cancels its descendants.
+//!
+//! Neither struct names a feature: a workspace hands out whatever client set it
+//! was built over, and `product/session/src/feature.rs` says which member of
+//! that set answers for which feature.
 
-use arut_protocol::chat::{composer::v1::ComposerServiceClient, v1::ChatServiceClient};
 use arut_rpc::Cancellation;
 use std::sync::Arc;
 
@@ -25,6 +28,10 @@ impl<R> Node<R> {
     }
     pub fn cancellation(&self) -> &Cancellation {
         &self.cancellation
+    }
+    /// The capability bundle or client set this node was constructed over.
+    pub fn runtime(&self) -> &Arc<R> {
+        &self.runtime
     }
     pub fn workspace(self: &Arc<Self>, id: String) -> Arc<Workspace<R>> {
         Arc::new(Workspace {
@@ -54,13 +61,10 @@ impl<R> Workspace<R> {
     pub fn conversation_cancellation(&self) -> Arc<Cancellation> {
         Arc::new(self.cancellation.child())
     }
-}
-impl Workspace<arut_feature_chat::ChatClients> {
-    pub fn chat_service(&self) -> ChatServiceClient {
-        self.node.runtime.chat.clone()
-    }
-    pub fn composer_service(&self) -> ComposerServiceClient {
-        self.node.runtime.composer.clone()
+    /// The clients this workspace's node was constructed over. A feature set
+    /// takes its own member out of them; nothing here names a feature.
+    pub fn clients(&self) -> &R {
+        self.node.runtime()
     }
 }
 

@@ -4,6 +4,8 @@
 
 #[cfg(target_os = "linux")]
 mod app;
+#[cfg(target_os = "linux")]
+mod glib_observe;
 
 fn main() {
     #[cfg(target_os = "linux")]

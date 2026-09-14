@@ -4,14 +4,16 @@ using Microsoft.UI.Xaml.Controls;
 namespace Arut.Surface.Windows;
 
 /// <summary>
-/// One transcript row. Rust decides the grouping (`StartsTimeGroup`,
-/// `StartsSpeakerGroup`); Windows decides how a date reads here.
+/// One transcript row. Rust decides the grouping (<c>StartsTimeGroup</c>,
+/// <c>StartsSpeakerGroup</c>, <c>EndsSpeakerGroup</c>) and what instant the row
+/// carries; Windows decides how a date reads here.
 /// </summary>
 public sealed record MessageRow(
     ulong Id,
     string Text,
     bool IsOutgoing,
     bool StartsGroup,
+    bool EndsGroup,
     string Time,
     string FullTime,
     string TimeGroup
@@ -19,16 +21,13 @@ public sealed record MessageRow(
 {
     public static MessageRow From(ChatMessage message)
     {
-        var acceptedAtMs = message.AcceptedAtMs;
-        var timestamp =
-            acceptedAtMs > 0 && acceptedAtMs <= 253402300799999UL
-                ? DateTimeOffset.FromUnixTimeMilliseconds((long)acceptedAtMs).ToLocalTime()
-                : (DateTimeOffset?)null;
+        var timestamp = Arut.Bindings.Time.AcceptedAt(message.AcceptedAtMs);
         return new MessageRow(
             message.Id,
             message.Text,
             message.Role == ChatRole.User,
             message.StartsSpeakerGroup,
+            message.EndsSpeakerGroup,
             timestamp?.ToString("t") ?? "",
             timestamp?.ToString("f") ?? "",
             message.StartsTimeGroup ? timestamp?.ToString("f") ?? "" : ""
@@ -40,7 +39,7 @@ public sealed record MessageRow(
     // x:Bind converts bool to Visibility itself, so no converter is needed.
     public bool HasTime => Time.Length > 0;
     public bool HasTimeGroup => TimeGroup.Length > 0;
-    public Thickness Spacing => new(0, StartsGroup ? 10 : 2, 0, 0);
+    public Thickness Spacing => new(0, StartsGroup ? 10 : 2, 0, EndsGroup ? 8 : 0);
 
     public override string ToString() => $"{Author}: {Text}. {FullTime}";
 }

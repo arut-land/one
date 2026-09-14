@@ -1,7 +1,5 @@
-use crate::app::{
-    observe::{Tasks, ViewState},
-    strings,
-};
+use crate::app::strings;
+use crate::glib_observe::Tasks;
 use arut_i18n::Message;
 use arut_product_session::chat::ChatClient;
 use gtk::{gio, glib, prelude::*};
@@ -85,6 +83,9 @@ impl SimpleComponent for Composer {
             #[name = "status"]
             gtk::Label {
                 set_wrap: true,
+                // A caption that appears and changes must be announced, which
+                // is what the status role is for.
+                set_accessible_role: gtk::AccessibleRole::Status,
                 update_property: &[gtk::accessible::Property::Label(&strings::show(&Message::LabelDraftSync))],
             },
         }
@@ -208,28 +209,32 @@ impl SimpleComponent for Composer {
             ));
         }
         widgets.editor.add_controller(shortcuts);
-        let resize = |editor: &gtk::TextView, scroll: &gtk::ScrolledWindow| {
-            // Use Pango's rounded pixel extents; truncating font metrics clips
-            // the seventh baseline at fractional font sizes.
-            let line = editor.create_pango_layout(Some("Ag")).pixel_size().1.max(1);
-            let inset = editor.top_margin() + editor.bottom_margin();
-            scroll.set_min_content_height(line + inset);
-            // Bottom margin belongs to the end of the document, not every
-            // viewport. Counting it here exposes part of an eighth line.
-            scroll.set_max_content_height(line * 7 + editor.top_margin());
+        // One Pango layout, measured when the font metric can have changed and
+        // never on a scroll. It is a shared cell rather than a local so the
+        // adjustment handler below reads the same measurement.
+        let line = Rc::new(Cell::new(1));
+        let resize = {
+            let line = line.clone();
+            move |editor: &gtk::TextView, scroll: &gtk::ScrolledWindow| {
+                // Use Pango's rounded pixel extents; truncating font metrics
+                // clips the seventh baseline at fractional font sizes.
+                let height = editor.create_pango_layout(Some("Ag")).pixel_size().1.max(1);
+                line.set(height);
+                let inset = editor.top_margin() + editor.bottom_margin();
+                scroll.set_min_content_height(height + inset);
+                // Bottom margin belongs to the end of the document, not every
+                // viewport. Counting it here exposes part of an eighth line.
+                scroll.set_max_content_height(height * 7 + editor.top_margin());
+            }
         };
         resize(&widgets.editor, &widgets.scroll);
         // Keep the icon beside a short draft's first line. For a tall editor it
         // stays at the bottom, where sending does not interrupt the text column.
         widgets.scroll.vadjustment().connect_changed({
-            let editor = widgets.editor.downgrade();
-            let send = widgets.send.downgrade();
+            let (send, line) = (widgets.send.downgrade(), line.clone());
             move |adjustment| {
-                let (Some(editor), Some(send)) = (editor.upgrade(), send.upgrade()) else {
-                    return;
-                };
-                let line = editor.create_pango_layout(Some("Ag")).pixel_size().1.max(1);
-                send.set_valign(if adjustment.page_size() <= f64::from(line * 3) {
+                let Some(send) = send.upgrade() else { return };
+                send.set_valign(if adjustment.page_size() <= f64::from(line.get() * 3) {
                     gtk::Align::Start
                 } else {
                     gtk::Align::End
@@ -273,4 +278,40 @@ impl SimpleComponent for Composer {
 /// send, the draft covers the rest (ADR 0007 keeps the two projections apart).
 fn sensitivity(state: &ViewState, chat: &ChatClient, draft: &str) {
     state.set_can_send(state.enabled() && chat.state().can_send && !draft.trim().is_empty());
+}
+
+mod properties {
+    use gtk::{glib, prelude::*, subclass::prelude::*};
+    use std::cell::{Cell, RefCell};
+
+    #[derive(Default, glib::Properties)]
+    #[properties(wrapper_type = super::ViewState)]
+    pub struct ViewState {
+        #[property(get, set)]
+        draft: RefCell<String>,
+        #[property(get, set)]
+        status: RefCell<String>,
+        #[property(get, set)]
+        enabled: Cell<bool>,
+        #[property(get, set)]
+        can_send: Cell<bool>,
+    }
+    #[glib::object_subclass]
+    impl ObjectSubclass for ViewState {
+        const NAME: &'static str = "ArutViewState";
+        type Type = super::ViewState;
+    }
+    #[glib::derived_properties]
+    impl ObjectImpl for ViewState {}
+}
+
+glib::wrapper! {
+    /// The composer's presentation state: the two-way draft plus what the
+    /// widgets around it derive from the chat and composer projections.
+    pub struct ViewState(ObjectSubclass<properties::ViewState>);
+}
+impl Default for ViewState {
+    fn default() -> Self {
+        glib::Object::new()
+    }
 }

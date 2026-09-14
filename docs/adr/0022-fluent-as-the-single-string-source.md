@@ -26,3 +26,14 @@ ADR 0016 stands: the core still emits typed values and no text. What changes is 
 ## Amendment (2026-09-14)
 
 Typed accessors are generated only where the platform lacks a checked accessor of its own. Android uses `R.string` and `R.plurals`, so no Kotlin is generated and argument typing there falls back to the platform's `vararg Any`. Swift and C# get key constants over `String(localized:)` and `ResourceLoader`, C# keeping a generated `Quantity()` because `.resw` has no plural form. TypeScript gets a key union, an argument map, and one `t()`. The `.ftl` copies beside the browser and editor surfaces are replaced by one generated `catalog.ts` module, and `arut-dev check` fails an `x:Uid` in the WinUI XAML that the generated `.resw` does not define.
+
+## Amendment (2026-09-14, scaling pass)
+
+Android does get generated Kotlin after all: `dev.arut.bindings.generated.Messages`
+maps every Fluent id to its `R.string` or `R.plurals` entry, which `R` alone cannot
+do for an id the core supplies at runtime. The Android resources are generated into
+the binding library (`bindings/kotlin/src/main/res`), so the library's own `R` names
+them and the app gets them by resource merging. `#[derive(Localized)]` also derives
+`message_args`, each variant's fields beside the Fluent names that select them,
+checked against the message's placeables by name and count; handles export it as
+`error_args() -> Vec<ErrorArg>`, so no platform re-pairs names to positions.

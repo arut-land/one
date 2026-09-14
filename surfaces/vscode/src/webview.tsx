@@ -1,14 +1,16 @@
+import type { HostMessage, PortMessage, Wire } from "@arut/bindings-typescript/bridge";
 import { selectLocale, strings } from "@arut/bindings-typescript/strings";
-import { bridgePort, mountChat, type ChatCommand, type ChatProjection } from "@arut/chat-ui";
+import { bridgePort, mountChat } from "@arut/chat-ui";
 
-declare function acquireVsCodeApi(): { postMessage(message: ChatCommand): void };
+declare function acquireVsCodeApi(): { postMessage(message: PortMessage): void };
 
-const opened = (globalThis as { __arutChat?: { locale: string; projection: ChatProjection } }).__arutChat;
+const opened = (globalThis as { __arutChat?: { locale: string; projection: Wire } }).__arutChat;
 if (opened === undefined) throw new Error("the extension host renders the first projection into the page");
 
 selectLocale([opened.locale]);
 const editor = acquireVsCodeApi();
-const port = bridgePort(command => editor.postMessage(command), opened.projection);
+const port = bridgePort(message => editor.postMessage(message), opened.projection);
 mountChat(document.querySelector<HTMLElement>("#app")!, port, strings);
-window.addEventListener("message", (event: MessageEvent<ChatProjection>) => port.receive(event.data));
-editor.postMessage({ type: "ready" });
+window.addEventListener("message", (event: MessageEvent<HostMessage>) => {
+  if (event.data.type === "projection") port.receive(event.data.values);
+});

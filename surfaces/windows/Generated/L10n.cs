@@ -32,11 +32,15 @@ internal static class L10n
             _ => "other",
         };
 
+    public const string ActionAbout = "action_about";
+    public const string ActionAppHelp = "action_app_help";
+    public const string ActionClearSearch = "action_clear_search";
     public const string ActionCloseHistory = "action_close_history";
     public const string ActionCollapseSidebar = "action_collapse_sidebar";
     public const string ActionCopyMessage = "action_copy_message";
     public const string ActionExpandSidebar = "action_expand_sidebar";
     public const string ActionFocusComposer = "action_focus_composer";
+    public const string ActionMainMenu = "action_main_menu";
     public const string ActionNewChat = "action_new_chat";
     public const string ActionNewChatShortcut = "action_new_chat_shortcut";
     public const string ActionNewConversation = "action_new_conversation";
@@ -44,6 +48,7 @@ internal static class L10n
     public const string ActionNextConversation = "action_next_conversation";
     public const string ActionOpenHistory = "action_open_history";
     public const string ActionPreviousConversation = "action_previous_conversation";
+    public const string ActionQuit = "action_quit";
     public const string ActionScrollToLatest = "action_scroll_to_latest";
     public const string ActionSearchConversations = "action_search_conversations";
     public const string ActionSend = "action_send";
@@ -91,9 +96,11 @@ internal static class L10n
     public const string LabelConversations = "label_conversations";
     public const string LabelDraft = "label_draft";
     public const string LabelDraftSync = "label_draft_sync";
+    public const string LabelKeyboardShortcuts = "label_keyboard_shortcuts";
     public const string LabelMessageStatus = "label_message_status";
     public const string LabelNodeAvailability = "label_node_availability";
     public const string LabelRecent = "label_recent";
+    public const string LabelShortcutsGeneral = "label_shortcuts_general";
     public const string LabelTranscript = "label_transcript";
     public const string LabelUnreadMessages = "label_unread_messages";
     public const string NodeFailureCancelled = "node_failure_cancelled";

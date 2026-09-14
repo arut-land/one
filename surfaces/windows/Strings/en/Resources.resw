@@ -13,6 +13,51 @@
   <resheader name="writer">
     <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
   </resheader>
+  <data name="action_about" xml:space="preserve">
+    <value>About Arut</value>
+  </data>
+  <data name="action_about.AutomationProperties.Name" xml:space="preserve">
+    <value>About Arut</value>
+  </data>
+  <data name="action_about.Content" xml:space="preserve">
+    <value>About Arut</value>
+  </data>
+  <data name="action_about.PlaceholderText" xml:space="preserve">
+    <value>About Arut</value>
+  </data>
+  <data name="action_about.Text" xml:space="preserve">
+    <value>About Arut</value>
+  </data>
+  <data name="action_app_help" xml:space="preserve">
+    <value>Arut Help</value>
+  </data>
+  <data name="action_app_help.AutomationProperties.Name" xml:space="preserve">
+    <value>Arut Help</value>
+  </data>
+  <data name="action_app_help.Content" xml:space="preserve">
+    <value>Arut Help</value>
+  </data>
+  <data name="action_app_help.PlaceholderText" xml:space="preserve">
+    <value>Arut Help</value>
+  </data>
+  <data name="action_app_help.Text" xml:space="preserve">
+    <value>Arut Help</value>
+  </data>
+  <data name="action_clear_search" xml:space="preserve">
+    <value>Clear the search</value>
+  </data>
+  <data name="action_clear_search.AutomationProperties.Name" xml:space="preserve">
+    <value>Clear the search</value>
+  </data>
+  <data name="action_clear_search.Content" xml:space="preserve">
+    <value>Clear the search</value>
+  </data>
+  <data name="action_clear_search.PlaceholderText" xml:space="preserve">
+    <value>Clear the search</value>
+  </data>
+  <data name="action_clear_search.Text" xml:space="preserve">
+    <value>Clear the search</value>
+  </data>
   <data name="action_close_history" xml:space="preserve">
     <value>Close chat history</value>
   </data>
@@ -87,6 +132,21 @@
   </data>
   <data name="action_focus_composer.Text" xml:space="preserve">
     <value>Focus message field</value>
+  </data>
+  <data name="action_main_menu" xml:space="preserve">
+    <value>Main menu</value>
+  </data>
+  <data name="action_main_menu.AutomationProperties.Name" xml:space="preserve">
+    <value>Main menu</value>
+  </data>
+  <data name="action_main_menu.Content" xml:space="preserve">
+    <value>Main menu</value>
+  </data>
+  <data name="action_main_menu.PlaceholderText" xml:space="preserve">
+    <value>Main menu</value>
+  </data>
+  <data name="action_main_menu.Text" xml:space="preserve">
+    <value>Main menu</value>
   </data>
   <data name="action_new_chat" xml:space="preserve">
     <value>New chat</value>
@@ -192,6 +252,21 @@
   </data>
   <data name="action_previous_conversation.Text" xml:space="preserve">
     <value>Previous conversation</value>
+  </data>
+  <data name="action_quit" xml:space="preserve">
+    <value>Quit</value>
+  </data>
+  <data name="action_quit.AutomationProperties.Name" xml:space="preserve">
+    <value>Quit</value>
+  </data>
+  <data name="action_quit.Content" xml:space="preserve">
+    <value>Quit</value>
+  </data>
+  <data name="action_quit.PlaceholderText" xml:space="preserve">
+    <value>Quit</value>
+  </data>
+  <data name="action_quit.Text" xml:space="preserve">
+    <value>Quit</value>
   </data>
   <data name="action_scroll_to_latest" xml:space="preserve">
     <value>Scroll to latest message</value>
@@ -502,6 +577,21 @@
   <data name="label_draft_sync.Text" xml:space="preserve">
     <value>Draft synchronization</value>
   </data>
+  <data name="label_keyboard_shortcuts" xml:space="preserve">
+    <value>Keyboard shortcuts</value>
+  </data>
+  <data name="label_keyboard_shortcuts.AutomationProperties.Name" xml:space="preserve">
+    <value>Keyboard shortcuts</value>
+  </data>
+  <data name="label_keyboard_shortcuts.Content" xml:space="preserve">
+    <value>Keyboard shortcuts</value>
+  </data>
+  <data name="label_keyboard_shortcuts.PlaceholderText" xml:space="preserve">
+    <value>Keyboard shortcuts</value>
+  </data>
+  <data name="label_keyboard_shortcuts.Text" xml:space="preserve">
+    <value>Keyboard shortcuts</value>
+  </data>
   <data name="label_message_status" xml:space="preserve">
     <value>Message status</value>
   </data>
@@ -546,6 +636,21 @@
   </data>
   <data name="label_recent.Text" xml:space="preserve">
     <value>Recent</value>
+  </data>
+  <data name="label_shortcuts_general" xml:space="preserve">
+    <value>General</value>
+  </data>
+  <data name="label_shortcuts_general.AutomationProperties.Name" xml:space="preserve">
+    <value>General</value>
+  </data>
+  <data name="label_shortcuts_general.Content" xml:space="preserve">
+    <value>General</value>
+  </data>
+  <data name="label_shortcuts_general.PlaceholderText" xml:space="preserve">
+    <value>General</value>
+  </data>
+  <data name="label_shortcuts_general.Text" xml:space="preserve">
+    <value>General</value>
   </data>
   <data name="label_transcript" xml:space="preserve">
     <value>Conversation transcript</value>

@@ -1,17 +1,77 @@
+# mise pins every tool and owns the task graph; each ecosystem keeps its own
+# build system (ADR 0026). Tasks that belong to one surface live in that
+# surface's `mise.toml` and are namespaced `//surfaces/linux:run`; the `alias`
+# field keeps the repository-wide names (`surface:linux`) working from here.
+#
 # Linux also needs system GTK >= 4.20, C/C++ compilers and pkg-config; CI lists
 # the Fedora packages. Platform toolchains (dotnet, java, gradle, xcodegen) are
 # scoped to the tasks that need them, so a Windows build never installs Node.
 # Machine-specific tuning goes in mise.local.toml (gitignored), for example
 # `[env] CARGO_BUILD_JOBS = "4"` on a memory-constrained laptop.
 
+monorepo_root = true
+
 [settings]
 lockfile = true
 cargo.binstall = true
 cargo.binstall_only = true
+# Input groups, the workspace project graph and `mise run --affected` are all
+# gated on this.
+experimental = true
+# Freshness compares blake3 hashes of the sources, not their timestamps. A
+# fresh clone, a `git checkout` or a copied binary rewrites mtimes without
+# changing content, and CI restores the task state from a cache, so timestamps
+# would report work that is already done as stale.
+task.source_freshness_hash_contents = true
+
+[monorepo]
+config_roots = [
+  "bindings/ffi",
+  "surfaces/android",
+  "surfaces/apple",
+  "surfaces/linux",
+  "surfaces/web",
+  "surfaces/windows",
+]
+# One lockfile at the root, including tools a subdirectory config asks for.
+lockfile = true
+
+# mise infers the project graph from Cargo.toml path dependencies and the pnpm
+# workspace, which is where `mise run --affected` gets its reverse-dependency
+# edges. The four directories below belong to no package manager mise reads, so
+# they are declared here; without them a Kotlin or Gradle change would look
+# like a change to nothing.
+[monorepo.projects."bindings:kotlin"]
+root = "bindings/kotlin"
+depends_add = ["cargo:arut_ffi"]
+
+[monorepo.projects."bindings:swift"]
+root = "bindings/swift"
+depends_add = ["cargo:arut_ffi"]
+
+[monorepo.projects."bindings:dotnet"]
+root = "bindings/dotnet"
+depends_add = ["cargo:arut_ffi"]
+
+[monorepo.projects."surface:android"]
+root = "surfaces/android"
+depends_add = ["bindings:kotlin"]
+
+[monorepo.projects."surface:apple"]
+root = "surfaces/apple"
+depends_add = ["bindings:swift"]
+
+[monorepo.projects."surface:windows"]
+root = "surfaces/windows"
+depends_add = ["bindings:dotnet"]
 
 [tools]
 cargo-binstall = "1.23.0"
-rust = { version = "1.98.1", components = ["rustfmt", "clippy"], targets = ["wasm32-unknown-unknown"] }
+# mr-boxington caches rustc invocations in a content-addressed store shared by
+# every checkout and worktree, and mise's `mr_boxington` option wraps cargo so
+# no shim setup is needed. Incremental compilation stays local and untouched.
+mr-boxington = "1.11.0"
+rust = { version = "1.98.1", mr_boxington = true, components = ["rustfmt", "clippy"], targets = ["wasm32-unknown-unknown"] }
 # Everything else installs only with the task that consumes it.
 
 [vars]
@@ -19,6 +79,82 @@ dotnet_version = "10.0.401"
 node_version = "26.8.2"
 # Must equal the pnpm-workspace.yaml catalog pin.
 typescript_version = "5.9.3"
+
+# ---------------------------------------------------------------------------
+# Task inputs. Groups are resolved relative to the config file that defines
+# them and are not inherited by subdirectory configs, so a surface config that
+# needs the Rust sources spells them out itself.
+
+[task_config.input_groups]
+toolchain = ["mise.toml", "mise.lock"]
+manifests = ["Cargo.toml", "Cargo.lock", "**/Cargo.toml", "!target/**", "!node_modules/**"]
+# What `mise run generate` writes. `arut-dev check` compares these against the
+# Fluent sources and the handle descriptors, so editing one has to re-run the
+# check that would catch it. `outputs` cannot reference a group, so the
+# generate task repeats these paths.
+generated = [
+  "bindings/ffi/src/generated/handles.rs",
+  "bindings/kotlin/src/main/kotlin/dev/arut/bindings/generated/Messages.kt",
+  "bindings/kotlin/src/main/res/**/strings.xml",
+  "bindings/typescript/src/generated/*.ts",
+  "surfaces/apple/shared/Sources/ArutSurface/Generated/L10n.swift",
+  "surfaces/apple/shared/Sources/ArutSurface/Resources/Localizable.xcstrings",
+  "surfaces/windows/Generated/L10n.cs",
+  "surfaces/windows/Strings/**/Resources.resw",
+]
+rust = [
+  "@group:manifests",
+  "@group:toolchain",
+  "@group:generated",
+  "bindings/ffi/**/*.rs",
+  "bindings/ffi/*.toml",
+  "features/**/*.rs",
+  "product/**/*.rs",
+  "protocols/**/*.rs",
+  "protocols/proto/**/*.proto",
+  "product/i18n/locales/**/*.ftl",
+  "runtimes/host-polled/**/*.rs",
+  "runtimes/local/**/*.rs",
+  "substrates/**/*.rs",
+  "surfaces/linux/**/*.rs",
+  "surfaces/windows/**/*.rs",
+  "tools/conformance/**/*.rs",
+  "tools/dev/**/*.rs",
+  "transports/**/*.rs",
+]
+js-manifests = [
+  "package.json",
+  "pnpm-lock.yaml",
+  "pnpm-workspace.yaml",
+  "bindings/typescript/package.json",
+  "runtimes/browser/package.json",
+  "surfaces/*/package.json",
+  "bindings/generated/wasm/pkg/package.json",
+  "@group:toolchain",
+]
+js = [
+  "@group:js-manifests",
+  "tsconfig.json",
+  "tsconfig.node.json",
+  "bindings/generated/wasm/pkg/**",
+  "bindings/typescript/**/*.ts",
+  "bindings/typescript/**/*.mjs",
+  "runtimes/browser/**/*.ts",
+  "surfaces/chat-ui/**/*.ts",
+  "surfaces/chat-ui/**/*.tsx",
+  "surfaces/chromium/**/*.ts",
+  "surfaces/vscode/**/*.ts",
+  "surfaces/web/**/*.ts",
+  "surfaces/web/**/*.tsx",
+  "surfaces/*/*.json",
+  "surfaces/*/*.html",
+  "!**/node_modules/**",
+  "!**/dist/**",
+]
+
+# ---------------------------------------------------------------------------
+# Shared tool scoping. A template's tools install with the tasks that extend
+# it, never with a bare `mise install`.
 
 [task_templates.dotnet]
 tools.dotnet = "{{vars.dotnet_version}}"
@@ -31,110 +167,71 @@ tools.pnpm = "12.3.4"
 tools.java = "21"
 tools.gradle = "8.12.1"
 
+# Templates are read from this file only, so the binding generator's pin lives
+# here even though its tasks live in bindings/ffi/mise.toml.
 [task_templates.ffi]
-dir = "{{config_root}}/bindings/ffi"
-# Use release binaries rather than compiling the binding generator.
 tools."github:boltffi/boltffi" = "0.30.1"
 
 # ---------------------------------------------------------------------------
-# Generation. Cargo owns compilation freshness. Packaging runs each time because
-# copied binaries retain old timestamps and sentinel files miss partial outputs.
-
-[tasks."ffi:wasm"]
-extends = "ffi"
-tools.node = "{{vars.node_version}}"
-tools."npm:typescript" = "{{vars.typescript_version}}"
-description = "Generate and package the wasm bindings"
-run = "boltffi pack wasm --deny-skipped"
-
-# BoltFFI invokes npx tsc on Windows; select TypeScript, not the npm tsc package.
-[tasks."ffi:wasm".env]
-npm_config_package = "typescript@{{vars.typescript_version}}"
-npm_config_yes = "true"
-
-[tasks."ffi:apple"]
-extends = "ffi"
-description = "Generate and package the Apple bindings (needs Xcode)"
-run = [
-  "rustup target add aarch64-apple-darwin x86_64-apple-darwin aarch64-apple-ios aarch64-apple-ios-sim x86_64-apple-ios",
-  "boltffi pack apple --deny-skipped",
-]
-
-[tasks."ffi:apple".env]
-MACOSX_DEPLOYMENT_TARGET = "13.0"
-IPHONEOS_DEPLOYMENT_TARGET = "16.0"
-
-[tasks."ffi:android"]
-extends = "ffi"
-description = "Generate and package the Android bindings (needs the NDK; ANDROID_NDK_HOME must be set)"
-run = [
-  "rustup target add aarch64-linux-android armv7-linux-androideabi x86_64-linux-android i686-linux-android",
-  "boltffi pack android --deny-skipped",
-]
-
-[tasks."ffi:csharp"]
-extends = "ffi"
-tools.dotnet = "{{vars.dotnet_version}}"
-description = "Generate and package the .NET bindings; pass --release for Release"
-run = "{% if os() == 'windows' %}powershell -NoProfile -File ../../surfaces/windows/build-bindings.ps1 {{arg(name='flags', var=true, default='')}}{% else %}boltffi pack csharp --deny-skipped {{arg(name='flags', var=true, default='')}} --overlay csharp-{{ 'release' if '--release' in arg(name='flags', var=true, default='') else 'debug' }}.toml{% endif %}"
+# Generation and installation.
 
 [tasks.generate]
-description = "Regenerate every localization resource from product/i18n/locales"
+description = "Regenerate every localization resource and handle descriptor"
 run = "cargo run --quiet -p arut-dev -- generate"
+sources = [
+  "product/i18n/locales/**/*.ftl",
+  "product/i18n/**/*.rs",
+  "bindings/ffi/handles.toml",
+  "tools/dev/**/*.rs",
+  "@group:manifests",
+]
+outputs = [
+  "bindings/ffi/src/generated/handles.rs",
+  "bindings/kotlin/src/main/kotlin/dev/arut/bindings/generated/Messages.kt",
+  "bindings/kotlin/src/main/res",
+  "bindings/typescript/src/generated/catalog.ts",
+  "bindings/typescript/src/generated/l10n.ts",
+  "surfaces/apple/shared/Sources/ArutSurface/Generated/L10n.swift",
+  "surfaces/apple/shared/Sources/ArutSurface/Resources/Localizable.xcstrings",
+  "surfaces/windows/Generated/L10n.cs",
+  "surfaces/windows/Strings",
+]
 
 [tasks.install]
 extends = "javascript"
 description = "Generate the wasm package and install the JavaScript workspace"
-depends = ["ffi:wasm"]
+depends = ["//bindings/ffi:wasm"]
 run = "pnpm install"
+sources = ["@group:js-manifests"]
+# pnpm writes this on every successful install, so deleting node_modules
+# re-runs the task even when the lockfiles have not moved.
+outputs = ["node_modules/.modules.yaml"]
 
 # ---------------------------------------------------------------------------
 # Checks. All cargo work is one task so it does not fight the build lock; the
-# independent gates run concurrently beside it. CI calls `check`, same as humans.
-
-[tasks."check:rust"]
-tools."cargo:cargo-nextest" = "0.9.144"
-tools."cargo:cargo-machete" = "0.9.2"
-description = "Format, lint, test, prune, build the isolated wasm core, and check generated output"
-run = [
-  "cargo fmt --all --check",
-  "cargo clippy --workspace --all-targets -- -D warnings",
-  "cargo nextest run --workspace",
-  "cargo test --doc --workspace",
-  "cargo machete",
-  "cargo check --target wasm32-unknown-unknown -p arut_ffi -p arut-i18n -p arut-feature-chat -p arut-product-session -p arut-watch -p arut-storage -p arut-authority",
-  "cargo run --quiet -p arut-dev -- check",
-]
-
-# docs/ECOSYSTEM.md names this assertion by name: the wasm core carries no
-# wasm-bindgen and no Tokio executor, and no core crate opts out of the
-# workspace's unsafe_code deny.
-[tasks."check:core-graph"]
-description = "Assert the isolated core graph and its unsafe-code lint"
-run = '''
-test -z "$(cargo tree -i wasm-bindgen --target wasm32-unknown-unknown -p arut_ffi)" \
-  || { echo "arut_ffi reaches wasm-bindgen"; exit 1; }
-test -z "$(cargo tree -e features -p arut_ffi --target wasm32-unknown-unknown | grep -E 'tokio.*(rt|rt-multi-thread)')" \
-  || { echo "arut_ffi reaches a Tokio executor"; exit 1; }
-test -z "$(grep -rn 'allow(unsafe_code)' features product substrates bindings)" \
-  || { echo "a core crate opts out of the unsafe_code deny"; exit 1; }
-'''
+# independent gates run concurrently beside it. CI calls `check`, same as
+# humans. `check:rust` and `check:core-graph` are scripts under mise-tasks/.
 
 [tasks."check:proto"]
 tools.buf = "1.72.0"
 description = "Lint Protobuf contracts and reject breaking changes against master"
+# Deliberately no sources: `buf breaking` compares against the master branch,
+# which moves without any file in the working tree changing.
 run = ["buf lint", "buf breaking --against '.git#branch=master'"]
 
 [tasks."check:deps"]
 tools."aqua:EmbarkStudios/cargo-deny" = "0.20.2"
 description = "Licenses, advisories, duplicates across the Rust graph (needs network)"
+# Deliberately no sources: the advisory database changes on its own, so an
+# unchanged Cargo.lock is not evidence that the answer is unchanged.
 run = "cargo deny check"
 
 [tasks."check:ts"]
 extends = "javascript"
-description = "Type-check the TypeScript workspace"
+description = "Type-check the TypeScript workspace and run the store tests"
 depends = ["install"]
 run = "pnpm check"
+sources = ["@group:js"]
 
 [tasks.check]
 description = "Everything CI checks, in one command"
@@ -143,11 +240,24 @@ depends = ["check:rust", "check:core-graph", "check:proto", "check:deps", "check
 # ---------------------------------------------------------------------------
 # Build and run.
 
-[tasks.build]
+[tasks."build:rust"]
+description = "Build the Linux surface and the local node daemon"
+run = "cargo build -p arut-linux -p arut-runtime-local"
+sources = ["@group:rust"]
+# The two binaries, never `target/`: cargo owns everything else in there.
+outputs = ["target/debug/arut-linux", "target/debug/arutd"]
+
+[tasks."build:js"]
 extends = "javascript"
-description = "Build the Linux surface, daemon, and web/Chromium/VS Code bundles"
+description = "Build the web, Chromium, and VS Code bundles"
 depends = ["install"]
-run = ["cargo build -p arut-linux -p arut-runtime-local", "pnpm build"]
+run = "pnpm build"
+sources = ["@group:js"]
+outputs = ["surfaces/web/dist", "surfaces/chromium/dist", "surfaces/vscode/dist"]
+
+[tasks.build]
+description = "Build the Linux surface, daemon, and web/Chromium/VS Code bundles"
+depends = ["build:rust", "build:js"]
 
 [tasks.fmt]
 tools.buf = "1.72.0"
@@ -162,76 +272,6 @@ run = "cargo nextest run --workspace"
 [tasks."node:local"]
 description = "Run the local node daemon"
 run = "cargo run -p arut-runtime-local --bin arutd"
-
-[tasks."surface:linux"]
-description = "Run the Linux GTK4 surface"
-run = "cargo run -p arut-linux"
-
-[tasks."surface:web"]
-extends = "javascript"
-description = "Run the web surface with hot reload"
-depends = ["install"]
-run = "pnpm --filter @arut/surface-web dev"
-
-[tasks."review:linux"]
-description = "Capture Linux states on an isolated Hyprland output at three sizes, then clean up"
-run = "bash tools/review-linux.sh"
-
-# ---------------------------------------------------------------------------
-# Windows. The shared repository checks run in the Linux job, not here.
-
-[tasks."build:windows"]
-extends = "dotnet"
-description = "Build the native WinUI desktop app and Rust DLL on Windows x64"
-depends = ["ffi:csharp"]
-run = "dotnet build surfaces/windows/Arut.Windows.csproj"
-
-[tasks."surface:windows"]
-extends = "dotnet"
-description = "Build and launch the native Windows desktop app"
-depends = ["build:windows"]
-run = "dotnet run --project surfaces/windows/Arut.Windows.csproj --no-build"
-
-[tasks."publish:windows"]
-extends = "dotnet"
-description = "Publish a self-contained Windows x64 app folder"
-run = "mise run ffi:csharp -- --release && dotnet publish surfaces/windows/Arut.Windows.csproj -c Release -o surfaces/windows/bin/publish"
-
-[tasks."fmt:dotnet"]
-extends = "dotnet"
-description = "Format C# in place; `mise run fmt:dotnet --verify-no-changes` checks instead"
-run = "dotnet format surfaces/windows/Arut.Windows.csproj {{arg(name='flags', var=true, default='')}}"
-
-[tasks."check:windows"]
-extends = "dotnet"
-description = "Build WinUI and check C# formatting"
-depends = ["build:windows"]
-run = "dotnet format surfaces/windows/Arut.Windows.csproj --verify-no-changes"
-
-# ---------------------------------------------------------------------------
-# Android and Apple.
-
-[tasks."surface:android"]
-extends = "jvm"
-description = "Build the Android surface (needs the Android SDK and NDK)"
-depends = ["ffi:android"]
-run = "gradle -p surfaces/android assembleDebug"
-
-[tasks."surface:apple-project"]
-tools.xcodegen = "2.46.0"
-description = "Generate the Apple Xcode project (needs Xcode)"
-depends = ["ffi:apple"]
-run = "xcodegen generate --use-cache --spec surfaces/apple/project.yml"
-
-[tasks."surface:macos"]
-description = "Build the macOS app without signing (needs Xcode)"
-depends = ["surface:apple-project"]
-run = "xcodebuild -project surfaces/apple/Arut.xcodeproj -scheme ArutMac -configuration Debug -destination 'platform=macOS' -derivedDataPath surfaces/apple/DerivedData build CODE_SIGNING_ALLOWED=NO"
-
-[tasks."check:apple"]
-description = "Build the macOS app and test the Swift bindings (needs Xcode)"
-depends = ["surface:macos"]
-run = "swift test --package-path bindings/swift"
 
 [tasks.clean]
 description = "Remove Cargo outputs, generated bindings, and JavaScript installs/builds"

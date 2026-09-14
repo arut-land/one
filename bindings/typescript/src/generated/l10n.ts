@@ -11,11 +11,15 @@ export interface L10nBundle {
 
 /** Every message the product can show. */
 export type MessageKey =
+  | "action-about"
+  | "action-app-help"
+  | "action-clear-search"
   | "action-close-history"
   | "action-collapse-sidebar"
   | "action-copy-message"
   | "action-expand-sidebar"
   | "action-focus-composer"
+  | "action-main-menu"
   | "action-new-chat"
   | "action-new-chat-shortcut"
   | "action-new-conversation"
@@ -23,6 +27,7 @@ export type MessageKey =
   | "action-next-conversation"
   | "action-open-history"
   | "action-previous-conversation"
+  | "action-quit"
   | "action-scroll-to-latest"
   | "action-search-conversations"
   | "action-send"
@@ -70,9 +75,11 @@ export type MessageKey =
   | "label-conversations"
   | "label-draft"
   | "label-draft-sync"
+  | "label-keyboard-shortcuts"
   | "label-message-status"
   | "label-node-availability"
   | "label-recent"
+  | "label-shortcuts-general"
   | "label-transcript"
   | "label-unread-messages"
   | "node-failure-cancelled"
@@ -100,6 +107,98 @@ export interface Args {
   "composer-error-authority-changed": { currentEpoch: string };
   "composer-error-revision-conflict": { current: string };
 }
+
+/** The arguments each message interpolates, in the order every generated
+* consumer reads them. A typed error crosses FFI carrying its values in
+* this order. */
+export const placeables: Record<MessageKey, readonly string[]> = {
+  "action-about": [],
+  "action-app-help": [],
+  "action-clear-search": [],
+  "action-close-history": [],
+  "action-collapse-sidebar": [],
+  "action-copy-message": [],
+  "action-expand-sidebar": [],
+  "action-focus-composer": [],
+  "action-main-menu": [],
+  "action-new-chat": [],
+  "action-new-chat-shortcut": ["shortcut"],
+  "action-new-conversation": [],
+  "action-new-conversation-shortcut": ["shortcut"],
+  "action-next-conversation": [],
+  "action-open-history": [],
+  "action-previous-conversation": [],
+  "action-quit": [],
+  "action-scroll-to-latest": [],
+  "action-search-conversations": [],
+  "action-send": [],
+  "action-send-message": [],
+  "action-toggle-history": [],
+  "action-toggle-history-shortcut": ["shortcut"],
+  "action-toggle-sidebar": [],
+  "action-toggle-sidebar-shortcut": ["shortcut"],
+  "app-name": [],
+  "availability-available": [],
+  "availability-manifest-unreachable": [],
+  "availability-not-advertised": [],
+  "availability-reported-unavailable": [],
+  "availability-unknown": [],
+  "chat-draft-synced": [],
+  "chat-empty-hint": [],
+  "chat-empty-start": [],
+  "chat-empty-title": [],
+  "chat-error-cancelled": [],
+  "chat-error-chat-id-missing": [],
+  "chat-history-empty": [],
+  "chat-local-session": [],
+  "chat-role-assistant": [],
+  "chat-role-you": [],
+  "chat-session-saved": [],
+  "chat-status-failed": [],
+  "chat-status-sending": [],
+  "chat-status-thinking": [],
+  "composer-error-authority-changed": ["currentEpoch"],
+  "composer-error-outcome-missing": [],
+  "composer-error-revision-conflict": ["current"],
+  "composer-error-scope-mismatch": [],
+  "composer-error-scope-missing": [],
+  "composer-error-snapshot-missing": [],
+  "composer-hint-command-return": [],
+  "composer-hint-enter": [],
+  "composer-hint-multiline": [],
+  "composer-hint-option-return": [],
+  "composer-placeholder": [],
+  "composer-status-connecting": [],
+  "composer-status-failed": [],
+  "conversation-search-empty": [],
+  "conversation-search-placeholder": [],
+  "label-chat-history": [],
+  "label-conversations": [],
+  "label-draft": [],
+  "label-draft-sync": [],
+  "label-keyboard-shortcuts": [],
+  "label-message-status": [],
+  "label-node-availability": [],
+  "label-recent": [],
+  "label-shortcuts-general": [],
+  "label-transcript": [],
+  "label-unread-messages": [],
+  "node-failure-cancelled": [],
+  "node-failure-conflict": [],
+  "node-failure-internal": [],
+  "node-failure-missing": [],
+  "node-failure-overloaded": [],
+  "node-failure-refused": [],
+  "node-failure-rejected": [],
+  "node-failure-timed-out": [],
+  "node-failure-unreachable": [],
+  "node-failure-unsupported": [],
+  "readiness-lease-held": [],
+  "readiness-ready": [],
+  "readiness-socket-unreachable": [],
+  "readiness-spawn-failed": [],
+  "readiness-timed-out": [],
+};
 
 /** Format one message. */
 export function t(bundle: L10nBundle, key: Exclude<MessageKey, keyof Args>): string;

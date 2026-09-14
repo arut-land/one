@@ -6,8 +6,10 @@
 :root {
   --font: var(--vscode-font-family, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif);
   --ink: var(--vscode-foreground, #26231f);
-  --ink-soft: var(--vscode-foreground, #5f594f);
-  --ink-faint: var(--vscode-descriptionForeground, #81796e);
+  /* Primary, secondary and faint stay three colours inside a VS Code webview
+     too: `--vscode-foreground` for all of them collapsed the hierarchy. */
+  --ink-soft: var(--vscode-descriptionForeground, #5f594f);
+  --ink-faint: color-mix(in srgb, var(--vscode-descriptionForeground, #81796e) 85%, transparent);
   --page: var(--vscode-editor-background, #faf8f4);
   --shell: var(--vscode-sideBar-background, #eee9e0);
   --outside: var(--vscode-editor-background, #e7e1d7);
@@ -25,10 +27,13 @@
   --mark: var(--vscode-button-background, #28241f);
   --mark-ink: var(--vscode-button-foreground, #faf7f1);
   --danger: var(--vscode-errorForeground, #a53e2b);
-  --ok: #58805c;
+  --ok: var(--vscode-charts-green, #58805c);
   --focus: var(--vscode-focusBorder, #b34c30);
   --scrim: #2d271f66;
   --bubble: var(--vscode-list-hoverBackground, #e9e2d7);
+  --marked: var(--vscode-editor-findMatchHighlightBackground, #f3d79a);
+  /* Native scrollbars and form controls follow the page, not the default. */
+  color-scheme: light dark;
   color: var(--ink);
   background: var(--outside);
   font-family: var(--font);
@@ -38,8 +43,8 @@
 @media (prefers-color-scheme: dark) {
   :root {
     --ink: var(--vscode-foreground, #ece7de);
-    --ink-soft: var(--vscode-foreground, #cbc4b8);
-    --ink-faint: var(--vscode-descriptionForeground, #9a9287);
+    --ink-soft: var(--vscode-descriptionForeground, #cbc4b8);
+    --ink-faint: color-mix(in srgb, var(--vscode-descriptionForeground, #9a9287) 85%, transparent);
     --page: var(--vscode-editor-background, #1d1b18);
     --shell: var(--vscode-sideBar-background, #201e1a);
     --outside: var(--vscode-editor-background, #15130f);
@@ -57,14 +62,27 @@
     --danger: var(--vscode-errorForeground, #e98c72);
     --scrim: #0b0a0899;
     --bubble: var(--vscode-list-hoverBackground, #2e2a24);
+    --marked: var(--vscode-editor-findMatchHighlightBackground, #6a5321);
   }
 }
 
 * { box-sizing: border-box; }
 body { margin: 0; }
-button, input { color: inherit; font: inherit; }
+button, input, textarea { color: inherit; font: inherit; }
 button { -webkit-tap-highlight-color: transparent; }
+h1, h2, h3 { margin: 0; font-size: inherit; font-weight: inherit; }
 :focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+
+/* Out of sight, still in the accessibility tree: `display: none` would take a
+   speaker label or a badge out of both. */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
 
 .chat-shell {
   --sidebar-width: 264px;
@@ -109,7 +127,7 @@ button { -webkit-tap-highlight-color: transparent; }
   font-weight: 700;
 }
 .brand-mark { width: 36px; height: 36px; }
-.sidebar-brand strong { overflow: hidden; font-size: 1.05rem; font-weight: 650; white-space: nowrap; }
+.sidebar-brand h1 { overflow: hidden; font-size: 1.05rem; font-weight: 650; white-space: nowrap; }
 
 .sidebar-toggle, .mobile-menu {
   display: grid;
@@ -142,8 +160,13 @@ button { -webkit-tap-highlight-color: transparent; }
 .new-chat svg { flex: 0 0 auto; }
 .new-chat b { font-size: .88rem; font-weight: 600; }
 
+.search { display: flex; align-items: center; gap: 8px; margin: 0 12px 14px; padding: 0 11px; border: 1px solid var(--field-edge); border-radius: 10px; background: var(--field); }
+.search svg { width: 15px; height: 15px; flex: 0 0 auto; fill: none; stroke: var(--ink-faint); stroke-width: 1.8; stroke-linecap: round; }
+.search input { min-width: 0; flex: 1; min-height: 34px; border: 0; background: transparent; font-size: .82rem; outline: none; }
+.search:focus-within { border-color: var(--focus); }
+
 .history { display: flex; min-height: 0; flex: 1; flex-direction: column; gap: 3px; overflow-y: auto; padding: 0 12px; }
-.history p { margin: 0 10px 8px; color: var(--ink-faint); font-size: .67rem; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; }
+.history h2 { margin: 0 10px 8px; color: var(--ink-faint); font-size: .67rem; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; }
 .history-empty { padding: 8px 10px; color: var(--ink-faint); font-size: .8rem; line-height: 1.45; }
 .history button {
   display: flex;
@@ -159,7 +182,9 @@ button { -webkit-tap-highlight-color: transparent; }
   text-align: left;
   cursor: pointer;
 }
-.history button > span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.history-title { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.history mark { border-radius: 3px; background: var(--marked); color: inherit; }
+.unread { width: 7px; height: 7px; flex: 0 0 auto; border-radius: 50%; background: var(--accent); }
 .history button:hover { background: var(--list-hover); color: var(--ink); }
 .history button.active { background: var(--selected); color: var(--selected-ink); font-weight: 600; }
 .history-dot { width: 6px; height: 6px; flex: 0 0 auto; border: 1px solid currentcolor; border-radius: 50%; }
@@ -169,53 +194,60 @@ button { -webkit-tap-highlight-color: transparent; }
 .sidebar-foot span, .status > span { width: 7px; height: 7px; flex: 0 0 auto; border-radius: 50%; background: var(--ok); }
 
 .sidebar-closed .sidebar-brand { grid-template-columns: 36px; padding-inline: 18px; }
-.sidebar-closed .sidebar-brand strong, .sidebar-closed .sidebar-brand .brand-mark,
-.sidebar-closed .new-chat b, .sidebar-closed .history, .sidebar-closed .sidebar-foot { display: none; }
+.sidebar-closed .sidebar-brand h1, .sidebar-closed .sidebar-brand .brand-mark,
+.sidebar-closed .new-chat b, .sidebar-closed .search, .sidebar-closed .history,
+.sidebar-closed .sidebar-foot { display: none; }
 .sidebar-closed .new-chat { justify-content: center; width: 44px; margin-inline: 14px; padding: 0; }
 
 .conversation { display: grid; min-width: 0; height: 100dvh; grid-template-rows: auto minmax(0, 1fr) auto; background: var(--page); }
 .conversation > header { display: flex; min-height: 72px; align-items: center; gap: 14px; padding: 12px clamp(18px, 3vw, 36px); border-bottom: 1px solid var(--edge); background: var(--page); }
 .mobile-menu { display: none; }
 .conversation-title { display: grid; min-width: 0; flex: 1; gap: 3px; }
-.conversation-title strong { overflow: hidden; font-size: 1rem; font-weight: 650; text-overflow: ellipsis; white-space: nowrap; }
+.conversation-title h2 { overflow: hidden; font-size: 1rem; font-weight: 650; text-overflow: ellipsis; white-space: nowrap; }
 .conversation-title > span { color: var(--ink-faint); font-size: .72rem; }
 .status { display: flex; align-items: center; gap: 8px; color: var(--ink-faint); font-size: .73rem; }
 .status.busy > span { background: var(--accent); animation: pulse 1.2s ease-in-out infinite; }
 
 .messages { min-height: 0; overflow-y: auto; scrollbar-color: var(--edge) transparent; }
 .message-list { width: min(760px, 100%); margin: 0 auto; padding: 40px clamp(20px, 6vw, 64px) 48px; }
+.time-group { margin: 26px 0 18px; color: var(--ink-faint); font-size: .7rem; letter-spacing: .04em; text-align: center; }
+.message-list > .time-group:first-child { margin-top: 0; }
 .message {
   display: grid;
   grid-template-columns: 32px minmax(0, 1fr);
   gap: 12px;
-  margin-bottom: 30px;
+  /* Where one speaker's run ends is the core's answer, not a lookahead each
+     surface writes for itself. */
+  margin-bottom: 8px;
   /* A long transcript is a long list: rows off screen skip layout and paint. */
   content-visibility: auto;
   contain-intrinsic-size: auto 96px;
 }
+.message.ends-group { margin-bottom: 30px; }
 .message .avatar { display: grid; width: 32px; height: 32px; place-items: center; border: 1px solid var(--edge); border-radius: 10px; background: var(--raised); color: var(--ink-soft); font-size: .8rem; font-weight: 700; }
 .message > div { min-width: 0; }
-.message > div > span { color: var(--ink-faint); font-size: .7rem; font-weight: 700; letter-spacing: .04em; }
+.message .speaker { display: block; color: var(--ink-faint); font-size: .7rem; font-weight: 700; letter-spacing: .04em; }
 .message p { margin: 6px 0 0; color: var(--ink); font-size: .96rem; line-height: 1.65; overflow-wrap: anywhere; white-space: pre-wrap; }
 .message.user { grid-template-columns: minmax(0, 1fr) 32px; }
 .message.user .avatar { grid-column: 2; grid-row: 1; background: var(--mark); color: var(--mark-ink); }
 .message.user > div { grid-column: 1; grid-row: 1; justify-self: end; max-width: 80%; padding: 10px 14px; border-radius: 16px 4px 16px 16px; background: var(--bubble); }
-.message.user > div > span { display: none; }
 .message.user p { margin: 0; }
 
 .empty-state { display: grid; min-height: 100%; place-content: center; justify-items: center; padding: 40px 20px; text-align: center; }
 .empty-mark { width: 48px; height: 48px; margin-bottom: 20px; border-radius: 15px; font-size: 23px; }
-.empty-state p { margin: 0 0 8px; font-size: clamp(1.45rem, 4vw, 2rem); font-weight: 600; letter-spacing: -.025em; }
+.empty-state h3 { margin: 0 0 8px; font-size: clamp(1.45rem, 4vw, 2rem); font-weight: 600; letter-spacing: -.025em; }
 .empty-state > span:last-child { max-width: 390px; color: var(--ink-faint); font-size: .86rem; line-height: 1.5; }
 
 .composer-wrap { padding: 12px clamp(16px, 4vw, 40px) 18px; background: var(--page); }
-.composer-wrap form { display: flex; width: min(720px, 100%); min-height: 56px; align-items: center; gap: 8px; margin: 0 auto; padding: 6px 7px 6px 18px; border: 1px solid var(--field-edge); border-radius: 18px; background: var(--field); }
+.composer-wrap form { display: flex; width: min(720px, 100%); min-height: 56px; align-items: flex-end; gap: 8px; margin: 0 auto; padding: 6px 7px 6px 18px; border: 1px solid var(--field-edge); border-radius: 18px; background: var(--field); }
 .composer-wrap form:focus-within { border-color: var(--focus); }
-.composer-wrap input { min-width: 0; flex: 1; border: 0; background: transparent; outline: none; }
+/* One line to start, seven at most, then it scrolls: the same draft every
+   other surface accepts, including its newlines. */
+.composer-wrap textarea { min-width: 0; flex: 1; max-height: calc(7 * 1.5rem + 20px); padding: 12px 0; border: 0; background: transparent; line-height: 1.5rem; outline: none; overflow-y: auto; resize: none; }
 .composer-wrap form > button { display: grid; width: 42px; height: 42px; place-items: center; border: 0; border-radius: 13px; background: var(--accent); color: var(--accent-ink); cursor: pointer; }
 .composer-wrap form > button:hover:not(:disabled) { background: var(--accent-strong); }
 .composer-wrap form > button:disabled { cursor: default; opacity: .35; }
-.spinner { width: 15px; height: 15px; border: 2px solid #ffffff66; border-top-color: currentcolor; border-radius: 50%; animation: spin .8s linear infinite; }
+.spinner { width: 15px; height: 15px; border: 2px solid color-mix(in srgb, currentcolor 35%, transparent); border-top-color: currentcolor; border-radius: 50%; animation: spin .8s linear infinite; }
 .composer-wrap small { display: block; width: min(720px, 100%); margin: 7px auto 0; color: var(--ink-faint); font-size: .65rem; text-align: right; }
 .error { width: min(720px, 100%); margin: 0 auto 8px; color: var(--danger); font-size: .78rem; }
 
@@ -228,13 +260,15 @@ button { -webkit-tap-highlight-color: transparent; }
   .sidebar { position: fixed; inset: 0 auto 0 0; width: min(82vw, 300px); box-shadow: 16px 0 50px var(--scrim); transition: transform 180ms ease; }
   .sidebar-closed .sidebar { transform: translateX(-105%); }
   .sidebar-closed .sidebar-brand { grid-template-columns: 36px minmax(0, 1fr) 32px; padding: 0 16px 0 18px; }
-  .sidebar-closed .sidebar-brand strong, .sidebar-closed .sidebar-brand .brand-mark,
-  .sidebar-closed .new-chat b, .sidebar-closed .history, .sidebar-closed .sidebar-foot { display: flex; }
+  .sidebar-closed .sidebar-brand h1, .sidebar-closed .sidebar-brand .brand-mark,
+  .sidebar-closed .new-chat b, .sidebar-closed .search, .sidebar-closed .history,
+  .sidebar-closed .sidebar-foot { display: flex; }
   .sidebar-closed .new-chat { justify-content: flex-start; width: auto; margin-inline: 12px; padding: 0 13px; }
   .sidebar-open .sidebar-scrim { position: fixed; z-index: 2; inset: 0; display: block; width: 100%; border: 0; background: var(--scrim); }
   .mobile-menu { display: grid; }
   .conversation > header { min-height: 64px; padding: 10px 14px; }
-  .conversation-title > span, .status { display: none; }
+  .conversation-title > span { display: none; }
+  .status { font-size: .68rem; }
   .message-list { padding: 28px 16px 36px; }
   .message { grid-template-columns: 28px minmax(0, 1fr); gap: 9px; }
   .message .avatar { width: 28px; height: 28px; border-radius: 9px; }

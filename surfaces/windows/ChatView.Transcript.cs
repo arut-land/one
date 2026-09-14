@@ -49,7 +49,7 @@ public sealed partial class ChatView
 
     private void ScrollToLatest(object sender, RoutedEventArgs args)
     {
-        Composer.Focus(FocusState.Programmatic);
+        Composer.Focus(FocusState.Keyboard);
         followLatest = true;
         QueueScroll();
     }

@@ -1,7 +1,7 @@
-use crate::app::{conversation_model::ConversationItem, observe::Tasks, strings};
+use crate::app::{Session, conversation_model::ConversationItem, strings};
+use crate::glib_observe::Tasks;
 use arut_i18n::Message;
-use arut_product_session::ProductSession;
-use gtk::{gio, glib, prelude::*};
+use gtk::{gio, prelude::*};
 use relm4::{ComponentParts, ComponentSender, SimpleComponent};
 use std::{collections::HashMap, rc::Rc};
 
@@ -18,14 +18,14 @@ pub enum Msg {
 
 #[relm4::component(pub)]
 impl SimpleComponent for Conversations {
-    type Init = Rc<ProductSession>;
+    type Init = Rc<Session>;
     type Input = Msg;
     type Output = ();
     view! {
         gtk::Box {
             set_orientation: gtk::Orientation::Vertical,
             set_spacing: 8,
-            set_width_request: 260,
+            set_width_request: 220,
             add_css_class: "arut-sidebar",
             gtk::Label {
                 set_label: &strings::show(&Message::LabelConversations),
@@ -45,10 +45,10 @@ impl SimpleComponent for Conversations {
                     #[local_ref]
                     list -> gtk::ListView {},
                 },
-                #[name = "empty_search"]
+                #[name = "empty"]
                 add_overlay = &gtk::Label {
-                    set_label: &strings::show(&Message::ConversationSearchEmpty),
                     set_wrap: true,
+                    set_visible: false,
                     set_justify: gtk::Justification::Center,
                     set_halign: gtk::Align::Center,
                     set_valign: gtk::Align::Start,
@@ -74,33 +74,17 @@ impl SimpleComponent for Conversations {
         search.update_property(&[gtk::accessible::Property::Label(&strings::show(
             &Message::ActionSearchConversations,
         ))]);
-        let filter = gtk::StringFilter::builder()
-            .expression(gtk::PropertyExpression::new(
-                ConversationItem::static_type(),
-                gtk::Expression::NONE,
-                "title",
-            ))
-            .match_mode(gtk::StringFilterMatchMode::Substring)
-            .ignore_case(true)
-            .build();
-        search
-            .bind_property("text", &filter, "search")
-            .transform_to(|_, text: String| Some(text.trim().to_owned()))
-            .sync_create()
-            .build();
-        let selection = gtk::SingleSelection::new(Some(gtk::FilterListModel::new(
-            Some(store.clone()),
-            Some(filter.clone()),
-        )));
+        // One query, owned by the session: the matching rule, its casing and
+        // the highlight offsets are all Rust's (ADR 0021).
+        search.connect_notify_local(Some("text"), {
+            let session = session.clone();
+            move |search: &gtk::SearchEntry, _| {
+                session.set_query(search.text().trim().to_owned());
+            }
+        });
+        let selection = gtk::SingleSelection::new(Some(store.clone()));
         selection.set_autoselect(false);
         selection.set_can_unselect(true);
-        // Filtering resets GTK's selected index. Re-apply the session's
-        // selection from here, after the binding above has refiltered: doing it
-        // from the model's own items-changed re-enters GtkSingleSelection.
-        search.connect_notify_local(Some("text"), {
-            let (selection, session) = (selection.clone(), session.clone());
-            move |_, _| select_row(&selection, session.selected_id().as_deref())
-        });
         let list = gtk::ListView::new(Some(selection.clone()), Some(row_factory()));
         list.add_css_class("navigation-sidebar");
         list.set_single_click_activate(true);
@@ -123,48 +107,47 @@ impl SimpleComponent for Conversations {
             _tasks: Tasks::default(),
         };
         let widgets = view_output!();
-        empty_search_expression(&selection, &search).bind(
-            &widgets.empty_search,
-            "visible",
-            None::<&gtk::Widget>,
-        );
-        // One row object and one unread observer per conversation, keyed by id,
-        // so neither accumulates as summaries are refreshed.
-        let mut rows: HashMap<String, (ConversationItem, Tasks)> = HashMap::new();
+        let empty = widgets.empty.clone();
+        // One row object per conversation, keyed by id, so GTK rebinds an
+        // existing widget instead of rebuilding it when a summary changes.
+        let mut rows: HashMap<String, ConversationItem> = HashMap::new();
         model
             ._tasks
             .observe(session.conversations_changes(), move || {
                 let selected = session.selected_id();
                 let summaries = session.chat_summaries();
-                rows.retain(|id, _| summaries.iter().any(|summary| &summary.id == id));
-                let mut titles_changed = false;
+                // Only the unnarrowed list says which conversations still
+                // exist; a query hides rows without ending them, and dropping
+                // them here would rebuild the widget and lose the selection
+                // when the query is cleared.
+                if session.query().is_empty() {
+                    rows.retain(|id, _| summaries.iter().any(|summary| &summary.id == id));
+                }
                 let ordered: Vec<ConversationItem> = summaries
                     .iter()
                     .map(|summary| {
-                        let (row, _) = rows.entry(summary.id.clone()).or_insert_with(|| {
+                        let row = rows.entry(summary.id.clone()).or_insert_with(|| {
                             let row = ConversationItem::default();
                             row.set_id(summary.id.as_str());
-                            let tasks = follow_unread(&session, &summary.id, &row);
-                            (row, tasks)
+                            row
                         });
-                        if row.title() != summary.title {
-                            row.set_title(summary.title.as_str());
-                            titles_changed = true;
-                        }
-                        if row.preview() != summary.preview {
-                            row.set_preview(summary.preview.as_str());
-                        }
-                        if selected.as_ref() == Some(&summary.id) {
-                            row.set_unread(false);
-                        }
+                        row.set_title(summary.title.as_str());
+                        row.set_preview(summary.preview.as_str());
+                        row.set_unread(summary.unread);
+                        row.set_highlight(ConversationItem::highlight_of(
+                            &summary.title,
+                            &summary.match_ranges,
+                        ));
                         row.clone()
                     })
                     .collect();
-                store.splice(0, store.n_items(), &ordered);
-                // GTK filters watch items-changed, not item property notifies.
-                if titles_changed {
-                    filter.changed(gtk::FilterChange::Different);
-                }
+                splice_changed(&store, &ordered);
+                empty.set_visible(ordered.is_empty());
+                empty.set_label(&strings::show(if session.query().is_empty() {
+                    &Message::ChatHistoryEmpty
+                } else {
+                    &Message::ConversationSearchEmpty
+                }));
                 select_row(&selection, selected.as_deref());
             });
         ComponentParts { model, widgets }
@@ -172,6 +155,33 @@ impl SimpleComponent for Conversations {
     fn update(&mut self, _message: Msg, _sender: ComponentSender<Self>) {
         self.search.grab_focus();
     }
+}
+
+/// Replaces only the range that actually moved. Row objects are keyed by
+/// conversation id, so a shared prefix and suffix are the same objects and GTK
+/// keeps their widgets, their scroll position and their selection.
+fn splice_changed(store: &gio::ListStore, ordered: &[ConversationItem]) {
+    let existing: Vec<ConversationItem> = store
+        .iter::<ConversationItem>()
+        .map(|row| row.expect("conversation row"))
+        .collect();
+    let same = |left: &ConversationItem, right: &ConversationItem| left == right;
+    let head = existing
+        .iter()
+        .zip(ordered)
+        .take_while(|(left, right)| same(left, right))
+        .count();
+    let tail = existing[head..]
+        .iter()
+        .rev()
+        .zip(ordered[head..].iter().rev())
+        .take_while(|(left, right)| same(left, right))
+        .count();
+    if head == existing.len() && head == ordered.len() {
+        return;
+    }
+    let removed = (existing.len() - head - tail) as u32;
+    store.splice(head as u32, removed, &ordered[head..ordered.len() - tail]);
 }
 
 fn select_row(selection: &gtk::SingleSelection, selected: Option<&str>) {
@@ -182,48 +192,6 @@ fn select_row(selection: &gtk::SingleSelection, selected: Option<&str>) {
             .is_some_and(|row| Some(row.id().as_str()) == selected)
     });
     selection.set_selected(position.unwrap_or(gtk::INVALID_LIST_POSITION));
-}
-
-/// Marks a row unread while a different conversation is showing. Keyed by
-/// conversation id so the task goes when the conversation does.
-fn follow_unread(session: &Rc<ProductSession>, id: &str, row: &ConversationItem) -> Tasks {
-    let mut tasks = Tasks::default();
-    if let Some(chat) = session.select_chat(id) {
-        let (row, session, id) = (row.clone(), session.clone(), id.to_owned());
-        let mut previous = chat.state().last_message_id;
-        tasks.observe(chat.changes(), move || {
-            let latest = chat.state().last_message_id;
-            if latest > previous && session.selected_id().as_ref() != Some(&id) {
-                row.set_unread(true);
-            }
-            previous = latest;
-        });
-    }
-    tasks
-}
-
-/// Shown only when a search is active and matches nothing, evaluated by GTK
-/// from the two properties it depends on.
-fn empty_search_expression(
-    selection: &gtk::SingleSelection,
-    search: &gtk::SearchEntry,
-) -> gtk::ClosureExpression {
-    let matches = gtk::PropertyExpression::new(
-        gtk::SingleSelection::static_type(),
-        Some(gtk::ConstantExpression::new(selection)),
-        "n-items",
-    );
-    let query = gtk::PropertyExpression::new(
-        gtk::SearchEntry::static_type(),
-        Some(gtk::ConstantExpression::new(search)),
-        "text",
-    );
-    gtk::ClosureExpression::new::<bool>(
-        [matches.upcast(), query.upcast()],
-        glib::closure!(|_: Option<glib::Object>, matches: u32, query: &str| {
-            matches == 0 && !query.trim().is_empty()
-        }),
-    )
 }
 
 fn row_factory() -> gtk::SignalListItemFactory {
@@ -258,15 +226,16 @@ fn row_factory() -> gtk::SignalListItemFactory {
             None::<gtk::Expression>,
             "item",
         );
-        expression
-            .chain_property::<ConversationItem>("title")
-            .bind(&title, "label", Some(item));
-        expression
-            .chain_property::<ConversationItem>("preview")
-            .bind(&preview, "label", Some(item));
-        expression
-            .chain_property::<ConversationItem>("unread")
-            .bind(&unread, "visible", Some(item));
+        for (property, target, target_property) in [
+            ("title", title.clone().upcast::<gtk::Widget>(), "label"),
+            ("highlight", title.clone().upcast(), "attributes"),
+            ("preview", preview.upcast(), "label"),
+            ("unread", unread.upcast(), "visible"),
+        ] {
+            expression
+                .chain_property::<ConversationItem>(property)
+                .bind(&target, target_property, Some(item));
+        }
         item.set_child(Some(&row));
     });
     factory

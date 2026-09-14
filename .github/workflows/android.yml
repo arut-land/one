@@ -2,6 +2,11 @@ name: Android
 
 # GitHub does the path filtering that a `changes` job used to do in shell. The
 # two lists are identical on purpose: the workflow parser resolves no anchors.
+#
+# `mise run --affected //surfaces/android:build` computes the same set from the
+# project graph and is the right command locally, but it decides after a runner
+# has already started, installed the Android SDK, and fetched the NDK. The
+# filter decides before any of that, so it stays (ADR 0026).
 on:
   push:
     branches: ["**"]

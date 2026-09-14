@@ -9,6 +9,7 @@ boltffi = "=0.30.1"
 arut-feature-chat.workspace = true
 arut-protocol.workspace = true
 arut-rpc.workspace = true
+arut-storage.workspace = true
 arut-watch.workspace = true
 
 [dev-dependencies]

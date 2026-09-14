@@ -9,7 +9,7 @@ ADRs record decisions that are hard to reverse, surprising without context, and 
 | [0003](0003-device-keys-and-end-to-end-encryption.md) | Device keys, linked-device root key, end-to-end encryption from v1 | Accepted, amended by 0019 |
 | [0004](0004-commands-are-carried-envelopes.md) | Commands are signed envelopes any paired device may carry | Accepted |
 | [0005](0005-sans-io-machines-and-ports.md) | Sans-I/O machines, async ports, executor from the composition root | Accepted |
-| [0006](0006-typed-scopes-not-a-service-container.md) | Typed scopes and capability bundles, no service container | Accepted |
+| [0006](0006-typed-scopes-not-a-service-container.md) | Typed scopes and capability bundles, no service container | Accepted, amended 2026-09-14 |
 | [0007](0007-scope-handles-and-generated-bindings.md) | One observable handle per scope, generated bindings over BoltFFI | Accepted, amended 2026-09-14 |
 | [0008](0008-generated-service-layer-from-protobuf.md) | Service layer generated from Protobuf descriptors | Accepted, amended by 0025 |
 | [0009](0009-connect-framing-over-rpc-channel.md) | Connect framing over `RpcChannel`; transports are adapters | Accepted, amended by 0019 |
@@ -28,7 +28,8 @@ ADRs record decisions that are hard to reverse, surprising without context, and 
 | [0022](0022-fluent-as-the-single-string-source.md) | One Fluent string source generated into native resources | Accepted, amends 0016, amended 2026-09-14 |
 | [0023](0023-redb-default-node-storage.md) | Native node persistence uses redb; memory remains for tests and wasm | Accepted, amends 0010 |
 | [0024](0024-composer-drafts-echo-locally-and-flush-last-writer-wins.md) | Composer drafts echo locally and flush last-writer-wins | Accepted, amends 0018 |
-| [0025](0025-capability-descriptors-are-typed-service-markers.md) | Capability descriptors are typed service markers | Accepted, amends 0008 |
+| [0025](0025-capability-descriptors-are-typed-service-markers.md) | Capability descriptors are typed service markers | Accepted, amends 0008, amended 2026-09-14 |
+| [0026](0026-mise-orchestrates-with-native-build-systems.md) | mise orchestrates the task graph; ecosystems keep their build systems | Accepted |
 
 The records that shaped the first vertical slice live in git history before the reset commit and are not authoritative.
 

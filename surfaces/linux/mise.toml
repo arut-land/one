@@ -1,0 +1,14 @@
+# The GTK4 surface. Rust sources are built by the repository-wide cargo tasks;
+# these two tasks run the app, so neither declares sources.
+
+[tasks.run]
+alias = "surface:linux"
+description = "Run the Linux GTK4 surface"
+dir = "{{config_root}}/../.."
+run = "cargo run -p arut-linux"
+
+[tasks.review]
+alias = "review:linux"
+description = "Capture Linux states on an isolated Hyprland output at three sizes, then clean up"
+dir = "{{config_root}}/../.."
+run = "bash tools/review-linux.sh"

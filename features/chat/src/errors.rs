@@ -16,7 +16,9 @@
 //! added without a message does not build. It is a proc macro and nothing it
 //! emits names a type from above this layer, so the core stays where it is.
 //! It also emits `MESSAGE_KEYS`, the keys each enum names itself, which is what
-//! `product/i18n/tests/error_keys.rs` checks every locale against.
+//! `product/i18n/tests/error_keys.rs` checks every locale against, and
+//! `message_args`, each variant's fields beside the Fluent names that select
+//! them, so no layer above restates the argument order.
 
 use arut_i18n_macros::Localized;
 use arut_rpc::{Code, Status};
@@ -129,6 +131,32 @@ node_errors!(ComposerError, ChatError);
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn an_error_carries_its_arguments_under_the_names_its_message_interpolates() {
+        assert_eq!(
+            ComposerError::RevisionConflict { current: 7 }.message_args(),
+            [("current".to_owned(), "7".to_owned())]
+        );
+        assert_eq!(
+            ComposerError::AuthorityChanged { current_epoch: 2 }.message_args(),
+            [("currentEpoch".to_owned(), "2".to_owned())]
+        );
+        assert!(ComposerError::ScopeMismatch.message_args().is_empty());
+    }
+
+    #[test]
+    fn a_delegating_variant_forwards_the_key_and_the_arguments_it_wraps() {
+        let draft = ComposerError::RevisionConflict { current: 9 };
+        let error = ChatError::Draft(draft);
+        assert_eq!(error.message_key(), draft.message_key());
+        assert_eq!(error.message_args(), draft.message_args());
+        assert!(
+            ChatError::Node(NodeFailure::TimedOut)
+                .message_args()
+                .is_empty()
+        );
+    }
 
     #[test]
     fn a_status_reaches_a_projection_as_a_code_and_never_as_its_text() {

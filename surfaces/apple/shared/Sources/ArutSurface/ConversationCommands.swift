@@ -14,6 +14,7 @@ extension FocusedValues {
 
 public struct ConversationCommands: Commands {
     @FocusedValue(\.conversations) private var state
+    @Environment(\.openWindow) private var openWindow
 
     public init() {}
 
@@ -38,6 +39,12 @@ public struct ConversationCommands: Commands {
             Button(L10n.actionPreviousConversation()) { state?.move(-1) }
                 .keyboardShortcut(.tab, modifiers: [.control, .shift])
                 .disabled(state == nil)
+        }
+        // Every Mac app has a Help menu; the default one points at a help book
+        // this app does not ship, so it opens the shortcut reference instead.
+        CommandGroup(replacing: .help) {
+            Button(L10n.actionAppHelp()) { openWindow(id: ShortcutsView.windowId) }
+                .keyboardShortcut("/", modifiers: [.command, .shift])
         }
         SidebarCommands()
     }

@@ -17,3 +17,14 @@ Several Rust reactive systems exist: `nami` (WaterUI's core), Leptos's `reactive
 The FFI streams declare `mode = "async"`, so BoltFFI generates each ecosystem's own idiom (Swift `AsyncStream`, Kotlin `Flow`, C# `IAsyncEnumerable`, a TypeScript async iterable) and the hand-written adapter classes are deleted. What stays per platform is one generic subscribe-and-read helper, not a class per handle.
 
 The export-macro candidate needs a shape this record did not state. BoltFFI's source scanner does not expand macros, so a macro expanding to `#[export] impl` makes a handle disappear from the bindings without an error. If it is ever built it must be a generator that writes source for the scanner to read; the `arut_scope_handle!` sketch in `docs/ECOSYSTEM.md` is to be read that way.
+
+## Amendment (2026-09-14, scaling pass)
+
+The generator this record asked for exists. `bindings/ffi/handles.toml` declares
+each scope handle and `arut-dev generate` writes `bindings/ffi/src/generated/handles.rs`:
+the struct, `state()`, the error key and arguments, child scopes, keyed rows and
+the revision stream. Intents stay hand-written in a second `#[export] impl` block
+in `bindings/ffi/src/intents.rs`; `arut-dev check` regenerates and diffs. The
+subscribe-and-read loop belongs to each binding package, so `arut-dev check
+--strict-surfaces` fails a loop over a `*Changes()` stream in a surface file and
+names the helper to use instead.

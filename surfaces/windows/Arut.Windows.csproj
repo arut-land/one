@@ -24,11 +24,15 @@
   <!-- Supplies `global using Arut.Ffi`, so the generated types need no facade. -->
   <Import Project="../../bindings/dotnet/Exports.props" />
   <ItemGroup>
+    <!-- The Rust-to-.NET idiom: projections, cursored rows, the echo rule, the
+         typed error path and the time bound (ADR 0021). -->
+    <Using Include="Arut.Bindings" />
+  </ItemGroup>
+  <ItemGroup>
     <PackageReference Include="Microsoft.WindowsAppSDK" Version="2.4.0" />
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.0" />
-    <ProjectReference
-      Include="../../bindings/generated/csharp/$(Configuration)/BoltFFI.CSharp.csproj"
-    />
+    <!-- The generated project comes with the bindings project. -->
+    <ProjectReference Include="../../bindings/dotnet/Arut.Bindings.csproj" />
     <Content
       Update="Assets\Arut.ico;Assets\Arut.png"
       CopyToOutputDirectory="PreserveNewest"

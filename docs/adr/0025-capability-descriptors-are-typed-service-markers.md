@@ -17,3 +17,12 @@ The capability manifest was built from a runtime registry: each service register
 - `ServiceRuntimeMetadata`, `ServiceMetadata`, `ServiceRegistration` and the registrations behind them are deleted; `RpcRegistry` is the route map alone.
 - `ServiceDescriptor::version` becomes `Version { major, minor }` and `compatible()` states ADR 0015's two-minor window, but nothing produces a minor other than zero yet, so the comparison is inert until a second minor exists.
 - The proto fields (`available`, `unavailable_reason`, `permissions`, `limits`, `extensions`) are untouched, so a node may still report a service it hosts as unavailable.
+
+## Amendment (2026-09-14)
+
+`FeatureSet::DESCRIPTORS` concatenates its members' `ServiceSet`s at compile
+time, and `Services<F>` presents that as an ordinary `ServiceSet`, so
+`manifest::<S>()` and `Node::serve` are unchanged and a node still advertises
+exactly what its features serve. The concatenation copies into a fixed-capacity
+const buffer, because a slice of the exact length cannot be built generically on
+stable Rust; overflowing the capacity is a compile error.

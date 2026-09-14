@@ -25,13 +25,6 @@ android {
     buildFeatures {
         compose = true
     }
-
-    // The generated Kotlin and the JNI libraries compile into this module;
-    // there is no wrapper subproject between them and the app (ADR 0007).
-    sourceSets.named("main") {
-        java.srcDir(rootProject.file("../../bindings/generated/android/kotlin"))
-        jniLibs.srcDir(rootProject.file("../../bindings/generated/android/jniLibs"))
-    }
 }
 
 kotlin {
@@ -41,11 +34,16 @@ kotlin {
 }
 
 dependencies {
+    // The generated FFI package, the JNI libraries, and the observation helpers
+    // this app's screens read Rust through (ADR 0007).
+    implementation(project(":bindings"))
     implementation(libs.activity.compose)
     implementation(platform(libs.compose.bom))
     implementation(libs.compose.foundation)
     implementation(libs.compose.material.icons)
     implementation(libs.compose.material3)
+    // WindowSizeClass: the window's own breakpoints, not a dp measurement of ours.
+    implementation(libs.compose.material3.window.size)
     implementation(libs.compose.ui.tooling.preview)
     debugImplementation(libs.compose.ui.tooling)
     // ADR 0011: the session lives in a ViewModel so it survives configuration changes.

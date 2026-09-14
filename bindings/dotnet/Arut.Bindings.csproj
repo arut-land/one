@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- The Rust-to-.NET idiom lives here, once: subscribe-and-read, cursored
+       rows, list reconciliation, the echo rule, the typed error path and the
+       time bound. A surface then holds views, intents and platform lifecycle
+       only (ADR 0007, ADR 0021). Nothing in this project names a feature; the
+       generated project is referenced so that a surface referencing
+       Arut.Bindings gets the generated types with it. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.0" />
+    <ProjectReference Include="../generated/csharp/$(Configuration)/BoltFFI.CSharp.csproj" />
+  </ItemGroup>
+</Project>

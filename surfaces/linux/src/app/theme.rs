@@ -2,7 +2,7 @@
 //! references the theme's named colors and its own media queries, so a theme or
 //! contrast change re-resolves without anything being rebuilt here. The portal
 //! supplies the two settings GTK 4.20 does not: accent and reduced motion.
-use crate::app::observe::Tasks;
+use crate::glib_observe::Tasks;
 use ashpd::desktop::{
     Color,
     settings::{

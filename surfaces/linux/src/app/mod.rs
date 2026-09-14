@@ -4,9 +4,7 @@ mod conversation_model;
 mod conversations;
 mod decorations;
 mod layout;
-mod message_model;
 mod navigation;
-mod observe;
 #[cfg(feature = "review")]
 mod review;
 mod shell;
@@ -19,8 +17,12 @@ mod component_tests;
 #[cfg(any(test, feature = "review"))]
 mod testing;
 
+/// The features this surface composes. Naming the set once here is what lets
+/// every other module write `Rc<Session>` without restating it.
+pub type Session = arut_product_session::ProductSession<(arut_product_session::feature::Chat,)>;
+
 pub fn run() {
-    use arut_product_session::{ProductSession, hosting::Host};
+    use arut_product_session::hosting::Host;
     use arut_runtime_local::{
         child::ChildHost,
         hosting::{TokioSpawner, desktop_executor},
@@ -57,7 +59,7 @@ pub fn run() {
         }
     };
     eprintln!("arut-linux: arutd ready over IPC");
-    let session = Rc::new(ProductSession::remote(
+    let session: Rc<Session> = Rc::new(Session::remote(
         channel,
         arut_product_session::SessionScope {
             node_id: "local".into(),

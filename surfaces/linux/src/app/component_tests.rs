@@ -3,26 +3,27 @@
 //! Each test runs in its own child process so GTK's process-wide policy and the
 //! isolated `XDG_*` directories are set before GTK loads. Run them with
 //! `cargo test -p arut-linux -- --ignored --test-threads=1`.
+use crate::app::Session;
 use crate::app::{
     composer::{Composer, Msg as ComposerMsg},
     conversation_model::ConversationItem,
-    observe::Tasks,
     shell::Shell,
     testing::{descendant, find},
     transcript::{Msg as TranscriptMsg, Transcript},
 };
-use arut_product_session::{ProductSession, SessionScope, chat::ChatClient, hosting::Host};
+use crate::glib_observe::Tasks;
+use arut_product_session::{SessionScope, chat::ChatClient, hosting::Host};
 use arut_runtime_local::{
     child::ChildHost,
     hosting::{TokioSpawner, desktop_executor},
 };
-use gtk::{glib, prelude::*};
+use gtk::{gio::prelude::ActionGroupExt, glib, prelude::*};
 use relm4::{Component, ComponentController};
 use std::{cell::Cell, path::PathBuf, rc::Rc, sync::Arc};
 
 struct Fixture {
     context: glib::MainContext,
-    session: Rc<ProductSession>,
+    session: Rc<Session>,
     directory: PathBuf,
     _app: relm4::RelmApp<()>,
 }
@@ -62,7 +63,7 @@ fn fixture(name: &str) -> Option<Fixture> {
         spawner: Arc::new(TokioSpawner(executor.handle().clone())),
     };
     let channel = executor.block_on(host.connect()).unwrap();
-    let session = Rc::new(ProductSession::remote(
+    let session: Rc<Session> = Rc::new(Session::remote(
         channel,
         SessionScope {
             node_id: "local".into(),
@@ -458,6 +459,7 @@ fn shell_restores_navigation_and_per_chat_drafts() {
     crate::app::navigation::Navigation {
         selected: chat.id(),
         collapsed: false,
+        ..Default::default()
     }
     .save();
     let shell = Shell::builder().launch(fixture.session.clone()).detach();
@@ -519,6 +521,75 @@ fn shell_availability_and_search_follow_the_session() {
         (minimum, natural),
         (0, 0),
         "a collapsed sidebar releases all width"
+    );
+    shell.widget().close();
+}
+
+#[test]
+#[ignore = "requires a GTK display; run with --ignored --test-threads=1"]
+// `GtkShortcutsWindow` is deprecated in GTK 4.18; see the contract note on
+// `shell::install_overlay` for why this surface still uses it.
+#[allow(deprecated)]
+fn every_shortcut_reaches_an_action_the_menu_and_the_overlay_name() {
+    let Some(fixture) = fixture("every_shortcut_reaches_an_action_the_menu_and_the_overlay_name")
+    else {
+        return;
+    };
+    let shell = Shell::builder().launch(fixture.session.clone()).detach();
+    WidgetExt::realize(shell.widget());
+    fixture.drain();
+    let window = shell.widget();
+    for action in [
+        "new",
+        "sidebar",
+        "composer",
+        "search",
+        "escape",
+        "latest",
+        "about",
+        "show-help-overlay",
+    ] {
+        assert!(
+            ActionGroupExt::has_action(window, action),
+            "win.{action} is missing"
+        );
+    }
+    let controllers = window.observe_controllers();
+    let shortcuts = (0..controllers.n_items())
+        .filter_map(|position| controllers.item(position))
+        .filter_map(|object| object.downcast::<gtk::ShortcutController>().ok())
+        .flat_map(|controller| {
+            (0..controller.n_items())
+                .filter_map(move |position| controller.item(position))
+                .filter_map(|object| object.downcast::<gtk::Shortcut>().ok())
+        })
+        .filter_map(|shortcut| shortcut.trigger())
+        .map(|trigger| trigger.to_string())
+        .collect::<Vec<_>>();
+    for trigger in [
+        "<Control>n",
+        "<Control>b",
+        "<Control>l",
+        "<Control>k",
+        "<Control>f",
+        "Escape",
+        "<Control>question",
+    ] {
+        assert!(
+            shortcuts.iter().any(|registered| registered == trigger),
+            "{trigger} is not registered; have {shortcuts:?}"
+        );
+    }
+    let menu: gtk::MenuButton = descendant(window).expect("primary menu");
+    assert_eq!(
+        menu.menu_model().expect("a menu model").n_items(),
+        3,
+        "About, Keyboard Shortcuts and Quit"
+    );
+    let overlay = window.help_overlay().expect("a shortcuts window");
+    assert!(
+        descendant::<gtk::ShortcutsShortcut>(&overlay).is_some(),
+        "the overlay is built from the shortcut table"
     );
     shell.widget().close();
 }

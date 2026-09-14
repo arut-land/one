@@ -1,0 +1,10 @@
+# The web surface. `mise run build` builds every bundle through the root
+# `build:js` task; this is the development server.
+
+[tasks.dev]
+extends = "javascript"
+alias = "surface:web"
+description = "Run the web surface with hot reload"
+dir = "{{config_root}}/../.."
+depends = ["//:install"]
+run = "pnpm --filter @arut/surface-web dev"

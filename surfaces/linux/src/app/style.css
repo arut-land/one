@@ -2,15 +2,26 @@
    `arut_accent` is defined by theme.rs from the portal, or aliased to the
    theme's own selection color when the portal has no accent. */
 
+/* The outgoing bubble and the selected sidebar row mean different things, so
+   they do not share a color: the row takes the theme's full selection, the
+   bubble a tint of the accent over the chat surface. */
+@define-color arut_outgoing_bg mix(@theme_base_color, @arut_accent, 0.16);
+
 .arut-window {
     background-color: @theme_bg_color;
     color: @theme_fg_color;
 }
 
 .arut-sidebar {
+    /* The GtkPaned handle draws the division; a border here would double it. */
     background-color: @theme_unfocused_bg_color;
-    border-right: 1px solid @borders;
     padding: 16px 8px 8px;
+}
+
+/* A collapsed sidebar has nothing to divide, so its drag handle goes with it. */
+paned.arut-collapsed > separator {
+    min-width: 0;
+    background-image: none;
 }
 
 .arut-chat-surface {
@@ -88,9 +99,14 @@
 }
 
 .arut-message.arut-outgoing {
-    background-color: @theme_selected_bg_color;
-    color: @theme_selected_fg_color;
-    border: 1px solid @borders;
+    background-color: @arut_outgoing_bg;
+    color: @theme_fg_color;
+    border: 1px solid alpha(@arut_accent, 0.4);
+}
+
+.arut-message-time {
+    color: @theme_unfocused_fg_color;
+    font-size: smaller;
 }
 
 .arut-empty-title {

@@ -10,12 +10,14 @@ final class ConversationUITests: XCTestCase {
         XCTAssertFalse(app.buttons["send-message"].isEnabled)
         composer.click()
         composer.typeText("First line")
-        composer.typeKey(.return, modifierFlags: .shift)
+        // Option-Return is the multiline field's own line break; the surface
+        // adds no key handling of its own.
+        composer.typeKey(.return, modifierFlags: .option)
         composer.typeKey(.return, modifierFlags: .option)
         composer.typeText("Third line")
         XCTAssertEqual(composer.value as? String, "First line\n\nThird line")
         for index in 4...12 {
-            composer.typeKey(.return, modifierFlags: .shift)
+            composer.typeKey(.return, modifierFlags: .option)
             composer.typeText("Line \(index)")
         }
         let text = "First line\n\nThird line\n" + (4...12).map { "Line \($0)" }.joined(separator: "\n")

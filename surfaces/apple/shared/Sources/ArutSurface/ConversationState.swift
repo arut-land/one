@@ -3,31 +3,25 @@ import Foundation
 import Observation
 
 /// One conversation's projections, kept current by `run()` for exactly as long
-/// as the view that owns it is on screen. Observation tracks the properties a
-/// `body` actually reads, so there is no adapter class and no snapshot tuple
-/// (ADR 0021); the generated streams are consumed with `for await` (ADR 0007).
+/// as the view that owns it is on screen.
+///
+/// Every loop over a revision stream belongs to `ArutBindings` (ADR 0021): this
+/// holds a `Projection`, a `Rows` cursor and a `Draft`, and adds the one thing a
+/// generic helper cannot know -- that this screen shows the chat's error first
+/// and the composer's when the chat itself is idle.
 @Observable
 @MainActor
 final class ConversationState {
-    private(set) var chat: ChatState
-    private(set) var messages: [ChatMessage] = []
-    /// Already localized: the core hands over a Fluent id and its arguments,
-    /// never a sentence (ADR 0016, ADR 0022).
-    private(set) var errorMessage: String?
+    let chat: Projection<ChatState>
+    let messages: Rows<ChatMessage>
+    let draft: Draft
+    /// The typed error either scope is holding, already localized.
+    let failure: Projection<String?>
 
-    /// The visible draft. Writing it reaches Rust immediately, which echoes the
-    /// text into `ComposerState` and coalesces rapid edits behind one in-flight
-    /// write, last one winning, so the surface keeps no queue of its own.
-    var draft: String {
-        get { draftText }
-        set {
-            guard newValue != draftText else { return }
-            draftText = newValue
-            Task { await self.write(newValue) }
-        }
-    }
+    /// A thrown FFI call is a transport failure, not a typed outcome; typed
+    /// outcomes arrive through `failure` on the next revision.
+    private(set) var transportFailure: String?
 
-    private var draftText: String
     @ObservationIgnored private let handle: ChatHandle
     @ObservationIgnored private let composer: ComposerHandle
 
@@ -35,74 +29,62 @@ final class ConversationState {
         let composer = handle.composer()
         self.handle = handle
         self.composer = composer
-        self.chat = handle.state()
-        self.draftText = composer.state().text
-        self.messages = handle.messagesAfter(afterId: 0)
+        self.chat = Projection { handle.state() }
+        self.messages = Rows(id: { $0.id }, after: { handle.messagesAfter(afterId: $0) })
+        self.draft = Draft(
+            composer.state().text,
+            replace: { _ = try await composer.replace(text: $0) }
+        )
+        self.failure = Projection {
+            handle.localized(bundle: .module) ?? composer.localized(bundle: .module)
+        }
+        draft.onFailure = { [weak self] _ in self?.reportTransportFailure() }
     }
 
-    var canSend: Bool {
-        chat.canSend && !draftText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-    }
-
-    var isSending: Bool { chat.isSending }
+    /// The conversation Rust has named, or `nil` while this one is pending.
+    var chatId: String? { chat.value.id }
+    var errorMessage: String? { failure.value ?? transportFailure }
+    var canSend: Bool { chat.value.canSend && !draft.isEmpty }
+    var isSending: Bool { chat.value.isSending }
     var isEmpty: Bool { messages.isEmpty }
 
     /// Runs until the owning view disappears; SwiftUI cancels the task, which
-    /// ends every loop and releases the generated subscriptions.
+    /// ends every follower and releases the generated subscriptions.
+    ///
+    /// One subscription per scope: a scope revises its whole projection at once,
+    /// so the state, the row cursor and the error are read together.
     func run() async {
-        await perform { _ = try await self.composer.initialize() }
-        async let transcript: Void = followChat()
-        async let drafts: Void = followComposer()
-        async let following: Void = perform { try await self.composer.follow() }
-        _ = await (transcript, drafts, following)
+        async let transcript: Void = observing(handle.chatChanges()) { [self] in
+            chat.refresh()
+            messages.refresh()
+            failure.refresh()
+        }
+        async let drafts: Void = observing(composer.composerChanges()) { [self] in
+            draft.absorb(remote: composer.state().text)
+            failure.refresh()
+        }
+        async let composing: Void = following(
+            initialize: { _ = try await self.composer.initialize() },
+            follow: { try await self.composer.follow() },
+            onFailure: { [weak self] _ in self?.reportTransportFailure() }
+        )
+        _ = await (transcript, drafts, composing)
     }
 
     func send() async {
         guard canSend else { return }
-        let text = draftText
-        await perform { _ = try await self.handle.send(text: text) }
-    }
-
-    private func followChat() async {
-        for await _ in handle.chatChanges() {
-            chat = handle.state()
-            messages += handle.messagesAfter(afterId: messages.last?.id ?? 0)
-            refreshError()
-        }
-    }
-
-    private func followComposer() async {
-        for await _ in composer.composerChanges() {
-            let text = composer.state().text
-            if text != draftText { draftText = text }
-            refreshError()
-        }
-    }
-
-    private func write(_ text: String) async {
-        await perform { _ = try await self.composer.replace(text: text) }
-    }
-
-    private func refreshError() {
-        if let key = handle.errorKey() {
-            errorMessage = Strings.localized(key, arguments: handle.errorArgs())
-        } else if let key = composer.errorKey() {
-            errorMessage = Strings.localized(key, arguments: composer.errorArgs())
-        } else {
-            errorMessage = nil
-        }
-    }
-
-    /// A thrown FFI call is a transport failure, not a typed outcome; typed
-    /// outcomes arrive through `errorKey()` on the next revision.
-    private func perform(_ action: () async throws -> Void) async {
+        let text = draft.text
         do {
-            try await action()
-            refreshError()
+            _ = try await handle.send(text: text)
+            transportFailure = nil
         } catch is CancellationError {
             return
         } catch {
-            errorMessage = Strings.localized("node-failure-internal", arguments: [])
+            reportTransportFailure()
         }
+    }
+
+    private func reportTransportFailure() {
+        transportFailure = L10n.nodeFailureInternal()
     }
 }

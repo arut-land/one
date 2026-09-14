@@ -328,5 +328,6 @@ fn from_wire(message: WireMessage) -> Option<ChatMessage> {
         accepted_at_ms: message.accepted_at_ms,
         starts_time_group: false,
         starts_speaker_group: false,
+        ends_speaker_group: false,
     })
 }

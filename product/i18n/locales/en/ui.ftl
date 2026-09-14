@@ -74,3 +74,16 @@ action-next-conversation = Next conversation
 action-previous-conversation = Previous conversation
 
 label-unread-messages = Unread messages
+
+## Apple menu bar: the Help menu and the shortcut reference it opens
+
+action-app-help = Arut Help
+label-keyboard-shortcuts = Keyboard shortcuts
+
+## Primary menu and the shortcut overlay it opens
+
+action-main-menu = Main menu
+action-about = About Arut
+action-quit = Quit
+action-clear-search = Clear the search
+label-shortcuts-general = General

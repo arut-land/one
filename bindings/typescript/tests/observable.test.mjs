@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { chatReader, observe } from "../src/observable.ts";
+import { acceptedAt, cursored, echoGuard, observe } from "../src/observable.ts";
 
 const flush = () => new Promise(resolve => queueMicrotask(resolve));
 
@@ -98,24 +98,40 @@ test("a stream that ends leaves the last snapshot readable", async () => {
   store.dispose();
 });
 
-/** A chat handle over a fixed transcript, as the wasm and bridge ports both read. */
-function transcript(messages) {
-  return {
-    state: () => ({ id: "c", lastMessageId: messages.at(-1)?.id ?? 0n, status: 0, error: null, canSend: true, isSending: false, isEmpty: messages.length === 0 }),
-    messagesAfter: afterId => messages.filter(message => message.id > afterId),
-  };
-}
-
-test("the transcript appends new rows and starts over when the handle rebinds", () => {
-  const rows = [{ id: 1n, text: "one" }, { id: 2n, text: "two" }];
-  const chat = transcript(rows);
-  const read = chatReader(chat);
-  assert.deepEqual(read().messages.map(message => message.text), ["one", "two"]);
-  rows.push({ id: 3n, text: "three" });
-  assert.deepEqual(read().messages.map(message => message.text), ["one", "two", "three"]);
-  // The editor bridge rebinds one handle to another conversation: a transcript
-  // that moved backwards is not one this cache has a prefix of.
+test("the cursor appends by id and starts over when the source rewinds", () => {
+  const rows = [{ id: 1n }, { id: 2n }, { id: 3n }];
+  const reads = [];
+  const read = cursored(
+    () => rows.slice(),
+    afterId => {
+      reads.push(afterId);
+      return rows.filter(row => row.id > afterId);
+    },
+    row => row.id,
+  );
+  assert.deepEqual(read().map(row => row.id), [1n, 2n, 3n]);
+  // The first read starts over, so it asks the source for nothing.
+  assert.deepEqual(reads, []);
+  rows.push({ id: 4n });
+  assert.deepEqual(read().map(row => row.id), [1n, 2n, 3n, 4n]);
+  // One row of overlap is the whole rewind test: it asked from 2, not from 0.
+  assert.deepEqual(reads, [2n]);
+  // A source that no longer holds the row the cursor stands on has rebound.
   rows.length = 0;
-  rows.push({ id: 1n, text: "elsewhere" });
-  assert.deepEqual(read().messages.map(message => message.text), ["elsewhere"]);
+  rows.push({ id: 1n });
+  assert.deepEqual(read().map(row => row.id), [1n]);
+});
+
+test("the echo guard marks our own writes and nests", () => {
+  const guard = echoGuard();
+  assert.equal(guard.isApplying, false);
+  const seen = guard.apply(() => guard.apply(() => guard.isApplying));
+  assert.equal(seen, true);
+  assert.equal(guard.isApplying, false);
+});
+
+test("an accepted stamp is a date only inside the one bounds rule", () => {
+  assert.equal(acceptedAt(0n), null);
+  assert.equal(acceptedAt(253402300800000n), null);
+  assert.equal(acceptedAt(1700000000000n)?.toISOString(), new Date(1700000000000).toISOString());
 });

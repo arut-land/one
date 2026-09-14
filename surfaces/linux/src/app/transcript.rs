@@ -1,4 +1,5 @@
-use crate::app::{message_model::Messages, observe::Tasks, strings};
+use crate::app::strings;
+use crate::glib_observe::{Rows, Tasks};
 use arut_i18n::Message;
 use arut_product_session::chat::{ChatClient, ChatMessage, ChatRole};
 use gtk::{gio, glib, prelude::*};
@@ -7,7 +8,7 @@ use std::{cell::Cell, rc::Rc};
 
 pub struct Transcript {
     chat: ChatClient,
-    messages: Messages,
+    messages: Rows,
     list: gtk::ListView,
     status: gtk::Label,
     empty: gtk::Box,
@@ -109,6 +110,9 @@ impl SimpleComponent for Transcript {
             },
             #[name = "status"]
             gtk::Label {
+                // A caption that appears and changes must be announced, which
+                // is what the status role is for.
+                set_accessible_role: gtk::AccessibleRole::Status,
                 update_property: &[gtk::accessible::Property::Label(&strings::show(&Message::LabelMessageStatus))],
             },
         }
@@ -118,7 +122,7 @@ impl SimpleComponent for Transcript {
         root: Self::Root,
         _sender: ComponentSender<Self>,
     ) -> ComponentParts<Self> {
-        let messages = Messages::default();
+        let messages = Rows::new::<ChatMessage>(|message| message.id);
         let list = gtk::ListView::new(
             Some(gtk::NoSelection::new(Some(messages.clone()))),
             Some(message_factory()),
@@ -201,19 +205,22 @@ impl Transcript {
             status.set_label(&caption);
             empty.set_visible(snapshot.is_empty);
             let before = messages.n_items();
-            messages.refresh(|key| chat.messages_after(key));
+            messages.refresh(snapshot.last_message_id, |key| chat.messages_after(key));
             if before > 0 && messages.n_items() > before {
-                // GTK's AT-SPI announcement is separate from row recycling.
+                // GTK's AT-SPI announcement is separate from row recycling. The
+                // person's own message was just typed here, so announcing it
+                // back reads their own words to them twice.
                 for index in before..messages.n_items() {
                     let row = messages
                         .item(index)
                         .unwrap()
                         .downcast::<glib::BoxedAnyObject>()
                         .unwrap();
-                    list.announce(
-                        &row.borrow::<ChatMessage>().text,
-                        gtk::AccessibleAnnouncementPriority::Medium,
-                    );
+                    let message = row.borrow::<ChatMessage>();
+                    if message.role == ChatRole::User {
+                        continue;
+                    }
+                    list.announce(&message.text, gtk::AccessibleAnnouncementPriority::Medium);
                 }
             }
         });
@@ -228,7 +235,6 @@ fn message_factory() -> gtk::SignalListItemFactory {
         let container = gtk::Box::new(gtk::Orientation::Vertical, 8);
         container.set_margin_start(16);
         container.set_margin_end(16);
-        container.set_margin_bottom(4);
         let row = gtk::Box::new(gtk::Orientation::Vertical, 4);
         row.add_css_class("arut-message");
         let timestamp = gtk::Label::new(None);
@@ -262,6 +268,12 @@ fn message_factory() -> gtk::SignalListItemFactory {
         actions.add_action(&copy);
         text.insert_action_group("message", Some(&actions));
         row.append(&text);
+        // The time is readable without a pointer: a tooltip is invisible to
+        // touch and to a screen reader walking the row.
+        let clock = gtk::Label::new(None);
+        clock.set_xalign(1.0);
+        clock.add_css_class("arut-message-time");
+        row.append(&clock);
         item.set_child(Some(&container));
     });
     factory.connect_bind(|_, item| {
@@ -285,20 +297,45 @@ fn message_factory() -> gtk::SignalListItemFactory {
             .unwrap()
             .downcast::<gtk::Label>()
             .unwrap();
-        let starts_time = message.starts_time_group;
-        let starts_speaker = message.starts_speaker_group;
-        let formatted = i64::try_from(message.accepted_at_ms / 1000)
+        let clock = text
+            .next_sibling()
+            .unwrap()
+            .downcast::<gtk::Label>()
+            .unwrap();
+        // GLib's own locale formats: `%x` and `%X` are translated per locale,
+        // so the hour cycle, the field order and the month names come from the
+        // person's settings. A literal pattern would pin all three to English.
+        // The group header carries the date and the row caption the time, so
+        // neither repeats the other.
+        let stamp = i64::try_from(message.accepted_at_ms / 1000)
             .ok()
-            .and_then(|seconds| glib::DateTime::from_unix_local(seconds).ok())
-            .and_then(|date| date.format("%b %e, %H:%M").ok())
-            .unwrap_or_default();
-        time.set_label(&formatted);
-        time.set_visible(starts_time && message.accepted_at_ms > 0);
+            .filter(|_| message.accepted_at_ms > 0)
+            .and_then(|seconds| glib::DateTime::from_unix_local(seconds).ok());
+        let format = |pattern: &str| {
+            stamp
+                .as_ref()
+                .and_then(|date| date.format(pattern).ok())
+                .map(|formatted| formatted.to_string())
+                .unwrap_or_default()
+        };
+        let (day, minute) = (format("%x"), format("%X"));
+        time.set_label(&day);
+        time.set_visible(message.starts_time_group && stamp.is_some());
         role.set_label(&strings::role(message.role));
-        role.set_visible(starts_speaker);
+        role.set_visible(message.starts_speaker_group);
         text.set_label(&message.text);
-        text.set_tooltip_text((message.accepted_at_ms > 0).then_some(formatted.as_str()));
-        container.set_margin_top(if starts_speaker { 16 } else { 0 });
+        text.set_tooltip_text(
+            (!day.is_empty())
+                .then(|| format!("{day} {minute}"))
+                .as_deref(),
+        );
+        // One caption per speaker group, on the row that ends it: a time beside
+        // every line of the same burst is noise.
+        clock.set_label(&minute);
+        clock.set_visible(stamp.is_some() && message.ends_speaker_group);
+        // Rust decides where a speaker group ends, so no row reads the one
+        // behind or ahead of it to space itself (B.6).
+        container.set_margin_bottom(if message.ends_speaker_group { 16 } else { 2 });
         let outgoing = message.role == ChatRole::User;
         row.set_halign(if outgoing {
             gtk::Align::End

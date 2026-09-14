@@ -108,8 +108,8 @@ impl Node {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use arut_feature_chat::ChatServices;
     use arut_feature_chat::composer::ComposerScope;
+    use arut_product_session::feature::{Chat, ComposeSet, Services};
     use arut_protocol::capability::v1::{CapabilityServiceClient, GetCapabilitiesRequest};
     use arut_protocol::chat::composer::v1::{
         COMPOSER_SERVICE_DESCRIPTOR, ComposerServiceClient, ReplaceComposerRequest,
@@ -119,10 +119,12 @@ mod tests {
     use arut_transport::HttpRpcChannel;
     use futures_util::StreamExt;
 
+    type Features = (Chat,);
+
     fn app(data: PathBuf) -> Result<Router, StorageError> {
         let runtime = Arc::new(LocalRuntime::open(data, "chat")?);
-        let feature = arut_feature_chat::compose(runtime.clone())?;
-        Ok(Node::serve::<_, ChatServices>(runtime, feature.routers()).unwrap())
+        let composed = <Features as ComposeSet<_>>::compose(&runtime)?;
+        Ok(Node::serve::<_, Services<Features>>(runtime, composed.routers).unwrap())
     }
 
     fn wire_scope(scope: &ComposerScope) -> arut_protocol::chat::composer::v1::ComposerScope {

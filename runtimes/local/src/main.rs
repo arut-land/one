@@ -11,8 +11,13 @@
 //! macOS has no equivalent for. Either path removes the socket before
 //! exiting; the node lease needs no code of its own; closing every file
 //! descriptor, which is how a process ends whichever way it ends, releases it.
+use arut_product_session::feature::{Chat, ComposeSet, Services};
 use arut_runtime_local::readiness::Readiness;
 use std::{env, path::PathBuf};
+
+/// What this daemon serves. One line per feature; the manifest, the routers and
+/// the session's clients all follow from it (ADR 0025).
+type Features = (Chat,);
 
 /// The handshake `ChildHost` reads on this process's stdout; one table names
 /// both ends (`arut_runtime_local::readiness`).
@@ -24,6 +29,10 @@ fn report(state: Readiness) {
 /// abrupt parent kill does not leave this process behind as an orphan. A
 /// failure here (the call is not available, or the kernel refuses it) leaves
 /// the stdin watchdog below as the only signal, which is enough on its own.
+///
+/// The setting is per-thread, so `main` asks for it before it builds the Tokio
+/// runtime: the thread that holds it is then the one that outlives every
+/// worker, and no worker thread starts without it.
 #[cfg(target_os = "linux")]
 fn die_with_parent() {
     let _ = rustix::process::set_parent_process_death_signal(Some(rustix::process::Signal::TERM));
@@ -75,9 +84,15 @@ fn watch_terminate(socket: Option<PathBuf>) -> std::io::Result<()> {
     Ok(())
 }
 
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
+fn main() -> Result<(), Box<dyn std::error::Error>> {
     die_with_parent();
+    tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()?
+        .block_on(serve())
+}
+
+async fn serve() -> Result<(), Box<dyn std::error::Error>> {
     let socket = env::var("ARUT_SOCKET").ok().map(PathBuf::from);
     watch_parent_stdin(socket.clone());
     #[cfg(unix)]
@@ -97,11 +112,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             return Err(Box::<dyn std::error::Error>::from(error));
         }
     };
-    let chat = arut_feature_chat::compose(runtime.clone())?;
-    let app = arut_runtime_local::Node::serve::<_, arut_feature_chat::ChatServices>(
-        runtime,
-        chat.routers(),
-    )?;
+    let composed = <Features as ComposeSet<_>>::compose(&runtime)?;
+    let app = arut_runtime_local::Node::serve::<_, Services<Features>>(runtime, composed.routers)?;
     #[cfg(unix)]
     if let Some(socket) = &socket {
         use std::os::unix::fs::PermissionsExt;

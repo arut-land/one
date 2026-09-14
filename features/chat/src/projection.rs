@@ -24,6 +24,15 @@ pub struct ChatMessage {
     pub starts_time_group: bool,
     /// Starts a speaker group at a role change or timestamp group boundary.
     pub starts_speaker_group: bool,
+    /// Ends a speaker group: the next row starts one, or this is the last row
+    /// the transcript has. A surface spaces after a row from this rather than
+    /// reading the row behind it.
+    ///
+    /// The last row's value is what the transcript says today; a later batch
+    /// that keeps the same speaker makes it false for whoever reads that row
+    /// next. Every accepted batch so far changes speaker, so a cached row does
+    /// not go stale in practice.
+    pub ends_speaker_group: bool,
 }
 
 pub(crate) fn transcript_after(
@@ -34,7 +43,7 @@ pub(crate) fn transcript_after(
         .range(..=after_id)
         .next_back()
         .map(|(_, message)| message);
-    messages
+    let mut rows: Vec<ChatMessage> = messages
         .range((Excluded(after_id), Unbounded))
         .map(|(_, message)| {
             let mut row = message.clone();
@@ -49,7 +58,14 @@ pub(crate) fn transcript_after(
             previous = Some(message);
             row
         })
-        .collect()
+        .collect();
+    for index in (0..rows.len()).rev() {
+        let ends = rows
+            .get(index + 1)
+            .is_none_or(|next| next.starts_speaker_group);
+        rows[index].ends_speaker_group = ends;
+    }
+    rows
 }
 
 #[boltffi::data]
@@ -105,6 +121,7 @@ mod tests {
             text: id.to_string(),
             starts_time_group: false,
             starts_speaker_group: false,
+            ends_speaker_group: false,
         }
     }
 
@@ -154,5 +171,25 @@ mod tests {
         );
         assert!(transcript_after(&messages, 14)[0].starts_time_group);
         assert!(transcript_after(&messages, u64::MAX).is_empty());
+    }
+
+    #[test]
+    fn a_row_ends_a_speaker_group_when_the_next_row_starts_one() {
+        let messages: BTreeMap<_, _> = [
+            (2, ChatRole::User, 0),
+            (4, ChatRole::User, 0),
+            (6, ChatRole::Assistant, 1),
+        ]
+        .into_iter()
+        .map(|(id, role, accepted_at_ms)| (id, row(id, role, accepted_at_ms)))
+        .collect();
+        assert_eq!(
+            transcript_after(&messages, 0)
+                .iter()
+                .map(|row| row.ends_speaker_group)
+                .collect::<Vec<_>>(),
+            [false, true, true],
+            "the last row of the transcript ends its group"
+        );
     }
 }

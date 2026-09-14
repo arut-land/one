@@ -1,8 +1,5 @@
 import ArutBindings
 import SwiftUI
-#if os(macOS)
-import AppKit
-#endif
 
 struct ConversationView: View {
     let state: ConversationState
@@ -23,10 +20,13 @@ struct ConversationView: View {
     @ViewBuilder
     private var transcript: some View {
         let view = TranscriptView(
-            messages: state.messages,
+            messages: state.messages.rows,
             scrollRequest: scrollRequest,
             readingPosition: $readingPosition
         )
+        .overlay {
+            if state.isEmpty { emptyState }
+        }
         if #available(macOS 26.0, iOS 26.0, *) {
             view.safeAreaBar(edge: .bottom) { composer }
         } else {
@@ -34,8 +34,17 @@ struct ConversationView: View {
         }
     }
 
+    private var emptyState: some View {
+        ContentUnavailableView(
+            L10n.chatEmptyTitle(),
+            systemImage: "bubble.left.and.bubble.right",
+            description: Text(L10n.chatEmptyHint())
+        )
+        .allowsHitTesting(false)
+    }
+
     private var composer: some View {
-        ComposerBar(state: state, focused: $composerFocused, send: send)
+        ComposerBar(state: state, draft: state.draft, focused: $composerFocused, send: send)
     }
 
     private func send() {
@@ -48,7 +57,8 @@ struct ConversationView: View {
 }
 
 private struct ComposerBar: View {
-    @Bindable var state: ConversationState
+    let state: ConversationState
+    @Bindable var draft: Draft
     @FocusState.Binding var focused: Bool
     let send: () -> Void
 
@@ -71,29 +81,30 @@ private struct ComposerBar: View {
         .frame(maxWidth: .infinity)
     }
 
+    /// Return sends and Option-Return inserts a line break: that is what a
+    /// vertical-axis `TextField` does on macOS on its own, so the surface stays
+    /// in SwiftUI and never reaches for the field editor.
+    private var hint: String {
+        #if os(macOS)
+        L10n.composerHintOptionReturn()
+        #else
+        L10n.composerHintMultiline()
+        #endif
+    }
+
     private var field: some View {
         HStack(alignment: .lastTextBaseline) {
             // Keystrokes reach Rust as they are typed; it echoes them back and
             // coalesces, so there is no local queue and no pending-edit counter.
-            TextField(L10n.composerPlaceholder(), text: $state.draft, axis: .vertical)
+            TextField(L10n.composerPlaceholder(), text: $draft.text, axis: .vertical)
                 .textFieldStyle(.plain)
                 .lineLimit(1...7)
                 .focused($focused)
                 .disabled(state.isSending)
                 .accessibilityLabel(L10n.labelDraft())
-                .accessibilityHint(L10n.composerHintMultiline())
+                .accessibilityHint(hint)
                 .accessibilityIdentifier("message-composer")
-                .help(L10n.composerHintMultiline())
-                #if os(macOS)
-                .onKeyPress(.return, phases: .down) { key in
-                    guard key.modifiers.contains(.shift),
-                          let editor = NSApp.keyWindow?.firstResponder as? NSTextView,
-                          !editor.hasMarkedText() else { return .ignored }
-                    // Keep insertion, selection, and undo in the native field editor.
-                    editor.insertNewlineIgnoringFieldEditor(nil)
-                    return .handled
-                }
-                #endif
+                .help(hint)
                 .onSubmit(send)
             sendButton
         }

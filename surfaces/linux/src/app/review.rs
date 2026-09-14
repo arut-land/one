@@ -90,7 +90,29 @@ pub fn install(
                 let search = descendant::<gtk::SearchEntry>(&window).expect("search");
                 search.set_text("Saturday");
             }
-            "sidebar-toggle" => sender.input(Msg::ToggleSidebar),
+            "sidebar-toggle" => sender.input(Msg::ToggleSidebar(true)),
+            "focus-composer" => sender.input(Msg::FocusComposer),
+            "typed" => {
+                // What the Hyprland path types on a real keyboard, for a
+                // backend that cannot inject keys.
+                let editor = descendant::<gtk::TextView>(&window).expect("composer");
+                editor.buffer().set_text("");
+                for character in "hello".chars() {
+                    editor.buffer().insert_at_cursor(&character.to_string());
+                }
+                editor.activate_action("composer.send", None).unwrap();
+            }
+            "menu" | "menu-close" => {
+                let menu = descendant::<gtk::MenuButton>(&window).expect("primary menu");
+                // A menu popover needs a keyboard grab, so it stays open only
+                // on a backend whose window is focused. The Hyprland output
+                // never takes focus, and captures the pressed button instead.
+                if scenario == "menu" {
+                    menu.popup();
+                } else {
+                    menu.popdown();
+                }
+            }
             "clear-search" => {
                 descendant::<gtk::SearchEntry>(&window)
                     .expect("search")
@@ -130,10 +152,11 @@ fn append_continuations(window: &gtk::ApplicationWindow) {
         .unwrap()
         .model()
         .unwrap()
-        .downcast::<crate::app::message_model::Messages>()
+        .downcast::<crate::glib_observe::Rows>()
         .unwrap();
     let time = glib::real_time() as u64 / 1000 + 300_000;
-    model.refresh(|last| {
+    let appended = model.cursor() + 4;
+    model.refresh(appended, |last| {
         vec![
             ChatMessage {
                 id: last + 1,
@@ -143,6 +166,7 @@ fn append_continuations(window: &gtk::ApplicationWindow) {
                 accepted_at_ms: time,
                 starts_time_group: true,
                 starts_speaker_group: true,
+                ends_speaker_group: false,
             },
             ChatMessage {
                 id: last + 2,
@@ -151,6 +175,7 @@ fn append_continuations(window: &gtk::ApplicationWindow) {
                 accepted_at_ms: time + 1_000,
                 starts_time_group: false,
                 starts_speaker_group: false,
+                ends_speaker_group: true,
             },
             ChatMessage {
                 id: last + 3,
@@ -159,6 +184,7 @@ fn append_continuations(window: &gtk::ApplicationWindow) {
                 accepted_at_ms: time + 2_000,
                 starts_time_group: false,
                 starts_speaker_group: true,
+                ends_speaker_group: false,
             },
             ChatMessage {
                 id: last + 4,
@@ -167,6 +193,7 @@ fn append_continuations(window: &gtk::ApplicationWindow) {
                 accepted_at_ms: time + 3_000,
                 starts_time_group: false,
                 starts_speaker_group: false,
+                ends_speaker_group: true,
             },
         ]
     });

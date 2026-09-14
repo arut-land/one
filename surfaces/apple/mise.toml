@@ -1,0 +1,23 @@
+# The Apple surfaces. Every task here needs Xcode and therefore macOS.
+
+[tasks.project]
+tools.xcodegen = "2.46.0"
+alias = "surface:apple-project"
+description = "Generate the Apple Xcode project (needs Xcode)"
+dir = "{{config_root}}/../.."
+depends = ["//bindings/ffi:apple"]
+run = "xcodegen generate --use-cache --spec surfaces/apple/project.yml"
+
+[tasks.macos]
+alias = "surface:macos"
+description = "Build the macOS app without signing (needs Xcode)"
+dir = "{{config_root}}/../.."
+depends = [":project"]
+run = "xcodebuild -project surfaces/apple/Arut.xcodeproj -scheme ArutMac -configuration Debug -destination 'platform=macOS' -derivedDataPath surfaces/apple/DerivedData build CODE_SIGNING_ALLOWED=NO"
+
+[tasks.check]
+alias = "check:apple"
+description = "Build the macOS app and test the Swift bindings (needs Xcode)"
+dir = "{{config_root}}/../.."
+depends = [":macos"]
+run = "swift test --package-path bindings/swift"

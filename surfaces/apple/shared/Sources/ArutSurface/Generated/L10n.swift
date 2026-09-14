@@ -7,11 +7,15 @@
 import Foundation
 
 enum L10n {
+    static func actionAbout() -> String { String(localized: "action-about", table: "Localizable", bundle: .module) }
+    static func actionAppHelp() -> String { String(localized: "action-app-help", table: "Localizable", bundle: .module) }
+    static func actionClearSearch() -> String { String(localized: "action-clear-search", table: "Localizable", bundle: .module) }
     static func actionCloseHistory() -> String { String(localized: "action-close-history", table: "Localizable", bundle: .module) }
     static func actionCollapseSidebar() -> String { String(localized: "action-collapse-sidebar", table: "Localizable", bundle: .module) }
     static func actionCopyMessage() -> String { String(localized: "action-copy-message", table: "Localizable", bundle: .module) }
     static func actionExpandSidebar() -> String { String(localized: "action-expand-sidebar", table: "Localizable", bundle: .module) }
     static func actionFocusComposer() -> String { String(localized: "action-focus-composer", table: "Localizable", bundle: .module) }
+    static func actionMainMenu() -> String { String(localized: "action-main-menu", table: "Localizable", bundle: .module) }
     static func actionNewChat() -> String { String(localized: "action-new-chat", table: "Localizable", bundle: .module) }
     static func actionNewChatShortcut(shortcut: String) -> String { String(format: String(localized: "action-new-chat-shortcut", table: "Localizable", bundle: .module), shortcut) }
     static func actionNewConversation() -> String { String(localized: "action-new-conversation", table: "Localizable", bundle: .module) }
@@ -19,6 +23,7 @@ enum L10n {
     static func actionNextConversation() -> String { String(localized: "action-next-conversation", table: "Localizable", bundle: .module) }
     static func actionOpenHistory() -> String { String(localized: "action-open-history", table: "Localizable", bundle: .module) }
     static func actionPreviousConversation() -> String { String(localized: "action-previous-conversation", table: "Localizable", bundle: .module) }
+    static func actionQuit() -> String { String(localized: "action-quit", table: "Localizable", bundle: .module) }
     static func actionScrollToLatest() -> String { String(localized: "action-scroll-to-latest", table: "Localizable", bundle: .module) }
     static func actionSearchConversations() -> String { String(localized: "action-search-conversations", table: "Localizable", bundle: .module) }
     static func actionSend() -> String { String(localized: "action-send", table: "Localizable", bundle: .module) }
@@ -66,9 +71,11 @@ enum L10n {
     static func labelConversations() -> String { String(localized: "label-conversations", table: "Localizable", bundle: .module) }
     static func labelDraft() -> String { String(localized: "label-draft", table: "Localizable", bundle: .module) }
     static func labelDraftSync() -> String { String(localized: "label-draft-sync", table: "Localizable", bundle: .module) }
+    static func labelKeyboardShortcuts() -> String { String(localized: "label-keyboard-shortcuts", table: "Localizable", bundle: .module) }
     static func labelMessageStatus() -> String { String(localized: "label-message-status", table: "Localizable", bundle: .module) }
     static func labelNodeAvailability() -> String { String(localized: "label-node-availability", table: "Localizable", bundle: .module) }
     static func labelRecent() -> String { String(localized: "label-recent", table: "Localizable", bundle: .module) }
+    static func labelShortcutsGeneral() -> String { String(localized: "label-shortcuts-general", table: "Localizable", bundle: .module) }
     static func labelTranscript() -> String { String(localized: "label-transcript", table: "Localizable", bundle: .module) }
     static func labelUnreadMessages() -> String { String(localized: "label-unread-messages", table: "Localizable", bundle: .module) }
     static func nodeFailureCancelled() -> String { String(localized: "node-failure-cancelled", table: "Localizable", bundle: .module) }

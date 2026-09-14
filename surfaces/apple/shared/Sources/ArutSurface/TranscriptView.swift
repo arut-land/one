@@ -17,11 +17,13 @@ struct TranscriptView: View {
         ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(spacing: 0) {
-                    ForEach(Array(messages.enumerated()), id: \.element.id) { index, message in
+                    // Identity comes from the row's own key; the grouping
+                    // decision comes from Rust, so no index is needed here.
+                    ForEach(messages, id: \.id) { message in
                         VStack {
-                            if message.startsTimeGroup, message.acceptedAtMs > 0 {
+                            if let stamp = acceptedAt(message.acceptedAtMs), message.startsTimeGroup {
                                 Text(
-                                    Date(timeIntervalSince1970: Double(message.acceptedAtMs) / 1_000),
+                                    stamp,
                                     format: .dateTime.month(.abbreviated).day().hour().minute()
                                 )
                                 .font(.caption)
@@ -30,7 +32,7 @@ struct TranscriptView: View {
                             }
                             MessageRow(message: message)
                         }
-                        .padding(.bottom, endsSpeakerGroup(at: index) ? 12 : 4)
+                        .padding(.bottom, message.endsSpeakerGroup ? 12 : 4)
                         .id(message.id)
                         .transition(.opacity)
                     }
@@ -45,20 +47,15 @@ struct TranscriptView: View {
             .scrollPosition(id: $readingPosition, anchor: .top)
             .accessibilityLabel(L10n.labelTranscript())
             .accessibilityIdentifier("conversation-transcript")
-            .overlay {
-                if messages.isEmpty {
-                    ContentUnavailableView(
-                        L10n.chatEmptyTitle(),
-                        systemImage: "bubble.left.and.bubble.right",
-                        description: Text(L10n.chatEmptyHint())
-                    )
-                    .allowsHitTesting(false)
+            .onAppear {
+                if let position = readingPosition {
+                    proxy.scrollTo(position, anchor: .top)
+                } else {
+                    proxy.scrollTo(TranscriptView.bottomSentinelId, anchor: .bottom)
                 }
             }
-            .onAppear {
-                proxy.scrollTo(readingPosition ?? 0, anchor: readingPosition == nil ? .bottom : .top)
-            }
             .onChange(of: messages.last?.id) {
+                announceLatest()
                 if nearBottom { scrollToLatest(proxy) }
             }
             .onChange(of: scrollRequest) { scrollToLatest(proxy) }
@@ -76,11 +73,15 @@ struct TranscriptView: View {
         }
     }
 
+    /// Outside the message-id namespace `scrollPosition(id:)` reads, so the
+    /// sentinel cannot collide with a row however the core keys its rows.
+    private static let bottomSentinelId = "transcript-bottom"
+
     // Scroll visibility arrives on macOS 15/iOS 18; before that the sentinel's
     // appearance is the only signal that the reader is at the bottom.
     @ViewBuilder
     private var bottomSentinel: some View {
-        let sentinel = Color.clear.frame(height: 1).id(UInt64(0))
+        let sentinel = Color.clear.frame(height: 1).id(TranscriptView.bottomSentinelId)
         if #available(macOS 15.0, iOS 18.0, *) {
             sentinel.onScrollVisibilityChange(threshold: 0.1) { nearBottom = $0 }
         } else {
@@ -88,13 +89,18 @@ struct TranscriptView: View {
         }
     }
 
-    private func endsSpeakerGroup(at index: Int) -> Bool {
-        index == messages.count - 1 || messages[index + 1].startsSpeakerGroup
+    /// VoiceOver hears an incoming reply the way it hears one on every other
+    /// surface; an outgoing message was just typed, so it is not announced.
+    private func announceLatest() {
+        guard let message = messages.last, message.role != .user else { return }
+        AccessibilityNotification
+            .Announcement("\(L10n.chatRoleAssistant()): \(message.text)")
+            .post()
     }
 
     private func scrollToLatest(_ proxy: ScrollViewProxy) {
         withAnimation(reduceMotion ? nil : .spring(response: 0.36, dampingFraction: 0.92)) {
-            proxy.scrollTo(UInt64(0), anchor: .bottom)
+            proxy.scrollTo(TranscriptView.bottomSentinelId, anchor: .bottom)
         }
     }
 
@@ -116,12 +122,14 @@ struct TranscriptView: View {
 private struct MessageRow: View {
     let message: ChatMessage
     @Environment(\.colorSchemeContrast) private var contrast
+    /// The bubble's reading width grows with the text, so an accessibility text
+    /// size still gets a full line rather than a column of two or three words.
+    @ScaledMetric(relativeTo: .body) private var maximumWidth: CGFloat = 560
 
     private var isUser: Bool { message.role == .user }
     private var time: String {
-        guard message.acceptedAtMs > 0 else { return "" }
-        return Date(timeIntervalSince1970: Double(message.acceptedAtMs) / 1_000)
-            .formatted(date: .abbreviated, time: .shortened)
+        guard let stamp = acceptedAt(message.acceptedAtMs) else { return "" }
+        return stamp.formatted(date: .abbreviated, time: .shortened)
     }
 
     var body: some View {
@@ -130,18 +138,23 @@ private struct MessageRow: View {
             Text(message.text)
                 .textSelection(.enabled)
                 .fixedSize(horizontal: false, vertical: true)
-                .foregroundStyle(isUser ? Color.white : Color.primary)
+                // The bubble takes the accent the person chose, not a literal
+                // blue. Apple publishes no "on accent" colour, and Messages
+                // reads white over the filled bubble, so white it is.
+                .foregroundStyle(isUser ? AnyShapeStyle(.white) : AnyShapeStyle(Color.primary))
                 .padding(.horizontal)
                 .padding(.vertical, 10)
                 .background {
                     RoundedRectangle(cornerRadius: 18)
                         .fill(
                             isUser
-                                ? Color.blue
-                                : Color.primary.opacity(contrast == .increased ? 0.16 : 0.07)
+                                ? AnyShapeStyle(Color.accentColor)
+                                : AnyShapeStyle(
+                                    Color.primary.opacity(contrast == .increased ? 0.16 : 0.07)
+                                )
                         )
                 }
-                .frame(maxWidth: 560, alignment: isUser ? .trailing : .leading)
+                .frame(maxWidth: maximumWidth, alignment: isUser ? .trailing : .leading)
                 .help(time)
                 .accessibilityLabel(isUser ? L10n.chatRoleYou() : L10n.chatRoleAssistant())
                 .accessibilityValue(message.text)

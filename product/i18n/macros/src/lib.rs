@@ -12,6 +12,11 @@
 //! `Node(NodeFailure)` and `Draft(ComposerError)` shapes -- delegates to that
 //! value, because a node failure reads the same whichever scope met it.
 //!
+//! The derive also emits `message_args`, the variant's fields beside the Fluent
+//! names that select them, so nothing below or above restates the argument
+//! order: `bindings/ffi` exports what this returns, and the message and the
+//! variant are checked against each other here, at the definition site.
+//!
 //! The source is read through `arut-i18n-catalog`, the same parser
 //! `product/i18n/build.rs` and `arut-dev generate` use, so this derive cannot
 //! accept a message the generator would later refuse.
@@ -35,8 +40,8 @@ use syn::{Data, DeriveInput, Fields, parse_macro_input};
 /// deriving, so any crate in the workspace expands against the same files.
 const LOCALES: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../locales/en");
 
-/// Derive `message_key` and `MESSAGE_KEYS` from the enum and variant names,
-/// checked against the Fluent source.
+/// Derive `message_key`, `message_args` and `MESSAGE_KEYS` from the enum and
+/// variant names, checked against the Fluent source.
 #[proc_macro_derive(Localized)]
 pub fn localized(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
@@ -59,18 +64,20 @@ fn expand(input: &DeriveInput) -> syn::Result<TokenStream2> {
     let prefix = kebab(&name.to_string());
 
     let mut arms = Vec::new();
+    let mut argument_arms = Vec::new();
     let mut keys = Vec::new();
     for variant in &data.variants {
         let variant_name = &variant.ident;
         let key = format!("{prefix}-{}", kebab(&variant_name.to_string()));
         if let Some(arguments) = messages.get(&key) {
-            check_arguments(variant, &key, arguments)?;
+            let supplied = check_arguments(variant, &key, arguments)?;
             let pattern = match &variant.fields {
                 Fields::Unit => quote!(Self::#variant_name),
                 Fields::Named(_) => quote!(Self::#variant_name { .. }),
                 Fields::Unnamed(_) => quote!(Self::#variant_name(..)),
             };
             arms.push(quote!(#pattern => #key));
+            argument_arms.push(named_arguments(variant_name, &variant.fields, &supplied));
             keys.push(key);
             continue;
         }
@@ -81,6 +88,7 @@ fn expand(input: &DeriveInput) -> syn::Result<TokenStream2> {
             Fields::Unnamed(fields) if fields.unnamed.len() == 1 => {
                 let inner = format_ident!("inner");
                 arms.push(quote!(Self::#variant_name(#inner) => #inner.message_key()));
+                argument_arms.push(quote!(Self::#variant_name(#inner) => #inner.message_args()));
             }
             _ => {
                 return Err(syn::Error::new_spanned(
@@ -124,36 +132,89 @@ fn expand(input: &DeriveInput) -> syn::Result<TokenStream2> {
                     #(#arms,)*
                 }
             }
+
+            /// The arguments this variant's message interpolates, each beside
+            /// the Fluent name that selects it.
+            ///
+            /// The order is the one every generated catalog consumer reads, so
+            /// a surface that formats positionally and one that formats by
+            /// name agree. A variant whose message takes none returns nothing.
+            #[must_use]
+            pub fn message_args(&self) -> ::std::vec::Vec<(::std::string::String, ::std::string::String)> {
+                match self {
+                    #(#argument_arms,)*
+                }
+            }
         }
     })
 }
 
-/// A variant has to supply every argument its message interpolates.
+/// A variant supplies exactly the arguments its message interpolates: a field
+/// the message never names would travel as a value no sentence can show, and an
+/// argument no field supplies would render as its own placeholder.
+///
+/// Returns the fields that carry them, keyed by the Fluent name, so the
+/// expansion emits the pairs in the order every catalog consumer reads them.
 fn check_arguments(
     variant: &syn::Variant,
     key: &str,
     arguments: &BTreeSet<String>,
-) -> syn::Result<()> {
-    let supplied: BTreeSet<String> = match &variant.fields {
+) -> syn::Result<BTreeMap<String, syn::Ident>> {
+    let supplied: BTreeMap<String, syn::Ident> = match &variant.fields {
         Fields::Named(fields) => fields
             .named
             .iter()
-            .filter_map(|field| field.ident.as_ref().map(|ident| camel(&ident.to_string())))
+            .filter_map(|field| {
+                let ident = field.ident.as_ref()?;
+                Some((camel(&ident.to_string()), ident.clone()))
+            })
             .collect(),
-        Fields::Unit | Fields::Unnamed(_) => BTreeSet::new(),
+        Fields::Unit | Fields::Unnamed(_) => BTreeMap::new(),
     };
-    let missing: Vec<&String> = arguments.difference(&supplied).collect();
-    if missing.is_empty() {
-        Ok(())
-    } else {
-        Err(syn::Error::new_spanned(
+    let names: BTreeSet<String> = supplied.keys().cloned().collect();
+    let missing: Vec<&String> = arguments.difference(&names).collect();
+    if !missing.is_empty() {
+        return Err(syn::Error::new_spanned(
             variant,
             format!(
                 "`{key}` interpolates {missing:?}, which this variant has no field for; \
                  name a field after each argument or take it out of the message"
             ),
-        ))
+        ));
     }
+    let unused: Vec<&String> = names.difference(arguments).collect();
+    if !unused.is_empty() {
+        return Err(syn::Error::new_spanned(
+            variant,
+            format!(
+                "`{key}` never names {unused:?}, so the value would reach no sentence; \
+                 interpolate it in product/i18n/locales/en or take the field off the variant"
+            ),
+        ));
+    }
+    Ok(supplied)
+}
+
+/// One `message_args` arm: the variant's fields as `(Fluent name, value)`
+/// pairs, in the order [`arut_i18n_catalog::Message::arguments`] lists them.
+fn named_arguments(
+    variant: &syn::Ident,
+    fields: &Fields,
+    supplied: &BTreeMap<String, syn::Ident>,
+) -> TokenStream2 {
+    if supplied.is_empty() {
+        let pattern = match fields {
+            Fields::Unit => quote!(Self::#variant),
+            Fields::Named(_) => quote!(Self::#variant { .. }),
+            Fields::Unnamed(_) => quote!(Self::#variant(..)),
+        };
+        return quote!(#pattern => ::std::vec::Vec::new());
+    }
+    let bindings = supplied.values();
+    let pairs = supplied.iter().map(|(name, ident)| {
+        quote!((::std::string::ToString::to_string(#name), ::std::string::ToString::to_string(#ident)))
+    });
+    quote!(Self::#variant { #(#bindings,)* .. } => ::std::vec![#(#pairs),*])
 }
 
 /// Every message id in the default locale, with the arguments it interpolates,

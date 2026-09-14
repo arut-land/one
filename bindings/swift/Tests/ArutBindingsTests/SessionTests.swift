@@ -34,6 +34,40 @@ struct SessionTests {
         #expect(session.selectChat(id: id)?.messagesAfter(afterId: 0).count == 2)
     }
 
+    @Test(.timeLimit(.minutes(1)))
+    func projectionAndRowsFollowTheGeneratedStream() async throws {
+        let session = createProductSession(pendingScopeId: "swift-projection")
+        let chat = session.chat()
+        let composer = chat.composer()
+        let state = Projection { chat.state() }
+        let rows = Rows<ChatMessage>(id: { $0.id }, after: { chat.messagesAfter(afterId: $0) })
+        let changes = chat.chatChanges()
+
+        _ = try await composer.replace(text: "Hello from a projection")
+        _ = try await chat.send(text: composer.state().text)
+
+        // `follow` is this loop; driving it here keeps the test deterministic
+        // instead of racing a detached follower.
+        for await _ in changes {
+            state.refresh()
+            rows.refresh()
+            if rows.rows.count >= 2 { break }
+        }
+        #expect(rows.rows.first?.text == "Hello from a projection")
+        #expect(state.value.isEmpty == false)
+        // The cursor asked for the rows after the ones it holds, not for all of
+        // them, and a second read adds nothing.
+        rows.refresh()
+        #expect(rows.rows.count == 2)
+
+        let draft = Draft(composer.state().text, replace: { _ = try await composer.replace(text: $0) })
+        draft.text = "Typed locally"
+        #expect(draft.text == "Typed locally")
+        // A write is still unacknowledged, so the stale echo is not taken.
+        draft.absorb(remote: "")
+        #expect(draft.text == "Typed locally")
+    }
+
     @Test
     func establishedAndPendingConversationsKeepIndependentDrafts() async throws {
         let session = createProductSession(pendingScopeId: "swift-drafts")

@@ -47,7 +47,26 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
 
+      # mise records a blake3 hash of each task's sources under its state
+      # directory, and mr-boxington keys cached rustc outputs by content, so
+      # both survive a checkout that rewrites every timestamp. Restoring them
+      # lets a commit that touches only documentation skip `check:rust`
+      # outright. The key is per run with a prefix fallback, so each run
+      # publishes the state it ends with. `mise run --force check` is the
+      # escape hatch if a task's declared sources ever turn out incomplete.
+      - name: Restore mise task state and the Rust action cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            /root/.local/state/mise
+            /root/.cache/mbx
+          key: mise-state-${{ runner.os }}-${{ github.run_id }}
+          restore-keys: mise-state-${{ runner.os }}-
+
       # One entry point for humans and CI: mise.toml owns what "check" means.
+      # `--affected` is deliberately not used here: the repository-wide gates
+      # belong to the root project, which a crate-only change does not select,
+      # so an affected run would skip the checks it exists to run.
       - name: mise run check
         run: mise run check
 

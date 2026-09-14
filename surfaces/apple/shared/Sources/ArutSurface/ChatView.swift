@@ -4,6 +4,8 @@ import SwiftUI
 public struct ChatView: View {
     @State private var state: SessionState
     @State private var readingPositions: [String: UInt64] = [:]
+    /// Window restoration: the pane the window was left showing (macOS rule 2.5).
+    @SceneStorage("conversation-selection") private var restoredSelection = ""
 
     @MainActor
     public init(session: ProductSessionHandle) {
@@ -31,10 +33,26 @@ public struct ChatView: View {
             }
         }
         .navigationSplitViewStyle(.balanced)
-        .task { await state.run() }
+        .task {
+            restore()
+            await state.run()
+        }
+        // Rust owns the selection, so another surface on this session can move
+        // it; adopting it is a reaction to the projection, not a second loop.
+        .onChange(of: state.selection) {
+            state.reconcile()
+            restoredSelection = state.selection ?? ""
+        }
         #if os(macOS)
         .focusedSceneValue(\.conversations, state)
         #endif
+    }
+
+    private func restore() {
+        guard state.selection == nil,
+              state.matches.contains(where: { $0.id == restoredSelection })
+        else { return }
+        state.selection = restoredSelection
     }
 
     /// Reading positions are presentation state, kept per conversation for as
@@ -57,13 +75,24 @@ private struct ConversationSidebar: View {
             .navigationTitle(L10n.appName())
             .navigationSplitViewColumnWidth(min: 210, ideal: 250, max: 340)
             .onChange(of: state.searchFocusRequest) { searchFocused = true }
-            .safeAreaInset(edge: .bottom) {
-                Label(L10n.chatLocalSession(), systemImage: "desktopcomputer")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding()
+            .safeAreaInset(edge: .bottom) { bottomBar }
+    }
+
+    /// The new-conversation action belongs beside the list, not in it: a button
+    /// inside a `List(selection:)` takes part in selection and arrow navigation.
+    private var bottomBar: some View {
+        HStack {
+            Button(action: state.newConversation) {
+                Label(L10n.actionNewConversation(), systemImage: "square.and.pencil")
             }
+            .buttonStyle(.borderless)
+            .help(L10n.actionNewConversationShortcut(shortcut: "⌘N"))
+            Spacer()
+            Label(L10n.chatLocalSession(), systemImage: "desktopcomputer")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .padding()
     }
 
     // `searchFocused` reaches the native search field only on macOS 15/iOS 18.
@@ -85,31 +114,49 @@ private struct ConversationSidebar: View {
 
     private var conversations: some View {
         List(selection: $state.selection) {
-            Section {
-                Button(action: state.newConversation) {
-                    Label(L10n.actionNewConversation(), systemImage: "square.and.pencil")
-                }
-                .buttonStyle(.plain)
-            }
             Section(L10n.labelRecent()) {
-                if state.matches.isEmpty {
-                    ContentUnavailableView(
-                        state.search.isEmpty
-                            ? L10n.chatHistoryEmpty() : L10n.conversationSearchEmpty(),
-                        systemImage: state.search.isEmpty ? "bubble.left" : "magnifyingglass"
-                    )
-                }
                 ForEach(state.matches, id: \.id) { summary in
-                    Label {
-                        Text(summary.title).lineLimit(2)
-                    } icon: {
-                        Image(systemName: "bubble.left").foregroundStyle(.secondary)
-                    }
-                    .tag(summary.id)
-                    .help(summary.title)
+                    ConversationRow(summary: summary)
                 }
             }
         }
+        // A `ContentUnavailableView` fills a view; as a list row it would take
+        // row insets and sit under a section header.
+        .overlay {
+            if state.matches.isEmpty { emptyState }
+        }
+    }
+
+    private var emptyState: some View {
+        ContentUnavailableView(
+            state.search.isEmpty ? L10n.chatHistoryEmpty() : L10n.conversationSearchEmpty(),
+            systemImage: state.search.isEmpty ? "bubble.left" : "magnifyingglass"
+        )
+    }
+}
+
+private struct ConversationRow: View {
+    let summary: ChatSummary
+
+    var body: some View {
+        Label {
+            HStack {
+                Text(summary.title).lineLimit(2)
+                Spacer(minLength: 8)
+                // Rust decides what is unread; the dot only draws it.
+                if summary.unread {
+                    Circle()
+                        .fill(Color.accentColor)
+                        .frame(width: 8, height: 8)
+                        .accessibilityHidden(true)
+                }
+            }
+        } icon: {
+            Image(systemName: "bubble.left").foregroundStyle(.secondary)
+        }
+        .accessibilityValue(summary.unread ? L10n.labelUnreadMessages() : "")
+        .tag(summary.id)
+        .help(summary.title)
     }
 }
 

@@ -1,0 +1,76 @@
+# BoltFFI generation and packaging. Tasks run here (`dir` defaults to this
+# config's directory), so their sources and outputs are written relative to
+# bindings/ffi. Input groups are not inherited from the repository root, so the
+# core crates this generator reads are listed again here. The `ffi` template,
+# which pins the BoltFFI release binary, is defined in the root config.
+
+[task_config.input_groups]
+core = [
+  "boltffi.toml",
+  "handles.toml",
+  "Cargo.toml",
+  "src/**/*.rs",
+  "../../Cargo.toml",
+  "../../Cargo.lock",
+  "../../mise.lock",
+  "../../features/**/*.rs",
+  "../../product/**/*.rs",
+  "../../protocols/**/*.rs",
+  "../../runtimes/host-polled/**/*.rs",
+  "../../substrates/**/*.rs",
+  "../../transports/**/*.rs",
+]
+
+[tasks.wasm]
+extends = "ffi"
+alias = "ffi:wasm"
+tools.node = "{{vars.node_version}}"
+tools."npm:typescript" = "{{vars.typescript_version}}"
+description = "Generate and package the wasm bindings"
+run = "boltffi pack wasm --deny-skipped"
+sources = ["@group:core"]
+outputs = ["../generated/wasm"]
+
+# BoltFFI invokes npx tsc on Windows; select TypeScript, not the npm tsc package.
+[tasks.wasm.env]
+npm_config_package = "typescript@{{vars.typescript_version}}"
+npm_config_yes = "true"
+
+[tasks.apple]
+extends = "ffi"
+alias = "ffi:apple"
+description = "Generate and package the Apple bindings (needs Xcode)"
+run = [
+  "rustup target add aarch64-apple-darwin x86_64-apple-darwin aarch64-apple-ios aarch64-apple-ios-sim x86_64-apple-ios",
+  "boltffi pack apple --deny-skipped",
+]
+sources = ["@group:core"]
+outputs = ["../generated/apple"]
+
+[tasks.apple.env]
+MACOSX_DEPLOYMENT_TARGET = "13.0"
+IPHONEOS_DEPLOYMENT_TARGET = "16.0"
+
+[tasks.android]
+extends = "ffi"
+alias = "ffi:android"
+description = "Generate and package the Android bindings (needs the NDK; ANDROID_NDK_HOME must be set)"
+run = [
+  "rustup target add aarch64-linux-android armv7-linux-androideabi x86_64-linux-android i686-linux-android",
+  "boltffi pack android --deny-skipped",
+]
+sources = ["@group:core"]
+outputs = ["../generated/android"]
+
+[tasks.csharp]
+extends = "ffi"
+alias = "ffi:csharp"
+tools.dotnet = "{{vars.dotnet_version}}"
+description = "Generate and package the .NET bindings; pass --release for Release"
+usage = 'flag "-r --release" help="Generate the Release package instead of Debug"'
+run = "boltffi pack csharp --deny-skipped --overlay csharp-{% if usage.release %}release{% else %}debug{% endif %}.toml"
+run_windows = "powershell -NoProfile -File ../../surfaces/windows/build-bindings.ps1 {% if usage.release %}--release{% endif %}"
+sources = ["@group:core", "csharp-debug.toml", "csharp-release.toml"]
+# Debug and Release are separate package directories, so freshness has to be
+# tracked per configuration.
+outputs = ["../generated/csharp/{% if usage.release %}Release{% else %}Debug{% endif %}"]

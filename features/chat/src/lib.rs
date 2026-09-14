@@ -21,6 +21,11 @@ pub mod ports;
 mod projection;
 mod service;
 pub use client::{ChatClient, ChatObserver};
+// The crate root is the one name list a surface reaches these through: product
+// re-exports this crate as `arut_product_session::chat`, and nothing above
+// restates a type name.
+pub use composer::{ComposerClient, ComposerState, ComposerStatus};
+pub use errors::{ChatError, ComposerError, NodeFailure};
 #[cfg(test)]
 pub(crate) use facts::ChatProjection;
 pub use projection::{ChatMessage, ChatRole, ChatState, ChatStatus};

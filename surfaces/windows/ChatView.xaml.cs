@@ -31,7 +31,9 @@ public sealed partial class ChatView : UserControl, IAsyncDisposable
         FollowMessages();
         Composer.TextCompositionStarted += (_, _) => composing = true;
         Composer.TextCompositionEnded += (_, _) => composing = false;
-        Loaded += (_, _) => Composer.Focus(FocusState.Programmatic);
+        // `Keyboard` rather than `Programmatic`: the first thing a keyboard user
+        // sees should be the focus rectangle, not an invisible caret.
+        Loaded += (_, _) => Composer.Focus(FocusState.Keyboard);
     }
 
     public ChatViewModel ViewModel { get; }
@@ -80,18 +82,37 @@ public sealed partial class ChatView : UserControl, IAsyncDisposable
         FocusComposer();
     }
 
-    private void ActivateChat(object sender, ItemClickEventArgs args)
+    // The list's own selection is the only path into it; `SelectedIndex` is
+    // two-way bound, so this only moves focus after a deliberate pick.
+    private void ChatSelected(object sender, SelectionChangedEventArgs args)
     {
-        ViewModel.Open(((ChatSummary)args.ClickedItem).Id);
+        if (disposed || History.FocusState == FocusState.Unfocused)
+            return;
         FocusComposer();
     }
 
     private void CopyMessage(XamlUICommand sender, ExecuteRequestedEventArgs args)
     {
-        if (MessageMenu.Target is not ListViewItem { Content: MessageRow message })
+        if (args.Parameter is not string text)
             return;
+        Copy(text);
+    }
+
+    private void CopySelectedMessage(
+        KeyboardAccelerator sender,
+        KeyboardAcceleratorInvokedEventArgs args
+    )
+    {
+        if (Transcript.SelectedItem is not MessageRow message)
+            return;
+        Copy(message.Text);
+        args.Handled = true;
+    }
+
+    private static void Copy(string text)
+    {
         var data = new DataPackage();
-        data.SetText(message.Text);
+        data.SetText(text);
         Clipboard.SetContent(data);
     }
 
@@ -101,22 +122,22 @@ public sealed partial class ChatView : UserControl, IAsyncDisposable
     {
         Shell.IsPaneOpen = !Shell.IsPaneOpen;
         if (Shell.IsPaneOpen)
-            History.Focus(FocusState.Programmatic);
+            History.Focus(FocusState.Keyboard);
         else
-            Composer.Focus(FocusState.Programmatic);
+            Composer.Focus(FocusState.Keyboard);
     }
 
     private void FocusComposer()
     {
         if (Shell.DisplayMode == SplitViewDisplayMode.Overlay)
             Shell.IsPaneOpen = false;
-        Composer.Focus(FocusState.Programmatic);
+        Composer.Focus(FocusState.Keyboard);
     }
 
     private void FocusSearch(XamlUICommand sender, ExecuteRequestedEventArgs args)
     {
         Shell.IsPaneOpen = true;
-        Search.Focus(FocusState.Programmatic);
+        Search.Focus(FocusState.Keyboard);
     }
 
     private void ToggleHistoryShortcut(
@@ -162,7 +183,7 @@ public sealed partial class ChatView : UserControl, IAsyncDisposable
     private void Send()
     {
         followLatest = true;
-        Composer.Focus(FocusState.Programmatic);
+        Composer.Focus(FocusState.Keyboard);
         var command = ViewModel.Conversation.SendCommand;
         if (command.CanExecute(null))
             command.Execute(null);

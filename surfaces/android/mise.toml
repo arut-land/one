@@ -1,0 +1,18 @@
+# The Android surface. The JVM toolchain installs with this task only, so a
+# Linux or Windows `mise install` never fetches a JDK or Gradle.
+
+[tasks.build]
+extends = "jvm"
+alias = "surface:android"
+description = "Build the Android surface (needs the Android SDK and NDK)"
+dir = "{{config_root}}/../.."
+depends = ["//bindings/ffi:android"]
+run = "gradle -p surfaces/android assembleDebug"
+sources = [
+  "{{config_root}}/**/*.kt",
+  "{{config_root}}/**/*.kts",
+  "{{config_root}}/src/main/AndroidManifest.xml",
+  "{{config_root}}/../../bindings/kotlin/src/**",
+  "{{config_root}}/../../bindings/generated/android/**",
+]
+outputs = ["{{config_root}}/build/outputs/apk/debug/android-debug.apk"]

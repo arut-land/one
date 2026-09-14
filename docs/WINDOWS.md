@@ -13,7 +13,7 @@ mise run surface:windows
 
 The repository pins cargo-binstall and requires prebuilt Cargo tools. BoltFFI comes directly from its GitHub release through mise because binstall cannot discover its archive names. Mise fails if a binary is unavailable instead of compiling a tool from source. The app's Rust core still compiles locally. The binding task discovers MSVC through vswhere, so a Developer PowerShell terminal is optional.
 
-Debug and Release bindings live in separate `bindings/generated/csharp/Debug` and `Release` directories. MSBuild selects the directory through `$(Configuration)`, so publishing cannot replace the Debug native library. Generate the corresponding package through mise before opening a fresh checkout in an IDE. See [build workflows](BUILDING.md) for the shared tool setup.
+The app references `bindings/dotnet/Arut.Bindings.csproj`, which holds the Rust-to-.NET idiom and brings the generated project with it. Debug and Release bindings live in separate `bindings/generated/csharp/Debug` and `Release` directories. MSBuild selects the directory through `$(Configuration)`, so publishing cannot replace the Debug native library. Generate the corresponding package through mise before opening a fresh checkout in an IDE. See [build workflows](BUILDING.md) for the shared tool setup.
 
 The app targets Windows x64, .NET 10, and Windows App SDK 2.4. It runs unpackaged with the .NET and Windows App SDK runtimes beside the executable. `mise run publish:windows` builds Rust and C# in Release mode and writes the distributable folder to `surfaces/windows/bin/publish`. Distribute the entire folder, including `arut_ffi.dll`, `Arut.Windows.pri`, and the compiled `.xbf` views.
 
@@ -43,11 +43,13 @@ The compact 32-DIP WinUI TitleBar contains the current conversation title, histo
 
 Virtualized transcript rows distinguish outgoing and incoming messages with alignment, color, and grouped spacing. Each bubble shows local time, with a full timestamp tooltip and separators after five-minute gaps. Text supports native selection and a copy context menu. The transcript follows the tail unless the reader has scrolled away; `ItemsStackPanel.ItemsUpdatingScrollMode` does the anchoring. A jump-to-latest button appears when reading older messages.
 
-Rust's chat projection supplies `starts_time_group` and `starts_speaker_group` with each keyed message range. Windows, Apple, and Linux use the same grouping policy; each retains its own date formatting and layout. The first row in a range is compared with its stored predecessor, so incremental reads preserve group boundaries without another FFI call per message.
+Rust's chat projection supplies `starts_time_group`, `starts_speaker_group` and `ends_speaker_group` with each keyed message range, so a row's trailing space comes from the row itself rather than from the one behind it. Windows, Apple, and Linux use the same grouping policy; each retains its own date formatting and layout. The first row in a range is compared with its stored predecessor, so incremental reads preserve group boundaries without another FFI call per message.
 
 The native TextBox sizes wrapped text at its available width, grows up to 164 DIPs, and shrinks when text is removed or sent. The transcript fills the available space and retains ListView virtualization, including when the conversation is short.
 
-Message rows are two `DataTemplate`s over an immutable `MessageRow` record, selected by `IsOutgoing`; there is no per-row control, no dependency property, and no send transition. Bubbles use `{ThemeResource}` brushes so light, dark, and High Contrast all follow Windows.
+Message rows are two `DataTemplate`s over an immutable `MessageRow` record, selected by `IsOutgoing`; there is no per-row control, no dependency property, and no send transition. Bubbles use `{ThemeResource}` brushes aliased in the control's own theme dictionaries, so light and dark take the Fluent layer and accent brushes and High Contrast takes the system window and highlight colors. Transcript rows are focusable and single-selectable; Ctrl+C copies the focused row and each bubble carries its own copy flyout with the message as the command parameter, so copying is not mouse-only.
+
+The conversation list is reconciled in place against what Rust publishes: rows that stayed keep their containers, so the pane keeps its scroll offset and the selection never flickers through -1. `SelectedIndex` two-way is the only path into the selection. Conversation view models are bounded: the eight most recently shown keep their handles and pumps, and the rest are disposed. Rust keeps every draft, so an evicted conversation loses nothing but its warm start.
 
 ## Reference implementations
 
@@ -69,16 +71,19 @@ Both community apps use CommunityToolkit animation helpers for ordinary fades an
 | Ctrl+B | Toggle history |
 | Ctrl+L | Focus composer |
 | Ctrl+F | Search conversations |
+| Ctrl+C | Copy the focused transcript row |
 | Enter or Ctrl+Enter | Send |
 | Shift+Enter or Alt+Enter | Insert a line break |
 
-`ConversationViewModel` derives from `ObservableObject`; `[ObservableProperty]` partial properties and `[RelayCommand]` generate the notification and command plumbing. Each visited conversation keeps its own view model, so switching cannot redirect a pending draft command to another conversation. `ChatViewModel` owns the list, the filter over it, and which conversation is selected, which Rust publishes on the conversations scope.
+`ConversationViewModel` derives from `ObservableObject`; `[ObservableProperty]` partial properties and `[RelayCommand]` generate the notification and command plumbing. Each resident conversation keeps its own view model, so switching cannot redirect a pending draft command to another conversation. `ChatViewModel` owns which conversation is selected and which view models are alive; Rust owns the list, the search that narrows it, the unread mark and the selected conversation's title.
 
-There is no observation adapter. One `await foreach` per generated `IAsyncEnumerable<ulong>` stream reads the projection that revision names; the pumps start on the UI thread, so their continuations resume there without an injected dispatcher. Transcript reads use the last accepted message ID and append only new rows. Draft edits echo locally and then write, and Rust coalesces the rest. Closing cancels the pumps, waits for them, then disposes the native handles before closing the window.
+The observation idiom lives in `Arut.Bindings`, not in this surface (ADR 0021). `Projection<T>` runs the one `await foreach` per generated `IAsyncEnumerable<ulong>` stream and re-reads the projection that revision names; `Rows<T>` appends by the last accepted message ID; `Draft` echoes locally and then writes, and Rust coalesces the rest; `Following.RunAsync` owns the composer's initialize-then-follow lifetime; `Reconcile.Apply` brings the conversation list to what Rust publishes; `ErrorText.Describe` turns a Fluent id and its `ErrorArg` list into a sentence through the app's PRI resources; `Time.AcceptedAt` bounds an epoch-millisecond stamp. The pumps start on the UI thread, so their continuations resume there without an injected dispatcher. Closing cancels the pumps, waits for them, then disposes the native handles before closing the window.
 
 The project follows Microsoft's [stable release guidance](https://learn.microsoft.com/en-us/windows/apps/windows-app-sdk/release-channels) and [unpackaged deployment model](https://learn.microsoft.com/en-us/windows/apps/package-and-deploy/unpackage-winui-app). Tool installation follows [mise's Cargo backend](https://mise.jdx.dev/dev-tools/backends/cargo).
 
 ## Validation
+
+This surface has not been compiled since the `Arut.Bindings` adoption: no .NET SDK or Windows toolchain is available in the change's environment, so the view-model, theming, selection and keyboard work above is reviewed but unbuilt.
 
 The Windows Release build passes with zero warnings. UI Automation verified three composer grow/clear cycles, independent drafts, and sending the final value after 30 consecutive edits. Keyboard input verified that Shift+Enter inserts a newline and Enter sends the exact two-line message. Twenty consecutive sends verified following the latest message and the jump-to-latest action after scrolling up.
 

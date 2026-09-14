@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The namespace is declared in build.gradle.kts; a library that ships only
+     Kotlin and the JNI libraries needs nothing else here. -->
+<manifest />

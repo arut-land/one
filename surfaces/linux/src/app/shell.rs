@@ -1,25 +1,36 @@
 use crate::app::{
+    Session,
     composer::{Composer, Msg as ComposerMsg},
     conversations::{Conversations, Msg as ConversationsMsg},
     navigation::Navigation,
-    observe::Tasks,
     strings,
     transcript::{Msg as TranscriptMsg, Position, Transcript},
 };
+use crate::glib_observe::Tasks;
 use arut_i18n::Message;
+use arut_product_session::FeatureAvailability;
 use arut_product_session::chat::ChatClient;
-use arut_product_session::{FeatureAvailability, ProductSession};
-use gtk::{gio, prelude::*};
-use relm4::{Component, ComponentController, ComponentParts, ComponentSender, Controller};
+use gtk::{gio, glib, prelude::*};
+use relm4::{
+    Component, ComponentController, ComponentParts, ComponentSender, Controller, RelmWidgetExt,
+};
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
+/// Reveal duration for a pointer-driven sidebar toggle. A keyboard toggle uses
+/// zero: it happens many times a day and an animation only delays it.
+const REVEAL_MS: u32 = 120;
+/// The narrowest the conversation sidebar may be dragged: below this a title
+/// and its preview stop being readable.
+const SIDEBAR_MINIMUM: i32 = 220;
+
 pub struct Shell {
-    session: Rc<ProductSession>,
+    session: Rc<Session>,
     navigation: Navigation,
     conversations: Controller<Conversations>,
     transcript: Controller<Transcript>,
     composer: Controller<Composer>,
     body: gtk::Box,
+    sidebar: gtk::Revealer,
     drafts: HashMap<Option<String>, Controller<Composer>>,
     positions: HashMap<Option<String>, f64>,
     /// The conversation whose widgets are mounted. Shared with the watch that
@@ -40,29 +51,70 @@ pub struct Shell {
 #[derive(Debug, Clone)]
 pub enum Msg {
     New,
-    ToggleSidebar,
+    /// `true` animates the reveal; a keyboard toggle passes `false`.
+    ToggleSidebar(bool),
     FocusComposer,
     Search,
     Escape,
     Narrow(bool),
+    SidebarWidth(i32),
     Conversations,
     Position(Option<String>, f64),
     Availability,
     Initialized(Result<(), arut_product_session::SessionError>),
 }
 
+/// Every window shortcut in one place: the action it reaches, the triggers
+/// that reach it, and the sentence the tooltip and the overlay both show. The
+/// first trigger is the one rendered; the rest are aliases. `show-help-overlay`
+/// is GTK's own action, so it appears here for its trigger and its label only.
+fn shortcuts() -> [(&'static str, &'static [&'static str], Message); 6] {
+    [
+        ("new", &["<Control>n"], Message::ActionNewConversation),
+        ("sidebar", &["<Control>b"], Message::ActionToggleSidebar),
+        (
+            "composer",
+            &["<Control>l", "<Control>k"],
+            Message::ActionFocusComposer,
+        ),
+        (
+            "search",
+            &["<Control>f"],
+            Message::ActionSearchConversations,
+        ),
+        ("escape", &["Escape"], Message::ActionClearSearch),
+        (
+            "show-help-overlay",
+            &["<Control>question"],
+            Message::LabelKeyboardShortcuts,
+        ),
+    ]
+}
+
+/// The label a desktop shows for a trigger, from GTK rather than a literal:
+/// modifier names are translated and platform-specific.
+fn accelerator(display: &gtk::gdk::Display, trigger: &str) -> String {
+    gtk::ShortcutTrigger::parse_string(trigger)
+        .map(|trigger| trigger.to_label(display).to_string())
+        .unwrap_or_default()
+}
+
 #[relm4::component(pub)]
 impl Component for Shell {
-    type Init = Rc<ProductSession>;
+    type Init = Rc<Session>;
     type Input = Msg;
     type Output = ();
     type CommandOutput = ();
     view! {
         #[name = "window"]
         gtk::ApplicationWindow {
-            set_title: Some(&strings::show(&Message::AppName)),
+            // The task switcher shows this, so it follows the conversation the
+            // toolbar names rather than staying on the application name.
+            #[watch]
+            set_title: Some(&model.title),
             add_css_class: "arut-window",
-            set_default_size: (900, 600),
+            set_default_size: (model.navigation.size.0, model.navigation.size.1),
+            set_maximized: model.navigation.maximized,
             gtk::Box {
                 set_orientation: gtk::Orientation::Vertical,
                 #[name = "header"]
@@ -77,13 +129,12 @@ impl Component for Shell {
                             add_css_class: "flat",
                             #[watch]
                             set_active: !model.navigation.collapsed,
-                            set_tooltip_text: Some(&strings::show(&Message::ActionToggleSidebarShortcut { shortcut: "Ctrl+B".into() })),
                             update_property: &[gtk::accessible::Property::Label(&strings::show(&Message::ActionToggleSidebar))],
                         },
+                        #[name = "new_conversation"]
                         gtk::Button {
                             set_icon_name: "chat-message-new-symbolic",
                             add_css_class: "flat",
-                            set_tooltip_text: Some(&strings::show(&Message::ActionNewConversationShortcut { shortcut: "Ctrl+N".into() })),
                             update_property: &[gtk::accessible::Property::Label(&strings::show(&Message::ActionNewConversation))],
                             set_action_name: Some("win.new"),
                         },
@@ -105,25 +156,43 @@ impl Component for Shell {
                             #[watch]
                             set_label: &model.availability,
                         },
+                        #[name = "menu"]
+                        gtk::MenuButton {
+                            set_icon_name: "open-menu-symbolic",
+                            add_css_class: "flat",
+                            set_tooltip_text: Some(&strings::show(&Message::ActionMainMenu)),
+                            update_property: &[gtk::accessible::Property::Label(&strings::show(&Message::ActionMainMenu))],
+                        },
                     },
                 },
-                gtk::Box {
+                #[name = "panes"]
+                gtk::Paned {
                     set_vexpand: true,
+                    set_orientation: gtk::Orientation::Horizontal,
+                    // The chat column takes new width; the sidebar keeps the
+                    // width the person gave it. The start child stays
+                    // shrinkable so a collapsed sidebar reaches position zero
+                    // without waiting for the reveal transition; the floor a
+                    // drag stops at is `SIDEBAR_MINIMUM` below.
+                    set_resize_start_child: false,
+                    set_resize_end_child: true,
+                    #[watch]
+                    set_class_active: ("arut-collapsed", model.navigation.collapsed),
+                    #[watch]
+                    set_position: if model.navigation.collapsed { 0 } else { model.navigation.sidebar },
+                    #[wrap(Some)]
                     #[name = "sidebar"]
-                    gtk::Revealer {
-                        set_transition_type: gtk::RevealerTransitionType::SlideRight,
-                        // GtkRevealer skips the transition on its own when the
-                        // desktop has animations off; there is no second path.
-                        set_transition_duration: 200,
+                    set_start_child = &gtk::Revealer {
+                        set_transition_type: gtk::RevealerTransitionType::Crossfade,
+                        set_transition_duration: REVEAL_MS,
                         #[watch]
                         set_reveal_child: !model.navigation.collapsed,
-                        #[watch]
-                        set_hexpand: model.narrow && !model.navigation.collapsed,
                         #[local_ref]
                         conversations -> gtk::Box {},
                     },
+                    #[wrap(Some)]
                     #[name = "chat_surface"]
-                    gtk::Box {
+                    set_end_child = &gtk::Box {
                         set_hexpand: true,
                         add_css_class: "arut-chat-surface",
                         #[watch]
@@ -196,14 +265,18 @@ impl Component for Shell {
         // The mounted conversation and the session's selection start in step;
         // a saved selection is restored once the session has initialized.
         session.select(session.chat().id());
+        let display = WidgetExt::display(&root);
+        let mut navigation = Navigation::load();
+        navigation.size = navigation.size_on(Some(&display));
         let mut model = Self {
             displayed: Rc::new(RefCell::new(session.chat().id())),
             session,
-            navigation: Navigation::load(),
+            navigation,
             conversations,
             transcript,
             composer,
             body: gtk::Box::new(gtk::Orientation::Vertical, 0),
+            sidebar: gtk::Revealer::new(),
             drafts: HashMap::new(),
             positions: HashMap::new(),
             narrow: false,
@@ -222,6 +295,7 @@ impl Component for Shell {
         let composer = model.composer.widget();
         let widgets = view_output!();
         model.body = widgets.body.clone();
+        model.sidebar = widgets.sidebar.clone();
         let pending = model.session.chat();
         model.follow_displayed(pending);
         model._decorations = Some(crate::app::decorations::Decorations::install(
@@ -249,30 +323,78 @@ impl Component for Shell {
             }
         });
         root.add_action(&latest);
-        let shortcuts = gtk::ShortcutController::new();
-        shortcuts.set_scope(gtk::ShortcutScope::Managed);
-        for (name, trigger, message) in [
-            ("new", "<Control>n", Msg::New),
-            ("sidebar", "<Control>b", Msg::ToggleSidebar),
-            ("composer", "<Control>k", Msg::FocusComposer),
-            ("search", "<Control>f", Msg::Search),
-            ("escape", "Escape", Msg::Escape),
-        ] {
-            let action = gio::SimpleAction::new(name, None);
-            let input = sender.input_sender().clone();
-            action.connect_activate(move |_, _| {
-                let _ = input.send(message.clone());
-            });
-            root.add_action(&action);
-            shortcuts.add_shortcut(gtk::Shortcut::new(
-                gtk::ShortcutTrigger::parse_string(trigger),
-                Some(gtk::NamedAction::new(&format!("win.{name}"))),
-            ));
+        let controller = gtk::ShortcutController::new();
+        controller.set_scope(gtk::ShortcutScope::Managed);
+        for (name, triggers, _) in shortcuts() {
+            // `win.show-help-overlay` is GtkApplicationWindow's own action; the
+            // table names it so it gets a trigger and an overlay entry.
+            let message = match name {
+                "new" => Some(Msg::New),
+                "sidebar" => Some(Msg::ToggleSidebar(false)),
+                "composer" => Some(Msg::FocusComposer),
+                "search" => Some(Msg::Search),
+                "escape" => Some(Msg::Escape),
+                _ => None,
+            };
+            if let Some(message) = message {
+                let action = gio::SimpleAction::new(name, None);
+                let input = sender.input_sender().clone();
+                action.connect_activate(move |_, _| {
+                    let _ = input.send(message.clone());
+                });
+                root.add_action(&action);
+            }
+            for trigger in triggers {
+                controller.add_shortcut(gtk::Shortcut::new(
+                    gtk::ShortcutTrigger::parse_string(trigger),
+                    Some(gtk::NamedAction::new(&format!("win.{name}"))),
+                ));
+            }
         }
-        root.add_controller(shortcuts);
+        root.add_controller(controller);
+        install_menu(&root, &widgets.menu);
+        install_overlay(&root, &display);
+        // The second discoverability layer: the accelerator in the tooltip is
+        // rendered from the registered trigger, never typed in.
+        widgets.sidebar_toggle.set_tooltip_text(Some(&strings::show(
+            &Message::ActionToggleSidebarShortcut {
+                shortcut: accelerator(&display, "<Control>b"),
+            },
+        )));
+        widgets
+            .new_conversation
+            .set_tooltip_text(Some(&strings::show(
+                &Message::ActionNewConversationShortcut {
+                    shortcut: accelerator(&display, "<Control>n"),
+                },
+            )));
+        widgets.sidebar.set_visible(!model.navigation.collapsed);
+        widgets.sidebar.connect_child_revealed_notify(|sidebar| {
+            sidebar.set_visible(sidebar.is_child_revealed());
+        });
         widgets.sidebar_toggle.connect_clicked({
             let sender = sender.clone();
-            move |_| sender.input(Msg::ToggleSidebar)
+            move |_| sender.input(Msg::ToggleSidebar(true))
+        });
+        widgets.panes.connect_position_notify({
+            let sender = sender.clone();
+            move |panes| sender.input(Msg::SidebarWidth(panes.position()))
+        });
+        // Wayland owns placement, so the size and the pane width are what
+        // there is to restore. They are read back off the widgets here rather
+        // than mirrored into the model on every drag.
+        root.connect_close_request({
+            let panes = widgets.panes.downgrade();
+            move |window| {
+                let mut navigation = Navigation::load();
+                navigation.size = window.default_size();
+                navigation.maximized = window.is_maximized();
+                if let Some(panes) = panes.upgrade().filter(|panes| panes.position() > 0) {
+                    navigation.sidebar = panes.position();
+                }
+                navigation.save();
+                glib::Propagation::Proceed
+            }
         });
         #[cfg(feature = "review")]
         crate::app::review::install(&root, model.session.clone(), sender.clone());
@@ -320,18 +442,25 @@ impl Component for Shell {
             Msg::Position(id, value) => {
                 self.positions.insert(id, value);
             }
-            Msg::ToggleSidebar => {
-                self.navigation.collapsed = !self.navigation.collapsed;
+            Msg::SidebarWidth(width) => {
+                if !self.navigation.collapsed && width > 0 {
+                    // The view re-applies this, which is what stops a drag at
+                    // the floor rather than clipping the list.
+                    self.navigation.sidebar = width.max(SIDEBAR_MINIMUM);
+                }
+            }
+            Msg::ToggleSidebar(animate) => {
+                self.collapse(!self.navigation.collapsed, animate);
                 self.navigation.save();
             }
             Msg::FocusComposer => {
                 if self.narrow {
-                    self.navigation.collapsed = true;
+                    self.collapse(true, false);
                 }
                 self.composer.emit(ComposerMsg::Focus);
             }
             Msg::Search => {
-                self.navigation.collapsed = false;
+                self.collapse(false, false);
                 // The child grabs focus from its own update, after this one has
                 // revealed the sidebar.
                 self.conversations.emit(ConversationsMsg::Focus);
@@ -346,7 +475,7 @@ impl Component for Shell {
             }
             Msg::Narrow(narrow) => {
                 self.narrow = narrow;
-                self.navigation.collapsed = narrow;
+                self.collapse(narrow, false);
             }
             Msg::Availability => {
                 let value = self.session.availability().composer;
@@ -370,20 +499,99 @@ impl Component for Shell {
     }
 }
 
+/// The primary menu GNOME expects in the header: what this window can do that
+/// is not a toolbar button. `win.show-help-overlay` is GTK's, `app.quit` the
+/// application's; both are named here and nowhere else.
+fn install_menu(window: &gtk::ApplicationWindow, button: &gtk::MenuButton) {
+    let menu = gio::Menu::new();
+    for (label, action) in [
+        (Message::ActionAbout, "win.about"),
+        (Message::LabelKeyboardShortcuts, "win.show-help-overlay"),
+        (Message::ActionQuit, "app.quit"),
+    ] {
+        menu.append(Some(&strings::show(&label)), Some(action));
+    }
+    button.set_menu_model(Some(&menu));
+    let about = gio::SimpleAction::new("about", None);
+    about.connect_activate({
+        let window = window.downgrade();
+        move |_, _| {
+            let Some(window) = window.upgrade() else {
+                return;
+            };
+            gtk::AboutDialog::builder()
+                .transient_for(&window)
+                .modal(true)
+                .program_name(strings::show(&Message::AppName))
+                .version(env!("CARGO_PKG_VERSION"))
+                .logo_icon_name("dev.arut.Arut")
+                .build()
+                .present();
+        }
+    });
+    window.add_action(&about);
+    let quit = gio::SimpleAction::new("quit", None);
+    quit.connect_activate(|_, _| relm4::main_application().quit());
+    relm4::main_application().add_action(&quit);
+}
+
+/// The third discoverability layer, built from the same table as the
+/// accelerators and the tooltips, so a shortcut cannot exist without appearing
+/// here. `GtkShortcutsWindow` is deprecated in GTK 4.18 in favour of
+/// `AdwShortcutsDialog`, which this surface cannot use: ADR 0020 keeps it on
+/// plain GTK4. It is also the only overlay `set_help_overlay` accepts, which
+/// is what supplies `win.show-help-overlay`. The deprecation is allowed here
+/// and nowhere else.
+#[allow(deprecated)]
+fn install_overlay(window: &gtk::ApplicationWindow, display: &gtk::gdk::Display) {
+    let group = gtk::ShortcutsGroup::builder()
+        .title(strings::show(&Message::LabelShortcutsGeneral))
+        .build();
+    for (_, triggers, message) in shortcuts() {
+        group.append(
+            &gtk::ShortcutsShortcut::builder()
+                .title(strings::show(&message))
+                // Space-separated alternatives, in GtkShortcutsShortcut's own
+                // accelerator syntax.
+                .accelerator(triggers.join(" "))
+                .build(),
+        );
+    }
+    let section = gtk::ShortcutsSection::builder().build();
+    section.append(&group);
+    let overlay = gtk::ShortcutsWindow::builder()
+        .modal(true)
+        .display(display)
+        .title(strings::show(&Message::LabelKeyboardShortcuts))
+        .build();
+    overlay.add_section(&section);
+    window.set_help_overlay(Some(&overlay));
+}
+
 impl Shell {
+    /// Reveals or hides the sidebar.
+    ///
+    /// A crossfading `GtkRevealer` keeps its child's width for the whole
+    /// transition, so the widget itself is taken out of the layout once the
+    /// fade has finished -- see the `child-revealed` handler in `init` -- and
+    /// put back here before the next reveal starts.
+    fn collapse(&mut self, collapsed: bool, animate: bool) {
+        self.sidebar
+            .set_transition_duration(if animate { REVEAL_MS } else { 0 });
+        if !collapsed {
+            self.sidebar.set_visible(true);
+        }
+        self.navigation.collapsed = collapsed;
+    }
+
     /// The conversation title, or the new-conversation label while the pending
-    /// conversation has no messages of its own yet.
+    /// conversation has no messages of its own yet. Rust decides which
+    /// conversation that is; only the label for "none" is this surface's.
     fn retitle(&mut self) {
-        let displayed = self.displayed.borrow().clone();
         self.title = self
             .session
-            .chat_summaries()
-            .into_iter()
-            .find(|summary| Some(&summary.id) == displayed.as_ref())
-            .map_or_else(
-                || strings::show(&Message::ActionNewConversation),
-                |summary| summary.title,
-            );
+            .selected_title()
+            .unwrap_or_else(|| strings::show(&Message::ActionNewConversation));
     }
 
     /// Follows the mounted conversation so a pending one that becomes
@@ -410,7 +618,7 @@ impl Shell {
         let previous = self.displayed.replace(key.clone());
         if previous == key {
             if self.narrow {
-                self.navigation.collapsed = true;
+                self.collapse(true, false);
             }
             self.composer.emit(ComposerMsg::Focus);
             return;
@@ -430,7 +638,7 @@ impl Shell {
         self.body.append(self.composer.widget());
         self.follow_displayed(chat);
         if self.narrow {
-            self.navigation.collapsed = true;
+            self.collapse(true, false);
         }
         self.composer.emit(ComposerMsg::Enabled(self.available));
         self.composer.emit(ComposerMsg::Focus);

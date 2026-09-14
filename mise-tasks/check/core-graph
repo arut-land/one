@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+#MISE description="Assert the isolated core graph and its unsafe-code lint"
+#MISE sources=["@group:rust"]
+# docs/ECOSYSTEM.md names these assertions: the wasm core carries no
+# wasm-bindgen and no Tokio executor, and no core crate opts out of the
+# workspace's unsafe_code deny.
+set -euo pipefail
+
+if [ -n "$(cargo tree -i wasm-bindgen --target wasm32-unknown-unknown -p arut_ffi)" ]; then
+  echo "arut_ffi reaches wasm-bindgen"
+  exit 1
+fi
+if cargo tree -e features -p arut_ffi --target wasm32-unknown-unknown | grep -qE 'tokio.*(rt|rt-multi-thread)'; then
+  echo "arut_ffi reaches a Tokio executor"
+  exit 1
+fi
+if grep -rn 'allow(unsafe_code)' features product substrates bindings; then
+  echo "a core crate opts out of the unsafe_code deny"
+  exit 1
+fi

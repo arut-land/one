@@ -1,0 +1,86 @@
+# The scope handles the foreign bindings export (ADR 0007, ADR 0021).
+#
+# `arut-dev generate` writes `src/generated/handles.rs` from this file: the
+# handle struct, its projection read, its typed error as a Fluent id and
+# arguments, its child scopes, its revision stream and its keyed rows. What a
+# person does -- send, replace, select, refresh, the session factories -- stays
+# hand-written in `src/intents.rs`, as a second `#[export] impl` block on the
+# same type.
+#
+# BoltFFI's scanner reads source and expands no macros, so this output is
+# checked in and `arut-dev check` regenerates it into a temporary directory and
+# diffs.
+#
+# Keys per handle:
+#   name          the exported type
+#   holds         the Rust value it wraps, as the `inner` field
+#   shared        hold it as `Arc<holds>` (a session, not a cloneable client)
+#   state         the projection `state()` returns
+#   state_from    the method on `inner` that reads it (default `state`)
+#   error         the typed error on the projection, exported as key + arguments
+#   changes       the exported revision stream
+#   changes_from  the subscription on `inner` (default `changes`)
+#   reads         further reads: name = { returns, from }
+#   children      child scopes: name = { handle, from } or { handle, share }
+#   rows          keyed rows: { after, row }
+
+imports = [
+  "crate::observation::subscription",
+  "crate::{ErrorArg, Features}",
+  "arut_feature_chat::composer::{ComposerClient, ComposerState}",
+  "arut_feature_chat::{ChatClient, ChatMessage, ChatState}",
+  "arut_product_session::{ChatSummary, ProductSession, SessionAvailability}",
+  "boltffi::{EventSubscription, export}",
+  "std::sync::Arc",
+]
+
+[[handle]]
+name = "ProductSessionHandle"
+holds = "ProductSession<Features>"
+shared = true
+
+[handle.children]
+chat = { handle = "ChatHandle", from = "chat" }
+conversations = { handle = "ConversationsHandle", share = true }
+availability = { handle = "AvailabilityHandle", share = true }
+
+[[handle]]
+name = "ConversationsHandle"
+holds = "ProductSession<Features>"
+shared = true
+state = "Vec<ChatSummary>"
+state_from = "chat_summaries"
+changes = "list_changes"
+changes_from = "conversations_changes"
+
+[handle.reads]
+selected_id = { returns = "Option<String>" }
+title = { returns = "Option<String>", from = "selected_title" }
+query = { returns = "String" }
+
+[[handle]]
+name = "AvailabilityHandle"
+holds = "ProductSession<Features>"
+shared = true
+state = "SessionAvailability"
+state_from = "availability"
+changes = "availability_changes"
+changes_from = "availability_changes"
+
+[[handle]]
+name = "ChatHandle"
+holds = "ChatClient"
+state = "ChatState"
+error = "ChatError"
+changes = "chat_changes"
+rows = { after = "messages_after", row = "ChatMessage" }
+
+[handle.children]
+composer = { handle = "ComposerHandle", from = "composer" }
+
+[[handle]]
+name = "ComposerHandle"
+holds = "ComposerClient"
+state = "ComposerState"
+error = "ComposerError"
+changes = "composer_changes"

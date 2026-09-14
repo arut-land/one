@@ -8,28 +8,28 @@
 mod availability;
 pub use availability::{FeatureAvailability, SessionAvailability};
 pub mod hosting;
+/// Feature handles and renderable projections a product session exposes.
+///
+/// The feature crate is the one place these are named; a session re-exports it
+/// whole so a surface reaches them without a dependency on `features/`.
+pub use arut_feature_chat as chat;
 /// Why a session-level call produced no usable answer.
 ///
 /// The same reasons a feature scope reports, because they are the same node
 /// answering; kept under this name while surfaces move to `NodeFailure`.
 pub use arut_feature_chat::errors::NodeFailure as SessionError;
-/// Feature handles and renderable projections exposed by a product session.
-pub mod chat {
-    pub use arut_feature_chat::composer::{ComposerClient, ComposerState, ComposerStatus};
-    pub use arut_feature_chat::errors::{ChatError, ComposerError, NodeFailure};
-    pub use arut_feature_chat::{
-        ChatClient, ChatClients, ChatMessage, ChatRole, ChatState, ChatStatus,
-    };
-}
+pub mod feature;
 /// Observation contract shared by the session and its feature handles.
 pub use arut_watch::Subscription;
 pub mod scopes;
 use arut_feature_chat::ports::IdSource;
-use arut_feature_chat::{ChatClient, ChatClients, ChatObserver};
+use arut_feature_chat::{ChatClient, ChatObserver};
 use arut_protocol::capability::v1::CapabilityServiceClient;
 use arut_protocol::capability_manifest::capability_client;
-use arut_rpc::{Cancellation, Request};
+use arut_protocol::chat::{composer::v1::ComposerServiceClient, v1::ChatServiceClient};
+use arut_rpc::{Cancellation, Request, RpcChannel};
 use arut_watch::Watch;
+use feature::{FeatureSet, HasChat, Services};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, Weak};
 
@@ -40,11 +40,15 @@ pub struct SessionScope {
     pub pending_scope_id: String,
 }
 
-pub struct ProductSession {
+/// A session over the features `F` names.
+///
+/// The default set is the one every root composes today; a root that names its
+/// own writes `ProductSession<MyFeatures>` and nothing else changes.
+pub struct ProductSession<F: FeatureSet> {
     pending: Mutex<ChatClient>,
     ids: Arc<dyn IdSource>,
     established: Established,
-    workspace: Arc<scopes::Workspace<ChatClients>>,
+    workspace: Arc<scopes::Workspace<F::Clients>>,
     pending_scope_id: String,
     conversations: Arc<Watch<Conversations>>,
     capability_service: CapabilityServiceClient,
@@ -53,12 +57,32 @@ pub struct ProductSession {
 
 type Established = Arc<Mutex<HashMap<String, ChatClient>>>;
 
-/// The conversation list a surface renders, newest first, and which of them it
-/// is showing. Selection lives here so one revision covers both.
+/// The conversation list a surface renders, newest first, which of them it is
+/// showing, and what it is searching for. All three live here so one revision
+/// covers them.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 struct Conversations {
-    summaries: Vec<ChatSummary>,
+    entries: Vec<Entry>,
     selected_id: Option<String>,
+    query: String,
+}
+
+/// One conversation in the list, beside the two keys that decide whether it is
+/// unread: where its transcript has reached, and where it had reached the last
+/// time it was the selected conversation.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct Entry {
+    summary: ChatSummary,
+    last_message_id: u64,
+    seen_message_id: u64,
+}
+
+impl Entry {
+    /// Recomputes what the summary derives, the way `ChatState::derive` does,
+    /// so no surface restates the rule.
+    fn derive(&mut self) {
+        self.summary.unread = self.last_message_id > self.seen_message_id;
+    }
 }
 
 #[boltffi::data]
@@ -68,18 +92,45 @@ pub struct ChatSummary {
     pub title: String,
     /// Latest accepted message, normalized and bounded for navigation lists.
     pub preview: String,
+    /// Messages arrived since this conversation was last the selected one.
+    ///
+    /// Derived from the transcript key and the selection this session owns;
+    /// selecting the conversation clears it.
+    pub unread: bool,
+    /// Where the current query matches `title`, so a surface highlights without
+    /// repeating the matching rule.
+    pub match_ranges: Vec<MatchRange>,
+}
+
+/// Half-open character range of one query match in a title.
+///
+/// Characters are Unicode scalars, not UTF-16 units or grapheme clusters: a
+/// surface whose string type is indexed otherwise converts once.
+#[boltffi::data]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct MatchRange {
+    pub start: u32,
+    pub end: u32,
 }
 
 /// Registration is weak: an established chat holds the callback that registered it.
 struct RegisterChat {
     established: Weak<Mutex<HashMap<String, ChatClient>>>,
     conversations: Arc<Watch<Conversations>>,
+    /// A pending chat the person is typing into becomes the selected
+    /// conversation the moment it is established; chats found at startup do not.
+    adopt_selection: bool,
 }
 impl RegisterChat {
-    fn new(established: &Established, conversations: &Arc<Watch<Conversations>>) -> Arc<Self> {
+    fn new(
+        established: &Established,
+        conversations: &Arc<Watch<Conversations>>,
+        adopt_selection: bool,
+    ) -> Arc<Self> {
         Arc::new(Self {
             established: Arc::downgrade(established),
             conversations: conversations.clone(),
+            adopt_selection,
         })
     }
 }
@@ -88,24 +139,52 @@ impl ChatObserver for RegisterChat {
         let Some(established) = self.established.upgrade() else {
             return;
         };
+        let last_message_id = chat.state().last_message_id;
         let summary = ChatSummary {
             id: chat_id.to_owned(),
             title: summary_text(chat, true, 48),
             preview: summary_text(chat, false, 160),
+            unread: false,
+            match_ranges: Vec::new(),
         };
         established
             .lock()
             .expect("chat registry poisoned")
             .insert(chat_id.to_owned(), chat.clone());
         self.conversations.update(|conversations| {
-            match conversations
-                .summaries
-                .iter_mut()
-                .find(|known| known.id == chat_id)
-            {
-                Some(known) => known.preview = summary.preview,
-                None => conversations.summaries.insert(0, summary),
+            let known = conversations
+                .entries
+                .iter()
+                .position(|known| known.summary.id == chat_id);
+            if known.is_none() && self.adopt_selection {
+                conversations.selected_id = Some(chat_id.to_owned());
             }
+            let selected = conversations.selected_id.as_deref() == Some(chat_id);
+            let entry = match known {
+                Some(index) => {
+                    let entry = &mut conversations.entries[index];
+                    entry.summary.preview = summary.preview;
+                    entry
+                }
+                // A conversation joins the list at whatever it has already
+                // accepted: what arrives after that is what is unread.
+                None => {
+                    conversations.entries.insert(
+                        0,
+                        Entry {
+                            summary,
+                            last_message_id,
+                            seen_message_id: last_message_id,
+                        },
+                    );
+                    &mut conversations.entries[0]
+                }
+            };
+            entry.last_message_id = last_message_id;
+            if selected {
+                entry.seen_message_id = last_message_id;
+            }
+            entry.derive();
         });
     }
 }
@@ -132,38 +211,87 @@ fn summary_text(chat: &ChatClient, first: bool, limit: usize) -> String {
     }
 }
 
-impl ProductSession {
-    /// Compose a session from a local feature and its served capability descriptors.
-    pub fn from_chat(
-        feature: &arut_feature_chat::ChatFeature,
-        scope: SessionScope,
-        ids: Arc<dyn IdSource>,
-    ) -> Self {
-        Self::new(
-            feature.clients(),
-            capability_client::<arut_feature_chat::ChatServices>(),
-            scope,
-            ids,
-        )
+/// One casing rule for every surface: Unicode's language-neutral lowercase,
+/// with the source character each folded character came from, so a match in the
+/// folded text maps back to the text a surface renders.
+///
+/// `char::to_lowercase` is not locale-tailored: it does not know that Turkish
+/// lowercases `I` to `\u{131}`, which ICU would. Taking ICU for that would put a
+/// locale in the core, which ADR 0016 keeps out, and both the query and the
+/// title are the same person's own text. If a surface reports a language where
+/// this reads wrongly, the tailoring belongs behind a port, not here.
+fn folded(text: &str) -> (Vec<char>, Vec<usize>) {
+    let mut characters = Vec::new();
+    let mut origins = Vec::new();
+    for (index, character) in text.chars().enumerate() {
+        for lowered in character.to_lowercase() {
+            characters.push(lowered);
+            origins.push(index);
+        }
+    }
+    (characters, origins)
+}
+
+/// Every place `query` matches `text`, as `(start, end)` character offsets into
+/// `text`. `query` is already folded by [`folded`].
+fn match_ranges(text: &str, query: &[char]) -> Vec<MatchRange> {
+    if query.is_empty() {
+        return Vec::new();
+    }
+    let (characters, origins) = folded(text);
+    let mut ranges = Vec::new();
+    let mut start = 0;
+    while start + query.len() <= characters.len() {
+        if characters[start..start + query.len()] == *query {
+            let first = origins[start];
+            let last = origins[start + query.len() - 1];
+            ranges.push(MatchRange {
+                start: u32::try_from(first).unwrap_or(u32::MAX),
+                end: u32::try_from(last + 1).unwrap_or(u32::MAX),
+            });
+            start += query.len();
+        } else {
+            start += 1;
+        }
+    }
+    ranges
+}
+
+fn contains(text: &str, query: &[char]) -> bool {
+    !match_ranges(text, query).is_empty()
+}
+
+impl<F: HasChat> ProductSession<F> {
+    /// Compose a session over the clients a local root built, advertising
+    /// exactly what the set serves.
+    pub fn local(clients: F::Clients, scope: SessionScope, ids: Arc<dyn IdSource>) -> Self {
+        Self::new(clients, capability_client::<Services<F>>(), scope, ids)
     }
 
     /// Bind the session's clients to the composition root's chosen route.
     pub fn remote(
-        channel: Arc<dyn arut_rpc::RpcChannel>,
+        channel: Arc<dyn RpcChannel>,
         scope: SessionScope,
         ids: Arc<dyn IdSource>,
     ) -> Self {
         Self::new(
-            ChatClients::remote(channel.clone()),
+            F::remote(&channel),
             CapabilityServiceClient::remote(channel),
             scope,
             ids,
         )
     }
 
+    fn chat_service(&self) -> ChatServiceClient {
+        F::chat(self.workspace.clients()).chat.clone()
+    }
+
+    fn composer_service(&self) -> ComposerServiceClient {
+        F::chat(self.workspace.clients()).composer.clone()
+    }
+
     pub async fn initialize(&self) -> Result<(), SessionError> {
         let response = self
-            .workspace
             .chat_service()
             .list_conversations(Request::new(
                 arut_protocol::chat::v1::ListConversationsRequest {},
@@ -175,8 +303,8 @@ impl ProductSession {
                 continue;
             }
             let client = ChatClient::established(
-                self.workspace.chat_service(),
-                self.workspace.composer_service(),
+                self.chat_service(),
+                self.composer_service(),
                 conversation.id.clone(),
                 conversation.messages,
                 self.ids.clone(),
@@ -189,7 +317,7 @@ impl ProductSession {
     }
 
     fn new(
-        clients: ChatClients,
+        clients: F::Clients,
         capabilities: CapabilityServiceClient,
         scope: SessionScope,
         ids: Arc<dyn IdSource>,
@@ -199,10 +327,10 @@ impl ProductSession {
         let established = Established::default();
         let conversations = Arc::new(Watch::new(Conversations::default()));
         let pending = ChatClient::pending(
-            workspace.chat_service(),
-            workspace.composer_service(),
+            F::chat(workspace.clients()).chat.clone(),
+            F::chat(workspace.clients()).composer.clone(),
             scope.pending_scope_id.clone(),
-            Some(RegisterChat::new(&established, &conversations)),
+            Some(RegisterChat::new(&established, &conversations, true)),
             ids.clone(),
             workspace.conversation_cancellation(),
         );
@@ -221,15 +349,19 @@ impl ProductSession {
     }
 
     fn registration(&self) -> Arc<RegisterChat> {
-        RegisterChat::new(&self.established, &self.conversations)
+        RegisterChat::new(&self.established, &self.conversations, false)
     }
 
     fn new_pending(&self) -> ChatClient {
         ChatClient::pending(
-            self.workspace.chat_service(),
-            self.workspace.composer_service(),
+            self.chat_service(),
+            self.composer_service(),
             self.pending_scope_id.clone(),
-            Some(self.registration()),
+            Some(RegisterChat::new(
+                &self.established,
+                &self.conversations,
+                true,
+            )),
             self.ids.clone(),
             self.workspace.conversation_cancellation(),
         )
@@ -270,10 +402,23 @@ impl ProductSession {
     }
 
     /// Records which conversation surfaces are showing, so every surface on
-    /// this session follows the same selection through one revision.
+    /// this session follows the same selection through one revision. Selecting
+    /// a conversation also marks it read.
     pub fn select(&self, chat_id: Option<String>) {
-        self.conversations
-            .update(|conversations| conversations.selected_id = chat_id);
+        self.conversations.update(|conversations| {
+            conversations.selected_id.clone_from(&chat_id);
+            let Some(chat_id) = chat_id else {
+                return;
+            };
+            if let Some(entry) = conversations
+                .entries
+                .iter_mut()
+                .find(|entry| entry.summary.id == chat_id)
+            {
+                entry.seen_message_id = entry.last_message_id;
+                entry.derive();
+            }
+        });
     }
 
     pub fn selected_id(&self) -> Option<String> {
@@ -281,10 +426,53 @@ impl ProductSession {
             .read(|conversations| conversations.selected_id.clone())
     }
 
-    /// The conversation list a surface renders, newest first.
-    pub fn chat_summaries(&self) -> Vec<ChatSummary> {
+    /// The title of the selected conversation, or `None` when the pending one
+    /// is showing and the surface names it in its own words.
+    pub fn selected_title(&self) -> Option<String> {
+        self.conversations.read(|conversations| {
+            let selected = conversations.selected_id.as_deref()?;
+            conversations
+                .entries
+                .iter()
+                .find(|entry| entry.summary.id == selected)
+                .map(|entry| entry.summary.title.clone())
+        })
+    }
+
+    /// What the list is being searched for. Empty means the whole list.
+    pub fn query(&self) -> String {
         self.conversations
-            .read(|conversations| conversations.summaries.clone())
+            .read(|conversations| conversations.query.clone())
+    }
+
+    /// Narrows the conversation list. One casing rule for every surface.
+    pub fn set_query(&self, query: String) {
+        self.conversations
+            .update(|conversations| conversations.query = query);
+    }
+
+    /// The conversation list a surface renders, newest first, narrowed to the
+    /// current query and carrying where each title matched it.
+    pub fn chat_summaries(&self) -> Vec<ChatSummary> {
+        self.conversations.read(|conversations| {
+            let query = folded(&conversations.query).0;
+            conversations
+                .entries
+                .iter()
+                .filter_map(|entry| {
+                    if query.is_empty() {
+                        return Some(entry.summary.clone());
+                    }
+                    let ranges = match_ranges(&entry.summary.title, &query);
+                    if ranges.is_empty() && !contains(&entry.summary.preview, &query) {
+                        return None;
+                    }
+                    let mut summary = entry.summary.clone();
+                    summary.match_ranges = ranges;
+                    Some(summary)
+                })
+                .collect()
+        })
     }
 
     pub fn conversations_changes(&self) -> Arc<Subscription<u64>> {
@@ -308,18 +496,19 @@ impl ProductSession {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::feature::Chat;
     use arut_feature_chat::composer::ComposerScope;
     use arut_feature_chat::test_support::TestIds;
     use futures_executor::block_on;
 
-    fn session() -> ProductSession {
+    fn session() -> ProductSession<(Chat,)> {
         let ids: Arc<dyn IdSource> = Arc::new(TestIds);
-        let feature = arut_feature_chat::compose(Arc::new(
-            arut_feature_chat::test_support::MemoryPorts::new(ids.clone()),
-        ))
-        .unwrap();
-        ProductSession::from_chat(
-            &feature,
+        let runtime = Arc::new(arut_feature_chat::test_support::MemoryPorts::new(
+            ids.clone(),
+        ));
+        let composed = <(Chat,) as feature::ComposeSet<_>>::compose(&runtime).unwrap();
+        ProductSession::local(
+            composed.clients,
             SessionScope {
                 node_id: "local".into(),
                 workspace_id: "default".into(),
@@ -329,7 +518,7 @@ mod tests {
         )
     }
 
-    fn titles(session: &ProductSession) -> Vec<String> {
+    fn titles(session: &ProductSession<(Chat,)>) -> Vec<String> {
         session
             .chat_summaries()
             .into_iter()
@@ -430,6 +619,75 @@ mod tests {
     }
 
     #[test]
+    fn a_conversation_is_unread_only_while_another_one_is_selected() {
+        let session = session();
+        let first = session.chat();
+        let first_id = block_on(first.send("first".into())).id.unwrap();
+        assert!(
+            !session.chat_summaries()[0].unread,
+            "a conversation joins the list at what it has already accepted"
+        );
+
+        let second_id = block_on(session.new_chat().send("second".into()))
+            .id
+            .unwrap();
+        session.select(Some(second_id));
+        block_on(first.send("later".into()));
+
+        let unread = |id: &str| {
+            session
+                .chat_summaries()
+                .into_iter()
+                .find(|summary| summary.id == id)
+                .unwrap()
+                .unread
+        };
+        assert!(unread(&first_id));
+        session.select(Some(first_id.clone()));
+        assert!(!unread(&first_id));
+        assert_eq!(session.selected_title(), Some("first".to_owned()));
+        session.select(None);
+        assert_eq!(session.selected_title(), None);
+    }
+
+    #[test]
+    fn a_query_narrows_the_list_and_says_where_each_title_matched() {
+        let session = session();
+        block_on(session.chat().send("Grocery list".into()));
+        block_on(session.new_chat().send("Roadmap".into()));
+
+        session.set_query("ro".into());
+        assert_eq!(session.query(), "ro");
+        assert_eq!(
+            session
+                .chat_summaries()
+                .iter()
+                .map(|summary| (summary.title.clone(), summary.match_ranges.clone()))
+                .collect::<Vec<_>>(),
+            [
+                ("Roadmap".to_owned(), vec![MatchRange { start: 0, end: 2 }]),
+                (
+                    "Grocery list".to_owned(),
+                    vec![MatchRange { start: 1, end: 3 }]
+                ),
+            ],
+            "matching ignores case and reports character offsets into the title"
+        );
+
+        session.set_query("roadmap".into());
+        assert_eq!(session.chat_summaries().len(), 1);
+        session.set_query("you said".into());
+        assert_eq!(
+            session.chat_summaries().len(),
+            2,
+            "a preview match keeps the row without highlighting its title"
+        );
+        assert!(session.chat_summaries()[0].match_ranges.is_empty());
+        session.set_query(String::new());
+        assert_eq!(session.chat_summaries().len(), 2);
+    }
+
+    #[test]
     fn transcript_reads_only_the_requested_key_range() {
         let session = session();
         let chat = session.chat();
@@ -455,11 +713,8 @@ mod tests {
         let id = block_on(existing.chat().send("stored\n message".into()))
             .id
             .unwrap();
-        let restored = ProductSession::new(
-            ChatClients {
-                chat: existing.workspace.chat_service(),
-                composer: existing.workspace.composer_service(),
-            },
+        let restored = ProductSession::<(Chat,)>::new(
+            existing.workspace.clients().clone(),
             existing.capability_service.clone(),
             SessionScope {
                 node_id: "local".into(),

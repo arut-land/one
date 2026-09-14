@@ -13,11 +13,22 @@
 //! `SIGTERM` on the same event through `PR_SET_PDEATHSIG`). A daemon that
 //! cannot start at all says why through [`Readiness`] rather than surfacing a
 //! raw I/O error.
+//!
+//! The kill half is `process-wrap`: the daemon runs in its own process group on
+//! Unix and its own job object on Windows, so dropping the channel kills
+//! whatever the daemon itself spawned rather than leaving it orphaned. The
+//! reuse probe, the readiness handshake and the typed [`Readiness`] failures
+//! above are ours; only the killing is not.
 use crate::hosting::Scheduled;
 use crate::readiness::Readiness;
 use arut_product_session::hosting::{Host, HostMode};
 use arut_protocol::capability::v1::{CapabilityServiceClient, GetCapabilitiesRequest};
 use arut_rpc::{Request, RpcChannel, RpcFuture, Spawner, Status, StatusDetail, Wrap, Wrapped};
+#[cfg(windows)]
+use process_wrap::tokio::JobObject;
+#[cfg(unix)]
+use process_wrap::tokio::ProcessGroup;
+use process_wrap::tokio::{ChildWrapper, CommandWrap, KillOnDrop};
 use std::{path::Path, path::PathBuf, sync::Arc, time::Duration};
 use tokio::io::{AsyncBufReadExt, BufReader};
 
@@ -79,7 +90,9 @@ impl Wrap for ChildLifetime {
 /// nothing, so dropping it neither kills a daemon other callers may still be
 /// using nor deletes the socket that names it.
 struct Owned {
-    child: std::sync::Mutex<tokio::process::Child>,
+    /// Killing this kills the daemon's whole process group on Unix and its job
+    /// object on Windows, so a helper the daemon spawned cannot outlive it.
+    child: Box<dyn ChildWrapper>,
     // Never read. Its only job is staying alive for as long as the channel
     // does, keeping the pipe's write end open so `arutd` sees EOF exactly when
     // that ends, `Drop` or an outside kill alike.
@@ -88,14 +101,10 @@ struct Owned {
 }
 impl Drop for ChildLifetime {
     fn drop(&mut self) {
-        let Some(owned) = &self.owned else {
+        let Some(owned) = &mut self.owned else {
             return;
         };
-        let _ = owned
-            .child
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .start_kill();
+        let _ = owned.child.start_kill();
         let _ = std::fs::remove_file(&owned.socket);
     }
 }
@@ -158,16 +167,26 @@ async fn spawn(
     data: PathBuf,
     spawner: Arc<dyn Spawner>,
 ) -> Result<Arc<dyn RpcChannel>, Status> {
-    let mut child = tokio::process::Command::new(executable)
-        .env("ARUT_SOCKET", &socket)
-        .env("ARUT_DATA", data)
-        .stdin(std::process::Stdio::piped())
-        .stdout(std::process::Stdio::piped())
-        .kill_on_drop(true)
+    let mut command = CommandWrap::with_new(executable, |command| {
+        command
+            .env("ARUT_SOCKET", &socket)
+            .env("ARUT_DATA", data)
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::piped());
+    });
+    // The daemon owns whatever it spawns, so the kill has to reach the group,
+    // not the one pid: a process group on Unix, a job object on Windows, which
+    // is the half `command-group`'s successor exists to carry.
+    #[cfg(unix)]
+    command.wrap(ProcessGroup::leader());
+    #[cfg(windows)]
+    command.wrap(JobObject);
+    command.wrap(KillOnDrop);
+    let mut child = command
         .spawn()
         .map_err(|error| Readiness::SpawnFailed.into_status(error.to_string()))?;
-    let stdin = child.stdin.take().expect("piped child stdin");
-    let stdout = child.stdout.take().expect("piped child stdout");
+    let stdin = child.stdin().take().expect("piped child stdin");
+    let stdout = child.stdout().take().expect("piped child stdout");
     let mut line = String::new();
     let read =
         tokio::time::timeout(ready_timeout(), BufReader::new(stdout).read_line(&mut line)).await;
@@ -190,7 +209,7 @@ async fn spawn(
         ChildLifetime {
             scheduled: Scheduled(spawner),
             owned: Some(Owned {
-                child: std::sync::Mutex::new(child),
+                child,
                 _stdin: stdin,
                 socket,
             }),

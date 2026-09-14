@@ -1,68 +1,53 @@
-//! Drives only observation callbacks. A callback schedules a native refresh.
+//! One revision stream per scope, bridged from a watch onto a BoltFFI stream.
+//!
+//! A revision stream is one future that awaits the next revision and pushes it,
+//! so what it needs is not an executor but something that re-polls the future
+//! whenever it is woken. `async_task::spawn` with a schedule function that runs
+//! the runnable is exactly that: the first poll happens here, every later poll
+//! happens on whichever thread woke it, and the task itself holds the
+//! re-entrancy and missed-wake rules that a hand-written `Wake` had to state.
+//!
+//! `async-task` is `no_std`, reaches no bindgen and no executor, and is the
+//! second and last crate `bindings/ffi` names from outside the workspace
+//! (`arut-dev check`).
+
 use arut_watch::Subscription;
-use std::{
-    future::Future,
-    pin::Pin,
-    sync::{
-        Arc, Mutex,
-        atomic::{AtomicBool, Ordering},
-    },
-    task::{Context, Wake, Waker},
-};
+use boltffi::EventSubscription;
+use std::sync::Arc;
 
-struct Observer {
-    future: Mutex<Option<Pin<Box<dyn Future<Output = ()> + Send>>>>,
-    notified: AtomicBool,
-}
-
-impl Wake for Observer {
-    fn wake(self: Arc<Self>) {
-        self.wake_by_ref();
-    }
-
-    /// Polls the observation future to its next await, then again for every
-    /// wake that arrived while it was running, so a change is never left
-    /// unobserved and the future is never polled twice at once.
-    fn wake_by_ref(self: &Arc<Self>) {
-        self.notified.store(true, Ordering::Release);
-        loop {
-            let Ok(mut guard) = self.future.try_lock() else {
-                return;
-            };
-            if !self.notified.swap(false, Ordering::AcqRel) {
-                return;
-            }
-            if let Some(future) = guard.as_mut() {
-                let waker = Waker::from(Arc::clone(self));
-                if future
-                    .as_mut()
-                    .poll(&mut Context::from_waker(&waker))
-                    .is_ready()
-                {
-                    *guard = None;
-                }
-            }
-            drop(guard);
-            if !self.notified.load(Ordering::Acquire) {
-                return;
-            }
+/// The stream a generated handle returns: a capacity-one event subscription
+/// that stops as soon as its reader is gone.
+pub(crate) fn subscription(source: Arc<Subscription<u64>>) -> Arc<EventSubscription<u64>> {
+    let target = Arc::new(EventSubscription::new(1));
+    let weak = Arc::downgrade(&target);
+    observe(source, move |revision| {
+        let Some(target) = weak.upgrade() else {
+            return false;
+        };
+        if !target.is_active() {
+            return false;
         }
-    }
+        target.push_event(revision);
+        true
+    });
+    target
 }
 
-pub(crate) fn observe(
-    source: Arc<Subscription<u64>>,
-    callback: impl Fn(u64) -> bool + Send + Sync + 'static,
-) {
-    let observer = Arc::new(Observer {
-        future: Mutex::new(Some(Box::pin(async move {
+/// Run `callback` for every revision until it answers `false` or the source
+/// closes.
+fn observe(source: Arc<Subscription<u64>>, callback: impl Fn(u64) -> bool + Send + Sync + 'static) {
+    let (runnable, task) = async_task::spawn(
+        async move {
             while let Some(revision) = source.changed().await {
                 if !callback(revision) {
                     break;
                 }
             }
-        }))),
-        notified: AtomicBool::new(false),
-    });
-    observer.wake_by_ref();
+        },
+        |runnable: async_task::Runnable| {
+            runnable.run();
+        },
+    );
+    task.detach();
+    runnable.run();
 }

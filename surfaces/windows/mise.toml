@@ -1,0 +1,41 @@
+# The WinUI desktop app. The shared repository checks run in the Linux job, not
+# here. The .NET SDK installs with these tasks only.
+
+[tasks.build]
+extends = "dotnet"
+alias = "build:windows"
+description = "Build the native WinUI desktop app and Rust DLL on Windows x64"
+dir = "{{config_root}}/../.."
+depends = ["//bindings/ffi:csharp"]
+run = "dotnet build surfaces/windows/Arut.Windows.csproj"
+
+[tasks.run]
+extends = "dotnet"
+alias = "surface:windows"
+description = "Build and launch the native Windows desktop app"
+dir = "{{config_root}}/../.."
+depends = [":build"]
+run = "dotnet run --project surfaces/windows/Arut.Windows.csproj --no-build"
+
+[tasks.publish]
+extends = "dotnet"
+alias = "publish:windows"
+description = "Publish a self-contained Windows x64 app folder"
+dir = "{{config_root}}/../.."
+depends = [{ task = "//bindings/ffi:csharp", args = ["--release"] }]
+run = "dotnet publish surfaces/windows/Arut.Windows.csproj -c Release -o surfaces/windows/bin/publish"
+
+[tasks.fmt]
+extends = "dotnet"
+alias = "fmt:dotnet"
+description = "Format C# in place; `mise run fmt:dotnet --verify-no-changes` checks instead"
+dir = "{{config_root}}/../.."
+run = "dotnet format surfaces/windows/Arut.Windows.csproj {{arg(name='flags', var=true, default='')}}"
+
+[tasks.check]
+extends = "dotnet"
+alias = "check:windows"
+description = "Build WinUI and check C# formatting"
+dir = "{{config_root}}/../.."
+depends = [":build"]
+run = "dotnet format surfaces/windows/Arut.Windows.csproj --verify-no-changes"

@@ -1,6 +1,7 @@
 #![cfg(unix)]
 //! `ChildHost` lifecycle: readiness, dying with the parent, and reuse over
 //! spawning a second daemon against the same node lease (ADR 0011).
+use arut_product_session::feature::Chat;
 use arut_product_session::{ProductSession, hosting::Host};
 use arut_rpc::StatusDetail;
 use arut_runtime_host_polled::NativeIds;
@@ -25,7 +26,7 @@ fn spawner() -> Arc<dyn arut_rpc::Spawner> {
 /// there and the conversation it started is listed under the text that started
 /// it.
 async fn assert_channel_works(channel: Arc<dyn arut_rpc::RpcChannel>, text: &str) {
-    let session = ProductSession::remote(
+    let session: ProductSession<(Chat,)> = ProductSession::remote(
         channel,
         arut_product_session::SessionScope {
             node_id: "local".into(),
