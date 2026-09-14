@@ -51,23 +51,33 @@ final class ConversationState {
     /// ends every follower and releases the generated subscriptions.
     ///
     /// One subscription per scope: a scope revises its whole projection at once,
-    /// so the state, the row cursor and the error are read together.
+    /// so the state, the row cursor and the error are read together. Each
+    /// follower is a main-actor child task: the handles and this state are
+    /// main-actor values, and `observing` and `following` run on their caller's
+    /// actor, so nothing here crosses an isolation boundary.
     func run() async {
-        async let transcript: Void = observing(handle.chatChanges()) { [self] in
-            chat.refresh()
-            messages.refresh()
-            failure.refresh()
+        await withTaskGroup(of: Void.self) { group in
+            group.addTask { @MainActor [self] in
+                await observing(handle.chatChanges()) {
+                    chat.refresh()
+                    messages.refresh()
+                    failure.refresh()
+                }
+            }
+            group.addTask { @MainActor [self] in
+                await observing(composer.composerChanges()) {
+                    draft.absorb(remote: composer.state().text)
+                    failure.refresh()
+                }
+            }
+            group.addTask { @MainActor [self] in
+                await following(
+                    initialize: { _ = try await composer.initialize() },
+                    follow: { try await composer.follow() },
+                    onFailure: { [weak self] _ in self?.reportTransportFailure() }
+                )
+            }
         }
-        async let drafts: Void = observing(composer.composerChanges()) { [self] in
-            draft.absorb(remote: composer.state().text)
-            failure.refresh()
-        }
-        async let composing: Void = following(
-            initialize: { _ = try await self.composer.initialize() },
-            follow: { try await self.composer.follow() },
-            onFailure: { [weak self] _ in self?.reportTransportFailure() }
-        )
-        _ = await (transcript, drafts, composing)
     }
 
     func send() async {

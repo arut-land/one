@@ -2,6 +2,9 @@
 # themselves; this pins what the build resolves from Google and Maven Central.
 [versions]
 agp = "9.4.0"
+# AGP 9 compiles Kotlin itself, so no Kotlin Android plugin is applied. The
+# Compose compiler plugin must match the Kotlin compiler, and applying it at
+# this version is what puts that Kotlin Gradle plugin on the build classpath.
 kotlin = "2.4.20"
 composeBom = "2026.08.00"
 # Not in the Compose BOM: `androidx.compose.material3.adaptive` versions on its
@@ -31,5 +34,4 @@ window-core = { module = "androidx.window:window-core", version.ref = "window" }
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
 android-library = { id = "com.android.library", version.ref = "agp" }
-kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
 kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }

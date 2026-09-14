@@ -27,11 +27,20 @@ alias = "ffi:wasm"
 tools.node = "{{vars.node_version}}"
 tools."npm:typescript" = "{{vars.typescript_version}}"
 description = "Generate and package the wasm bindings"
-run = "boltffi pack wasm --deny-skipped"
+# BoltFFI type-checks the TypeScript it generates against `@boltffi/runtime`.
+# The workspace install that links the runtime cannot run first, because it
+# also links the package this task generates, so the runtime is staged beside
+# the output for that check alone; `//:install` links the real one afterwards.
+run = [
+  "npm install --prefix ../generated/wasm --no-save --no-package-lock --no-audit --no-fund --loglevel=error @boltffi/runtime@{{vars.boltffi_version}}",
+  "PATH=\"$PWD/wrappers:$PATH\" boltffi pack wasm --deny-skipped",
+]
 sources = ["@group:core"]
-outputs = ["../generated/wasm"]
+outputs = ["../generated/wasm/pkg"]
 
 # BoltFFI invokes npx tsc on Windows; select TypeScript, not the npm tsc package.
+# Elsewhere it finds `tsc` on PATH, where wrappers/tsc adds what TypeScript 7 needs
+# (see the script).
 [tasks.wasm.env]
 npm_config_package = "typescript@{{vars.typescript_version}}"
 npm_config_yes = "true"

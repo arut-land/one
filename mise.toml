@@ -79,6 +79,9 @@ dotnet_version = "10.0.401"
 node_version = "26.8.2"
 # Must equal the pnpm-workspace.yaml catalog pin.
 typescript_version = "7.0.2"
+# The generator and its TypeScript runtime are one release. Must equal the
+# `@boltffi/runtime` catalog pin in pnpm-workspace.yaml.
+boltffi_version = "0.30.1"
 
 # ---------------------------------------------------------------------------
 # Task inputs. Groups are resolved relative to the config file that defines
@@ -174,7 +177,7 @@ tools.gradle = "9.7.1"
 # Templates are read from this file only, so the binding generator's pin lives
 # here even though its tasks live in bindings/ffi/mise.toml.
 [task_templates.ffi]
-tools."github:boltffi/boltffi" = "0.30.1"
+tools."github:boltffi/boltffi" = "{{vars.boltffi_version}}"
 
 # ---------------------------------------------------------------------------
 # Generation and installation.

@@ -1,0 +1,14 @@
+#!/bin/sh
+# BoltFFI 0.30 type-checks the file it generates by naming it on tsc's command
+# line with `--target ES2020` and no library list. Two things TypeScript 7 then
+# needs that BoltFFI does not pass: `--ignoreConfig`, because TypeScript 7
+# refuses command-line files while a tsconfig.json is discoverable above the
+# working directory (TS5112) and the workspace's is; and a library list, because
+# the generated code uses FinalizationRegistry, TextEncoder and WebAssembly,
+# which an installed workspace only supplied by accident through
+# node_modules/@types/node. The wasm task puts this directory first on PATH;
+# the real tsc is the next one along it. Remove once BoltFFI passes both.
+self=$(cd "$(dirname "$0")" && pwd)
+PATH=$(printf '%s' "$PATH" | tr ':' '\n' | grep -vx "$self" | paste -sd:)
+export PATH
+exec tsc --ignoreConfig --lib es2022,dom "$@"
