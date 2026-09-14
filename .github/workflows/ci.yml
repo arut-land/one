@@ -1,8 +1,10 @@
 name: CI
 
 on:
+  # A branch with a pull request is checked by the pull_request event alone;
+  # a push trigger for every branch would run each job twice per commit.
   push:
-    branches: ["**"]
+    branches: [main]
     tags: ["v*"]
   pull_request:
   workflow_dispatch:
