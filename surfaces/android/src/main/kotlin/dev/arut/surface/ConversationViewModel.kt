@@ -1,5 +1,6 @@
 package dev.arut.surface
 
+import androidx.compose.runtime.Immutable
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dev.arut.bindings.Draft
@@ -26,13 +27,18 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 
 /**
  * What the sidebar shows. Rust narrows the list to the query, carries where each
  * title matched, marks what is unread and names the selected conversation, so
  * this holds no search predicate and no title rule of its own (ADR 0021).
+ *
+ * `@Immutable`: the lists inside come from Rust and are never mutated here, so
+ * Compose may skip a screen whose state compares equal.
  */
+@Immutable
 data class Conversations(
     val summaries: List<ChatSummary> = emptyList(),
     val selectedId: String? = null,
@@ -41,6 +47,7 @@ data class Conversations(
 )
 
 /** What the transcript shows. */
+@Immutable
 data class Transcript(
     val state: ChatState? = null,
     val messages: List<ChatMessage> = emptyList(),
@@ -60,10 +67,20 @@ data class Transcript(
 class ConversationViewModel(private val session: ProductSessionHandle) : ViewModel() {
     private class Handles(val chat: ChatHandle, val composer: ComposerHandle) {
         val draft = Draft(composer.state().text) { composer.replace(it) }
+        val followers = mutableListOf<Job>()
+
+        fun close() {
+            followers.forEach(Job::cancel)
+            composer.close()
+            chat.close()
+        }
     }
 
     private val list = session.conversations()
-    private val opened = mutableMapOf<String?, Handles>()
+    // Visited conversations keep their handles, so a return is a rebind and
+    // not a reload; access order and a bound keep that from growing with the
+    // history. Rust retains every draft regardless.
+    private val opened = LinkedHashMap<String?, Handles>(16, 0.75f, true)
     private val draftFailure = MutableStateFlow<ErrorSource?>(null)
     private val current: MutableStateFlow<Handles>
 
@@ -133,35 +150,47 @@ class ConversationViewModel(private val session: ProductSessionHandle) : ViewMod
     }
 
     override fun onCleared() {
-        opened.values.forEach { handles ->
-            handles.composer.close()
-            handles.chat.close()
-        }
+        opened.values.forEach(Handles::close)
         opened.clear()
         list.close()
     }
 
-    private fun open(id: String?): Handles =
-        opened.getOrPut(id) {
-            val chat = if (id == null) session.chat() else session.selectChat(id) ?: session.chat()
-            Handles(chat, chat.composer()).also { follow(it) }
+    private fun open(id: String?): Handles {
+        val handles =
+            opened.getOrPut(id) {
+                val chat =
+                    if (id == null) session.chat() else session.selectChat(id) ?: session.chat()
+                Handles(chat, chat.composer()).also { follow(it) }
+            }
+        val surplus = (opened.size - RESIDENT).coerceAtLeast(0)
+        val evicted = opened.entries.filter { it.value !== handles }.take(surplus)
+        evicted.forEach { entry ->
+            entry.value.close()
+            opened.remove(entry.key)
         }
+        return handles
+    }
 
     private fun follow(handles: Handles) {
         val composer = handles.composer
         val echoes = projection(composer.composerChanges()) {
             composer.state().text to errorSource(composer.errorKey(), composer.errorArgs())
         }
-        viewModelScope.launch {
-            following({ composer.initialize() }, { composer.follow() })
-        }
-        viewModelScope.launch {
-            echoes.collect { (text, failure) ->
-                if (handles !== current.value) return@collect
-                handles.draft.absorb(text)
-                draftFailure.value = failure
+        handles.followers +=
+            viewModelScope.launch { following({ composer.initialize() }, { composer.follow() }) }
+        handles.followers +=
+            viewModelScope.launch {
+                echoes.collect { (text, failure) ->
+                    if (handles !== current.value) return@collect
+                    handles.draft.absorb(text)
+                    draftFailure.value = failure
+                }
             }
-        }
+    }
+
+    private companion object {
+        /** Conversations kept mounted at once, the same bound the Windows surface uses. */
+        const val RESIDENT = 8
     }
 
     private fun transcriptOf(chat: ChatHandle) =

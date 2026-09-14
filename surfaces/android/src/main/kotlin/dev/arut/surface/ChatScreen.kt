@@ -5,23 +5,30 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.imePadding
-import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.text.input.TextFieldLineLimits
+import androidx.compose.foundation.text.input.rememberTextFieldState
+import androidx.compose.foundation.text.input.setTextAndPlaceCursorAtEnd
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.ArrowDownward
+import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material3.Badge
 import androidx.compose.material3.CircularProgressIndicator
@@ -48,18 +55,29 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.Stable
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.isShiftPressed
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -78,73 +96,93 @@ import dev.arut.ffi.ChatSummary
 import java.text.DateFormat
 import kotlinx.coroutines.launch
 
+/**
+ * Binds the view model to the screen. The screen itself takes plain state and
+ * one stable set of actions, so it previews and tests without a view model.
+ */
 @Composable
-fun ChatScreen(viewModel: ConversationViewModel, windowSizeClass: WindowSizeClass) {
+fun ChatRoute(viewModel: ConversationViewModel, windowSizeClass: WindowSizeClass) {
     val conversations by viewModel.conversations.collectAsStateWithLifecycle()
     val transcript by viewModel.transcript.collectAsStateWithLifecycle()
     val draft by viewModel.draft.collectAsStateWithLifecycle()
     val composerFailure by viewModel.composerFailure.collectAsStateWithLifecycle()
-    val failure = transcript.failure ?: composerFailure
+    val actions = remember(viewModel) { ChatActions(viewModel) }
+    ChatScreen(
+        conversations = conversations,
+        transcript = transcript,
+        draft = draft,
+        failure = transcript.failure ?: composerFailure,
+        actions = actions,
+        windowSizeClass = windowSizeClass,
+    )
+}
 
+/** The screen's intents, one instance per view model so no lambda is recreated per frame. */
+@Stable
+class ChatActions(viewModel: ConversationViewModel) {
+    val select: (String?) -> Unit = viewModel::select
+    val search: (String) -> Unit = viewModel::search
+    val newConversation: () -> Unit = viewModel::newConversation
+    val edit: (String) -> Unit = viewModel::edit
+    val send: () -> Unit = viewModel::send
+}
+
+@Composable
+fun ChatScreen(
+    conversations: Conversations,
+    transcript: Transcript,
+    draft: String,
+    failure: ErrorSource?,
+    actions: ChatActions,
+    windowSizeClass: WindowSizeClass,
+) {
     // Material's own adaptive rule, read off the window rather than measured by
     // us: a permanent list beside the conversation once there is room for both.
-    if (windowSizeClass.isWidthAtLeastBreakpoint(WindowSizeClass.WIDTH_DP_EXPANDED_LOWER_BOUND)) {
+    val expanded =
+        windowSizeClass.isWidthAtLeastBreakpoint(WindowSizeClass.WIDTH_DP_EXPANDED_LOWER_BOUND)
+    val drawer = rememberDrawerState(DrawerValue.Closed)
+    val scope = rememberCoroutineScope()
+    val closeList: () -> Unit = {
+        if (!expanded) scope.launch { drawer.close() }
+    }
+    val list: @Composable () -> Unit = {
+        ConversationList(
+            conversations = conversations,
+            onSelect = { id ->
+                actions.select(id)
+                closeList()
+            },
+            onSearch = actions.search,
+            onNew = {
+                actions.newConversation()
+                closeList()
+            },
+        )
+    }
+    val conversation: @Composable () -> Unit = {
+        Conversation(
+            transcript = transcript,
+            draft = draft,
+            failure = failure,
+            title = conversations.title,
+            onOpenList = if (expanded) null else ({ scope.launch { drawer.open() } }),
+            onEdit = actions.edit,
+            onSend = actions.send,
+        )
+    }
+    if (expanded) {
         PermanentNavigationDrawer(
-            drawerContent = {
-                PermanentDrawerSheet(Modifier.width(320.dp)) {
-                    ConversationList(
-                        conversations = conversations,
-                        onSelect = viewModel::select,
-                        onSearch = viewModel::search,
-                        onNew = viewModel::newConversation,
-                    )
-                }
-            }
-        ) {
-            Conversation(
-                transcript = transcript,
-                draft = draft,
-                failure = failure,
-                title = conversations.title,
-                onOpenList = null,
-                onEdit = viewModel::edit,
-                onSend = viewModel::send,
-            )
-        }
+            drawerContent = { PermanentDrawerSheet(Modifier.width(320.dp)) { list() } },
+            content = conversation,
+        )
     } else {
-        val drawer = rememberDrawerState(DrawerValue.Closed)
-        val scope = rememberCoroutineScope()
         ModalNavigationDrawer(
             drawerState = drawer,
-            drawerContent = {
-                // A sheet given the drawer state handles back itself, and
-                // animates through a predictive back gesture on Android 14+.
-                ModalDrawerSheet(drawerState = drawer) {
-                    ConversationList(
-                        conversations = conversations,
-                        onSelect = { id ->
-                            viewModel.select(id)
-                            scope.launch { drawer.close() }
-                        },
-                        onSearch = viewModel::search,
-                        onNew = {
-                            viewModel.newConversation()
-                            scope.launch { drawer.close() }
-                        },
-                    )
-                }
-            },
-        ) {
-            Conversation(
-                transcript = transcript,
-                draft = draft,
-                failure = failure,
-                title = conversations.title,
-                onOpenList = { scope.launch { drawer.open() } },
-                onEdit = viewModel::edit,
-                onSend = viewModel::send,
-            )
-        }
+            // A sheet given the drawer state handles back itself, and animates
+            // through a predictive back gesture on Android 14+.
+            drawerContent = { ModalDrawerSheet(drawerState = drawer) { list() } },
+            content = conversation,
+        )
     }
 }
 
@@ -189,11 +227,12 @@ private fun ConversationList(
             return@Column
         }
         LazyColumn {
-            items(conversations.summaries, key = { it.id }) { summary ->
+            items(conversations.summaries, key = { it.id }, contentType = { it.unread }) { summary ->
                 ConversationRow(
                     summary = summary,
                     selected = summary.id == conversations.selectedId,
                     onSelect = onSelect,
+                    modifier = Modifier.animateItem(),
                 )
             }
         }
@@ -201,7 +240,12 @@ private fun ConversationList(
 }
 
 @Composable
-private fun ConversationRow(summary: ChatSummary, selected: Boolean, onSelect: (String?) -> Unit) {
+private fun ConversationRow(
+    summary: ChatSummary,
+    selected: Boolean,
+    onSelect: (String?) -> Unit,
+    modifier: Modifier = Modifier,
+) {
     val unread = stringResource(R.string.label_unread_messages)
     val description = if (summary.unread) "${summary.title}. $unread" else summary.title
     NavigationDrawerItem(
@@ -210,7 +254,7 @@ private fun ConversationRow(summary: ChatSummary, selected: Boolean, onSelect: (
         badge = if (summary.unread) ({ Badge() }) else null,
         selected = selected,
         onClick = { onSelect(summary.id) },
-        modifier = Modifier.semantics { contentDescription = description },
+        modifier = modifier.semantics { contentDescription = description },
     )
 }
 
@@ -234,6 +278,10 @@ private fun Conversation(
         if (message != null) snackbars.showSnackbar(message)
     }
     Scaffold(
+        // The composer takes the bottom edge itself, so the keyboard and the
+        // navigation bar are counted once, as the larger of the two.
+        contentWindowInsets =
+            WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Top),
         topBar = {
             TopAppBar(
                 title = { Text(title ?: stringResource(R.string.action_new_conversation)) },
@@ -272,9 +320,16 @@ private fun Conversation(
 
 @Composable
 private fun MessageList(messages: List<ChatMessage>) {
+    val context = LocalContext.current
+    // The platform formatter follows the person's 12- or 24-hour setting and
+    // is built once for the list rather than once per bubble.
+    val timeFormat = remember(context) { android.text.format.DateFormat.getTimeFormat(context) }
     val scroll = rememberLazyListState()
     val scope = rememberCoroutineScope()
     val nearBottom by remember(scroll) { derivedStateOf { scroll.isNearBottom() } }
+    // Only the newest reply is announced; a live region on the whole list would
+    // read the transcript back on every change.
+    val latestIncoming = messages.lastOrNull { it.role != ChatRole.USER }?.id
     // New activity follows the tail only while the reader is already there.
     // Compose scales every animation by the system's animator duration, so a
     // device with motion turned off lands on the last message in one frame.
@@ -286,13 +341,18 @@ private fun MessageList(messages: List<ChatMessage>) {
     Box(Modifier.fillMaxSize()) {
         LazyColumn(
             state = scroll,
-            modifier =
-                Modifier.fillMaxSize()
-                    .padding(horizontal = 16.dp)
-                    .semantics { liveRegion = LiveRegionMode.Polite },
+            modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
             verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
-            items(messages, key = { it.id }) { message -> MessageBubble(message) }
+            // The two speakers are two row shapes, so they recycle separately.
+            items(messages, key = { it.id }, contentType = { it.role }) { message ->
+                MessageBubble(
+                    message = message,
+                    announced = message.id == latestIncoming,
+                    timeFormat = timeFormat,
+                    modifier = Modifier.animateItem(),
+                )
+            }
         }
         AnimatedVisibility(
             visible = !nearBottom,
@@ -302,7 +362,7 @@ private fun MessageList(messages: List<ChatMessage>) {
                 onClick = { scope.launch { scroll.animateScrollToItem(messages.lastIndex) } }
             ) {
                 Icon(
-                    Icons.Filled.ArrowDownward,
+                    Icons.Filled.KeyboardArrowDown,
                     contentDescription = stringResource(R.string.action_scroll_to_latest),
                 )
             }
@@ -311,7 +371,12 @@ private fun MessageList(messages: List<ChatMessage>) {
 }
 
 @Composable
-private fun MessageBubble(message: ChatMessage) {
+private fun MessageBubble(
+    message: ChatMessage,
+    announced: Boolean,
+    timeFormat: DateFormat,
+    modifier: Modifier = Modifier,
+) {
     val outgoing = message.role == ChatRole.USER
     val speaker =
         if (outgoing) {
@@ -319,12 +384,13 @@ private fun MessageBubble(message: ChatMessage) {
         } else {
             stringResource(R.string.chat_role_assistant)
         }
-    val stamp = timeOf(message)
+    // Rust supplies the instant; Android supplies the words.
+    val stamp = acceptedAt(message.acceptedAtMs)?.let(timeFormat::format).orEmpty()
     val description =
         if (stamp.isEmpty()) "$speaker: ${message.text}" else "$speaker: ${message.text}. $stamp"
     // Rust says where a speaker's run ends; this only spaces after it.
     Column(
-        Modifier.fillMaxWidth().padding(bottom = if (message.endsSpeakerGroup) 12.dp else 0.dp)
+        modifier.fillMaxWidth().padding(bottom = if (message.endsSpeakerGroup) 12.dp else 0.dp)
     ) {
         if (message.startsTimeGroup && stamp.isNotEmpty()) {
             Text(
@@ -346,9 +412,11 @@ private fun MessageBubble(message: ChatMessage) {
                     if (outgoing) MaterialTheme.colorScheme.onPrimaryContainer
                     else MaterialTheme.colorScheme.onSurfaceVariant,
                 shape = RoundedCornerShape(16.dp),
+                // One traversal unit per bubble: speaker, text and time together.
                 modifier =
-                    Modifier.widthIn(max = 560.dp).semantics {
+                    Modifier.widthIn(max = 560.dp).semantics(mergeDescendants = true) {
                         contentDescription = description
+                        if (announced) liveRegion = LiveRegionMode.Polite
                     },
             ) {
                 Text(
@@ -381,6 +449,11 @@ private fun EmptyConversation() {
     }
 }
 
+/**
+ * The editor owns its text as `TextFieldState`, so the cursor and an IME
+ * composition survive Rust echoing the draft back; the echo lands only when it
+ * differs, which `Draft` already guarantees while a keystroke is unacknowledged.
+ */
 @Composable
 private fun Composer(
     draft: String,
@@ -389,23 +462,44 @@ private fun Composer(
     onEdit: (String) -> Unit,
     onSend: () -> Unit,
 ) {
-    val label = stringResource(R.string.label_draft)
+    val state = rememberTextFieldState(draft)
+    val edit by rememberUpdatedState(onEdit)
+    LaunchedEffect(state) { snapshotFlow { state.text.toString() }.collect { edit(it) } }
+    LaunchedEffect(draft) {
+        if (draft != state.text.toString()) state.setTextAndPlaceCursorAtEnd(draft)
+    }
     Row(
-        // `adjustResize` plus these insets keep the field above the keyboard and
-        // the navigation bar without a fixed margin.
-        Modifier.fillMaxWidth().imePadding().navigationBarsPadding().padding(12.dp),
+        // The bottom edge is the keyboard or the navigation bar, whichever is
+        // taller; the scaffold above left it to this row.
+        Modifier.fillMaxWidth()
+            .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Bottom))
+            .padding(12.dp),
         verticalAlignment = Alignment.Bottom,
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         OutlinedTextField(
-            value = draft,
-            onValueChange = onEdit,
-            modifier = Modifier.weight(1f).semantics { contentDescription = label },
+            state = state,
+            modifier =
+                Modifier.weight(1f).onPreviewKeyEvent { event ->
+                    // A hardware Enter sends; Shift+Enter keeps the newline.
+                    val sends =
+                        event.type == KeyEventType.KeyDown &&
+                            event.key == Key.Enter &&
+                            !event.isShiftPressed
+                    if (sends && canSend) onSend()
+                    sends
+                },
             // Placeholder only: a floating label permanently consumes one of the
             // seven lines this composer has.
             placeholder = { Text(stringResource(R.string.composer_placeholder)) },
             shape = RoundedCornerShape(24.dp),
-            maxLines = 7,
+            lineLimits = TextFieldLineLimits.MultiLine(maxHeightInLines = 7),
+            keyboardOptions =
+                KeyboardOptions(
+                    capitalization = KeyboardCapitalization.Sentences,
+                    imeAction = ImeAction.Send,
+                ),
+            onKeyboardAction = { if (canSend) onSend() },
         )
         IconButton(onClick = onSend, enabled = canSend) {
             if (isSending) {
@@ -419,11 +513,6 @@ private fun Composer(
         }
     }
 }
-
-/** Rust supplies the instant; Android supplies the words. */
-private fun timeOf(message: ChatMessage): String =
-    acceptedAt(message.acceptedAtMs)?.let { DateFormat.getTimeInstance(DateFormat.SHORT).format(it) }
-        ?: ""
 
 private fun LazyListState.isNearBottom(): Boolean {
     val last = layoutInfo.visibleItemsInfo.lastOrNull() ?: return true

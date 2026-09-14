@@ -19,16 +19,15 @@ android {
         versionName = "0.1.0"
     }
 
-    // One JVM target for Java and Kotlin: built-in Kotlin takes its jvmTarget
-    // from targetCompatibility.
-    compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_17
-        targetCompatibility = JavaVersion.VERSION_17
-    }
-
     buildFeatures {
         compose = true
     }
+}
+
+// The generated FFI types are read-only values from Rust; naming them stable
+// lets strong skipping skip a row whose summary or message has not changed.
+composeCompiler {
+    stabilityConfigurationFiles.add(layout.projectDirectory.file("compose-stability.conf"))
 }
 
 dependencies {
@@ -38,7 +37,6 @@ dependencies {
     implementation(libs.activity.compose)
     implementation(platform(libs.compose.bom))
     implementation(libs.compose.foundation)
-    implementation(libs.compose.material.icons)
     implementation(libs.compose.material3)
     // currentWindowAdaptiveInfo(): the window's own breakpoints, not a dp
     // measurement of ours; material3-window-size-class is deprecated in favour of it.
