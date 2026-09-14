@@ -2,6 +2,7 @@ use crate::app::{
     Session,
     composer::{Composer, Msg as ComposerMsg},
     conversations::{Conversations, Msg as ConversationsMsg},
+    motion,
     navigation::Navigation,
     strings,
     transcript::{Msg as TranscriptMsg, Position, Transcript},
@@ -14,11 +15,12 @@ use gtk::{gio, glib, prelude::*};
 use relm4::{
     Component, ComponentController, ComponentParts, ComponentSender, Controller, RelmWidgetExt,
 };
-use std::{cell::RefCell, collections::HashMap, rc::Rc};
+use std::{
+    cell::{Cell, RefCell},
+    collections::HashMap,
+    rc::Rc,
+};
 
-/// Reveal duration for a pointer-driven sidebar toggle. A keyboard toggle uses
-/// zero: it happens many times a day and an animation only delays it.
-const REVEAL_MS: u32 = 120;
 /// The narrowest the conversation sidebar may be dragged: below this a title
 /// and its preview stop being readable.
 const SIDEBAR_MINIMUM: i32 = 220;
@@ -31,6 +33,11 @@ pub struct Shell {
     composer: Controller<Composer>,
     body: gtk::Box,
     sidebar: gtk::Revealer,
+    panes: gtk::Paned,
+    /// The sidebar's slide in flight, if any; a new toggle replaces it.
+    motion: Option<motion::Motion>,
+    /// While the slide runs, pane position changes are its own and not a drag.
+    animating: Rc<Cell<bool>>,
     drafts: HashMap<Option<String>, Controller<Composer>>,
     positions: HashMap<Option<String>, f64>,
     /// The conversation whose widgets are mounted. Shared with the watch that
@@ -51,8 +58,14 @@ pub struct Shell {
 #[derive(Debug, Clone)]
 pub enum Msg {
     New,
-    /// `true` animates the reveal; a keyboard toggle passes `false`.
+    /// `true` slides the sidebar; a layout-driven change passes `false` so a
+    /// window crossing the breakpoint lands at once.
     ToggleSidebar(bool),
+    /// The sidebar toggle button's state, which is a request only when it
+    /// differs from the model's.
+    SidebarButton(bool),
+    /// Connect to the node again after a failed start.
+    Retry,
     FocusComposer,
     Search,
     Escape,
@@ -91,6 +104,16 @@ fn shortcuts() -> [(&'static str, &'static [&'static str], Message); 6] {
     ]
 }
 
+/// The toggle shows what pressing it does: a panel closing while the sidebar
+/// is shown, opening while it is hidden.
+fn sidebar_icon(shown: bool) -> &'static str {
+    if shown {
+        "arut-sidebar-hide-symbolic"
+    } else {
+        "arut-sidebar-show-symbolic"
+    }
+}
+
 /// The label a desktop shows for a trigger, from GTK rather than a literal:
 /// modifier names are translated and platform-specific.
 fn accelerator(display: &gtk::gdk::Display, trigger: &str) -> String {
@@ -125,7 +148,7 @@ impl Component for Shell {
                         add_css_class: "arut-toolbar",
                         #[name = "sidebar_toggle"]
                         gtk::ToggleButton {
-                            set_icon_name: "sidebar-show-symbolic",
+                            set_icon_name: sidebar_icon(!model.navigation.collapsed),
                             add_css_class: "flat",
                             #[watch]
                             set_active: !model.navigation.collapsed,
@@ -133,7 +156,7 @@ impl Component for Shell {
                         },
                         #[name = "new_conversation"]
                         gtk::Button {
-                            set_icon_name: "chat-message-new-symbolic",
+                            set_icon_name: "arut-new-conversation-symbolic",
                             add_css_class: "flat",
                             update_property: &[gtk::accessible::Property::Label(&strings::show(&Message::ActionNewConversation))],
                             set_action_name: Some("win.new"),
@@ -148,87 +171,109 @@ impl Component for Shell {
                             #[watch]
                             set_label: &model.title,
                         },
+                        // A node that is ready needs no announcement; the pill
+                        // appears for the states that need explaining.
                         gtk::Label {
                             add_css_class: "arut-availability",
                             set_wrap: true,
                             set_xalign: 0.0,
+                            set_valign: gtk::Align::Center,
                             update_property: &[gtk::accessible::Property::Label(&strings::show(&Message::LabelNodeAvailability))],
                             #[watch]
                             set_label: &model.availability,
+                            #[watch]
+                            set_visible: !model.available && !model.availability.is_empty(),
                         },
                         #[name = "menu"]
                         gtk::MenuButton {
-                            set_icon_name: "open-menu-symbolic",
+                            set_icon_name: "arut-menu-symbolic",
                             add_css_class: "flat",
                             set_tooltip_text: Some(&strings::show(&Message::ActionMainMenu)),
                             update_property: &[gtk::accessible::Property::Label(&strings::show(&Message::ActionMainMenu))],
                         },
                     },
                 },
-                #[name = "panes"]
-                gtk::Paned {
+                gtk::Overlay {
                     set_vexpand: true,
-                    set_orientation: gtk::Orientation::Horizontal,
-                    // The chat column takes new width; the sidebar keeps the
-                    // width the person gave it. The start child stays
-                    // shrinkable so a collapsed sidebar reaches position zero
-                    // without waiting for the reveal transition; the floor a
-                    // drag stops at is `SIDEBAR_MINIMUM` below.
-                    set_resize_start_child: false,
-                    set_resize_end_child: true,
-                    #[watch]
-                    set_class_active: ("arut-collapsed", model.navigation.collapsed),
-                    #[watch]
-                    set_position: if model.navigation.collapsed { 0 } else { model.navigation.sidebar },
-                    #[wrap(Some)]
-                    #[name = "sidebar"]
-                    set_start_child = &gtk::Revealer {
-                        set_transition_type: gtk::RevealerTransitionType::Crossfade,
-                        set_transition_duration: REVEAL_MS,
+                    #[name = "panes"]
+                    gtk::Paned {
+                        set_vexpand: true,
+                        set_orientation: gtk::Orientation::Horizontal,
+                        // The chat column takes new width; the sidebar keeps the
+                        // width the person gave it. The start child stays
+                        // shrinkable so the slide can carry it to position zero
+                        // and clip it on the way; the floor a drag stops at is
+                        // `SIDEBAR_MINIMUM`, applied in `Msg::SidebarWidth`.
+                        set_resize_start_child: false,
+                        set_resize_end_child: true,
                         #[watch]
-                        set_reveal_child: !model.navigation.collapsed,
-                        #[local_ref]
-                        conversations -> gtk::Box {},
-                    },
-                    #[wrap(Some)]
-                    #[name = "chat_surface"]
-                    set_end_child = &gtk::Box {
-                        set_hexpand: true,
-                        add_css_class: "arut-chat-surface",
-                        #[watch]
-                        set_visible: !model.narrow || model.navigation.collapsed,
-                        #[name = "body"]
-                        gtk::Box {
-                            set_orientation: gtk::Orientation::Vertical,
-                            set_spacing: 16,
-                            set_margin_top: 16,
+                        set_class_active: ("arut-collapsed", model.navigation.collapsed),
+                        // The position is animated, so `collapse` owns it from
+                        // here on rather than a watch re-applying it.
+                        set_position: if model.navigation.collapsed { 0 } else { model.navigation.sidebar },
+                        #[wrap(Some)]
+                        #[name = "sidebar"]
+                        set_start_child = &gtk::Revealer {
+                            set_transition_type: gtk::RevealerTransitionType::Crossfade,
+                            set_transition_duration: motion::DURATION_MS,
+                            set_reveal_child: !model.navigation.collapsed,
+                            #[local_ref]
+                            conversations -> gtk::Box {},
+                        },
+                        #[wrap(Some)]
+                        #[name = "chat_surface"]
+                        set_end_child = &gtk::Box {
                             set_hexpand: true,
-                            #[local_ref]
-                            transcript -> gtk::Box {},
-                            #[local_ref]
-                            composer -> gtk::Box {},
+                            add_css_class: "arut-chat-surface",
+                            #[watch]
+                            set_visible: !model.narrow || model.navigation.collapsed,
+                            #[name = "body"]
+                            gtk::Box {
+                                set_orientation: gtk::Orientation::Vertical,
+                                set_spacing: 12,
+                                set_margin_top: 8,
+                                set_hexpand: true,
+                                #[local_ref]
+                                transcript -> gtk::Box {},
+                                #[local_ref]
+                                composer -> gtk::Box {},
+                            },
                         },
                     },
-                },
-                gtk::Box {
-                    #[watch]
-                    set_visible: !model.error.is_empty(),
-                    set_spacing: 8,
-                    set_margin_start: 16,
-                    set_margin_end: 16,
-                    set_margin_bottom: 16,
-                    add_css_class: "arut-error",
-                    set_accessible_role: gtk::AccessibleRole::Alert,
-                    gtk::Image {
-                        set_icon_name: Some("dialog-warning-symbolic"),
-                        set_accessible_role: gtk::AccessibleRole::Presentation,
-                    },
-                    gtk::Label {
+                    // A banner over whichever page is showing, the way the
+                    // desktop's own apps announce a connection that failed.
+                    add_overlay = &gtk::Revealer {
+                        set_halign: gtk::Align::Center,
+                        set_valign: gtk::Align::Start,
+                        set_margin_top: 8,
+                        set_margin_start: 16,
+                        set_margin_end: 16,
+                        set_transition_type: gtk::RevealerTransitionType::SlideDown,
+                        set_transition_duration: motion::DURATION_MS,
                         #[watch]
-                        set_label: &model.error,
-                        set_wrap: true,
-                        set_xalign: 0.0,
-                        set_hexpand: true,
+                        set_reveal_child: !model.error.is_empty(),
+                        gtk::Box {
+                            set_spacing: 8,
+                            add_css_class: "arut-error",
+                            set_accessible_role: gtk::AccessibleRole::Alert,
+                            gtk::Image {
+                                set_icon_name: Some("arut-warning-symbolic"),
+                                set_accessible_role: gtk::AccessibleRole::Presentation,
+                            },
+                            gtk::Label {
+                                #[watch]
+                                set_label: &model.error,
+                                set_wrap: true,
+                                set_xalign: 0.0,
+                                set_max_width_chars: 48,
+                                set_valign: gtk::Align::Center,
+                            },
+                            gtk::Button {
+                                set_label: &strings::show(&Message::ActionRetry),
+                                add_css_class: "flat",
+                                set_action_name: Some("win.retry"),
+                            },
+                        },
                     },
                 },
             },
@@ -277,6 +322,9 @@ impl Component for Shell {
             composer,
             body: gtk::Box::new(gtk::Orientation::Vertical, 0),
             sidebar: gtk::Revealer::new(),
+            panes: gtk::Paned::new(gtk::Orientation::Horizontal),
+            motion: None,
+            animating: Rc::new(Cell::new(false)),
             drafts: HashMap::new(),
             positions: HashMap::new(),
             narrow: false,
@@ -296,6 +344,7 @@ impl Component for Shell {
         let widgets = view_output!();
         model.body = widgets.body.clone();
         model.sidebar = widgets.sidebar.clone();
+        model.panes = widgets.panes.clone();
         let pending = model.session.chat();
         model.follow_displayed(pending);
         model._decorations = Some(crate::app::decorations::Decorations::install(
@@ -323,6 +372,14 @@ impl Component for Shell {
             }
         });
         root.add_action(&latest);
+        let retry = gio::SimpleAction::new("retry", None);
+        retry.connect_activate({
+            let input = sender.input_sender().clone();
+            move |_, _| {
+                let _ = input.send(Msg::Retry);
+            }
+        });
+        root.add_action(&retry);
         let controller = gtk::ShortcutController::new();
         controller.set_scope(gtk::ShortcutScope::Managed);
         for (name, triggers, _) in shortcuts() {
@@ -330,7 +387,7 @@ impl Component for Shell {
             // table names it so it gets a trigger and an overlay entry.
             let message = match name {
                 "new" => Some(Msg::New),
-                "sidebar" => Some(Msg::ToggleSidebar(false)),
+                "sidebar" => Some(Msg::ToggleSidebar(true)),
                 "composer" => Some(Msg::FocusComposer),
                 "search" => Some(Msg::Search),
                 "escape" => Some(Msg::Escape),
@@ -372,9 +429,16 @@ impl Component for Shell {
         widgets.sidebar.connect_child_revealed_notify(|sidebar| {
             sidebar.set_visible(sidebar.is_child_revealed());
         });
-        widgets.sidebar_toggle.connect_clicked({
+        // `toggled` also fires when the watch above writes the model's state
+        // back into the button, so the handler reports the button's state and
+        // `update` acts only when it disagrees with the model. Reacting to
+        // `clicked` here would bounce the sidebar once per toggle.
+        widgets.sidebar_toggle.connect_toggled({
             let sender = sender.clone();
-            move |_| sender.input(Msg::ToggleSidebar(true))
+            move |button| {
+                button.set_icon_name(sidebar_icon(button.is_active()));
+                sender.input(Msg::SidebarButton(button.is_active()));
+            }
         });
         widgets.panes.connect_position_notify({
             let sender = sender.clone();
@@ -413,8 +477,16 @@ impl Component for Shell {
         });
         ComponentParts { model, widgets }
     }
-    fn update(&mut self, message: Msg, _sender: ComponentSender<Self>, root: &Self::Root) {
+    fn update(&mut self, message: Msg, sender: ComponentSender<Self>, root: &Self::Root) {
         match message {
+            Msg::Retry => {
+                self.error.clear();
+                let session = self.session.clone();
+                let input = sender.input_sender().clone();
+                self._tasks.spawn(async move {
+                    let _ = input.send(Msg::Initialized(session.initialize().await));
+                });
+            }
             Msg::New => {
                 self.restore_pending = false;
                 let chat = self.session.new_chat();
@@ -443,15 +515,25 @@ impl Component for Shell {
                 self.positions.insert(id, value);
             }
             Msg::SidebarWidth(width) => {
-                if !self.navigation.collapsed && width > 0 {
-                    // The view re-applies this, which is what stops a drag at
-                    // the floor rather than clipping the list.
-                    self.navigation.sidebar = width.max(SIDEBAR_MINIMUM);
+                if !self.animating.get() && !self.navigation.collapsed && width > 0 {
+                    // Re-applying the floor is what stops a drag there rather
+                    // than clipping the list.
+                    let floor = width.max(SIDEBAR_MINIMUM);
+                    self.navigation.sidebar = floor;
+                    if floor != width {
+                        self.panes.set_position(floor);
+                    }
                 }
             }
             Msg::ToggleSidebar(animate) => {
                 self.collapse(!self.navigation.collapsed, animate);
                 self.navigation.save();
+            }
+            Msg::SidebarButton(shown) => {
+                if shown == self.navigation.collapsed {
+                    self.collapse(!shown, true);
+                    self.navigation.save();
+                }
             }
             Msg::FocusComposer => {
                 if self.narrow {
@@ -569,19 +651,45 @@ fn install_overlay(window: &gtk::ApplicationWindow, display: &gtk::gdk::Display)
 }
 
 impl Shell {
-    /// Reveals or hides the sidebar.
+    /// Slides the sidebar in or out.
     ///
-    /// A crossfading `GtkRevealer` keeps its child's width for the whole
-    /// transition, so the widget itself is taken out of the layout once the
-    /// fade has finished -- see the `child-revealed` handler in `init` -- and
-    /// put back here before the next reveal starts.
+    /// The pane position eases between zero and the saved width on the frame
+    /// clock while the `GtkRevealer` crossfades over the same duration, so
+    /// the list is carried and faded rather than cut. A crossfading revealer
+    /// keeps its child's width for the whole transition, so the widget itself
+    /// is taken out of the layout once the fade has finished -- see the
+    /// `child-revealed` handler in `init` -- and put back here before the
+    /// next reveal starts.
     fn collapse(&mut self, collapsed: bool, animate: bool) {
+        self.navigation.collapsed = collapsed;
+        let target = if collapsed {
+            0
+        } else {
+            self.navigation.sidebar
+        };
+        let from = self.panes.position();
+        let animate = animate && motion::enabled(&self.panes);
+        self.motion = None;
+        self.animating.set(false);
         self.sidebar
-            .set_transition_duration(if animate { REVEAL_MS } else { 0 });
+            .set_transition_duration(if animate { motion::DURATION_MS } else { 0 });
         if !collapsed {
             self.sidebar.set_visible(true);
         }
-        self.navigation.collapsed = collapsed;
+        self.sidebar.set_reveal_child(!collapsed);
+        if !animate || from == target {
+            self.panes.set_position(target);
+            return;
+        }
+        let (panes, animating) = (self.panes.clone(), self.animating.clone());
+        animating.set(true);
+        let distance = f64::from(target - from);
+        self.motion = motion::run(&self.panes, motion::DURATION_MS, move |progress| {
+            panes.set_position(from + (distance * progress).round() as i32);
+            if progress >= 1.0 {
+                animating.set(false);
+            }
+        });
     }
 
     /// The conversation title, or the new-conversation label while the pending

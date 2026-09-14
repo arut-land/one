@@ -49,6 +49,7 @@ internal static class L10n
     public const string ActionOpenHistory = "action_open_history";
     public const string ActionPreviousConversation = "action_previous_conversation";
     public const string ActionQuit = "action_quit";
+    public const string ActionRetry = "action_retry";
     public const string ActionScrollToLatest = "action_scroll_to_latest";
     public const string ActionSearchConversations = "action_search_conversations";
     public const string ActionSend = "action_send";
@@ -118,4 +119,6 @@ internal static class L10n
     public const string ReadinessSocketUnreachable = "readiness_socket_unreachable";
     public const string ReadinessSpawnFailed = "readiness_spawn_failed";
     public const string ReadinessTimedOut = "readiness_timed_out";
+    public const string TranscriptToday = "transcript_today";
+    public const string TranscriptYesterday = "transcript_yesterday";
 }

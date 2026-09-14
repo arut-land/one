@@ -97,7 +97,7 @@ public final class Rows<Row> {
 /// error -- takes one subscription and applies them together, rather than one
 /// subscription each. The apply runs once before the first revision, so a change
 /// between construction and subscription is not missed.
-public func observing(_ changes: AsyncStream<UInt64>, apply: () -> Void) async {
+nonisolated(nonsending) public func observing(_ changes: AsyncStream<UInt64>, apply: () -> Void) async {
     apply()
     for await _ in changes {
         apply()
@@ -108,7 +108,7 @@ public func observing(_ changes: AsyncStream<UInt64>, apply: () -> Void) async {
 ///
 /// Cancellation is the only way out: SwiftUI cancels the task that owns the
 /// view, which ends the awaits and releases the subscription behind them.
-public func following(
+nonisolated(nonsending) public func following(
     initialize: () async throws -> Void,
     follow: () async throws -> Void,
     onFailure: ((any Error) -> Void)? = nil

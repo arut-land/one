@@ -1,0 +1,11 @@
+# The root .editorconfig requires LF everywhere and `dotnet format
+# --verify-no-changes` enforces it on Windows, where Git's default autocrlf
+# would otherwise check every text file out with CRLF and fail the gate.
+* text=auto eol=lf
+
+*.png binary
+*.ico binary
+*.icns binary
+*.jpg binary
+*.woff2 binary
+*.gresource binary

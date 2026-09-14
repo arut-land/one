@@ -29,6 +29,7 @@ object Messages {
             "action-open-history" to R.string.action_open_history,
             "action-previous-conversation" to R.string.action_previous_conversation,
             "action-quit" to R.string.action_quit,
+            "action-retry" to R.string.action_retry,
             "action-scroll-to-latest" to R.string.action_scroll_to_latest,
             "action-search-conversations" to R.string.action_search_conversations,
             "action-send" to R.string.action_send,
@@ -98,5 +99,7 @@ object Messages {
             "readiness-socket-unreachable" to R.string.readiness_socket_unreachable,
             "readiness-spawn-failed" to R.string.readiness_spawn_failed,
             "readiness-timed-out" to R.string.readiness_timed_out,
+            "transcript-today" to R.string.transcript_today,
+            "transcript-yesterday" to R.string.transcript_yesterday,
         )
 }

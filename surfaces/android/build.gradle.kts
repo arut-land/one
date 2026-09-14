@@ -1,6 +1,9 @@
 plugins {
     alias(libs.plugins.android.application)
-    alias(libs.plugins.kotlin.android)
+    // The library plugin ships in the same AGP jar this project already puts
+    // on the build classpath; declaring it here, unapplied, is what lets the
+    // :bindings module apply it by alias with a checked version.
+    alias(libs.plugins.android.library) apply false
     alias(libs.plugins.kotlin.compose)
 }
 
@@ -16,7 +19,8 @@ android {
         versionName = "0.1.0"
     }
 
-    // One JVM target for Java and Kotlin; Gradle rejects a mismatch between them.
+    // One JVM target for Java and Kotlin: built-in Kotlin takes its jvmTarget
+    // from targetCompatibility.
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
@@ -24,12 +28,6 @@ android {
 
     buildFeatures {
         compose = true
-    }
-}
-
-kotlin {
-    compilerOptions {
-        jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
     }
 }
 

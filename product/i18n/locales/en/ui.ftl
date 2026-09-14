@@ -11,6 +11,8 @@ composer-placeholder = Message Arut
 
 chat-role-you = You
 chat-role-assistant = Arut
+transcript-today = Today
+transcript-yesterday = Yesterday
 
 ## Status captions
 
@@ -85,5 +87,6 @@ label-keyboard-shortcuts = Keyboard shortcuts
 action-main-menu = Main menu
 action-about = About Arut
 action-quit = Quit
+action-retry = Retry
 action-clear-search = Clear the search
 label-shortcuts-general = General

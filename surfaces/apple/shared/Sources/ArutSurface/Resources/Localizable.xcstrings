@@ -188,6 +188,17 @@
         }
       }
     },
+    "action-retry": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Retry"
+          }
+        }
+      }
+    },
     "action-scroll-to-latest": {
       "extractionState": "manual",
       "localizations": {
@@ -943,6 +954,28 @@
           "stringUnit": {
             "state": "translated",
             "value": "Your node did not finish starting in time."
+          }
+        }
+      }
+    },
+    "transcript-today": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Today"
+          }
+        }
+      }
+    },
+    "transcript-yesterday": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Yesterday"
           }
         }
       }

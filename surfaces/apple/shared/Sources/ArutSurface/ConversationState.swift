@@ -51,23 +51,49 @@ final class ConversationState {
     /// ends every follower and releases the generated subscriptions.
     ///
     /// One subscription per scope: a scope revises its whole projection at once,
-    /// so the state, the row cursor and the error are read together.
+    /// so the state, the row cursor and the error are read together. Each
+    /// follower is a task inheriting this method's main-actor isolation, so it
+    /// may hold this non-Sendable state; a task group's child closures may not.
+    /// The cancellation handler keeps them structured in effect: cancelling
+    /// `run()` cancels every follower.
     func run() async {
-        async let transcript: Void = observing(handle.chatChanges()) { [self] in
+        let followers = [
+            Task { await self.followChat() },
+            Task { await self.followComposer() },
+            Task { await self.keepComposing() },
+        ]
+        await withTaskCancellationHandler {
+            for follower in followers {
+                await follower.value
+            }
+        } onCancel: {
+            for follower in followers {
+                follower.cancel()
+            }
+        }
+    }
+
+    private func followChat() async {
+        await observing(handle.chatChanges()) {
             chat.refresh()
             messages.refresh()
             failure.refresh()
         }
-        async let drafts: Void = observing(composer.composerChanges()) { [self] in
+    }
+
+    private func followComposer() async {
+        await observing(composer.composerChanges()) {
             draft.absorb(remote: composer.state().text)
             failure.refresh()
         }
-        async let composing: Void = following(
-            initialize: { _ = try await self.composer.initialize() },
-            follow: { try await self.composer.follow() },
+    }
+
+    private func keepComposing() async {
+        await following(
+            initialize: { _ = try await composer.initialize() },
+            follow: { try await composer.follow() },
             onFailure: { [weak self] _ in self?.reportTransportFailure() }
         )
-        _ = await (transcript, drafts, composing)
     }
 
     func send() async {

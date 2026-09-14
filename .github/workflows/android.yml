@@ -8,8 +8,10 @@ name: Android
 # has already started, installed the Android SDK, and fetched the NDK. The
 # filter decides before any of that, so it stays (ADR 0026).
 on:
+  # A branch with a pull request is checked by the pull_request event alone;
+  # a push trigger for every branch would run each job twice per commit.
   push:
-    branches: ["**"]
+    branches: [main]
     tags: ["v*"]
     paths:
       - "surfaces/android/**"

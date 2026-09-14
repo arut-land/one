@@ -2,7 +2,6 @@ plugins {
     // One catalog entry per plugin, the same versions the app resolves; an
     // alias carries its version, so no subproject repeats one.
     alias(libs.plugins.android.library)
-    alias(libs.plugins.kotlin.android)
 }
 
 android {
@@ -13,23 +12,23 @@ android {
         minSdk = 24
     }
 
-    // One JVM target for Java and Kotlin; Gradle rejects a mismatch between them.
+    // One JVM target for Java and Kotlin: built-in Kotlin takes its jvmTarget
+    // from targetCompatibility.
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
 
-    // The generated Kotlin and the JNI libraries compile here, once, and the app
-    // depends on this module rather than on a directory (ADR 0007).
-    sourceSets.named("main") {
-        java.srcDir(file("../generated/android/kotlin"))
-        jniLibs.srcDir(file("../generated/android/jniLibs"))
-    }
 }
 
-kotlin {
-    compilerOptions {
-        jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
+// The generated Kotlin and the JNI libraries compile here, once, and the app
+// depends on this module rather than on a directory (ADR 0007). The Variant
+// API is how AGP 9 takes generated sources; the source-set DSL is the legacy
+// path its new DSL no longer exposes.
+androidComponents {
+    onVariants { variant ->
+        variant.sources.kotlin?.addStaticSourceDirectory("../generated/android/kotlin")
+        variant.sources.jniLibs?.addStaticSourceDirectory("../generated/android/jniLibs")
     }
 }
 

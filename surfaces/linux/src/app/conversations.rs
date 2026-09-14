@@ -27,14 +27,10 @@ impl SimpleComponent for Conversations {
             set_spacing: 8,
             set_width_request: 220,
             add_css_class: "arut-sidebar",
-            gtk::Label {
-                set_label: &strings::show(&Message::LabelConversations),
-                set_xalign: 0.0,
-                add_css_class: "heading",
-                set_margin_start: 8,
-            },
             #[local_ref]
-            search -> gtk::SearchEntry {},
+            search -> gtk::SearchEntry {
+                set_margin_bottom: 4,
+            },
             gtk::Overlay {
                 set_vexpand: true,
                 gtk::ScrolledWindow {
@@ -200,21 +196,25 @@ fn row_factory() -> gtk::SignalListItemFactory {
         let item = item.downcast_ref::<gtk::ListItem>().unwrap();
         let row = gtk::Box::new(gtk::Orientation::Horizontal, 8);
         row.add_css_class("arut-conversation-row");
-        let labels = gtk::Box::new(gtk::Orientation::Vertical, 4);
+        let labels = gtk::Box::new(gtk::Orientation::Vertical, 2);
         labels.set_hexpand(true);
         let title = gtk::Label::new(None);
         title.add_css_class("heading");
         title.set_xalign(0.0);
         title.set_hexpand(true);
         title.set_ellipsize(gtk::pango::EllipsizeMode::End);
-        let unread = gtk::Image::from_icon_name("mail-unread-symbolic");
+        // An accent dot, the way every desktop marks unread now; the label
+        // says what it means to a screen reader.
+        let unread = gtk::Image::from_icon_name("arut-unread-symbolic");
+        unread.add_css_class("arut-unread");
+        unread.set_valign(gtk::Align::Center);
         unread.update_property(&[gtk::accessible::Property::Label(&strings::show(
             &Message::LabelUnreadMessages,
         ))]);
         let preview = gtk::Label::new(None);
         preview.set_xalign(0.0);
         preview.set_ellipsize(gtk::pango::EllipsizeMode::End);
-        preview.add_css_class("dim-label");
+        preview.add_css_class("arut-preview");
         labels.append(&title);
         labels.append(&preview);
         row.append(&labels);

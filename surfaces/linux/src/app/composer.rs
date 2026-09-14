@@ -57,20 +57,21 @@ impl SimpleComponent for Composer {
                                 set_tooltip_text: Some(&strings::show(&Message::ComposerHintMultiline)),
                             },
                         },
+                        // Only an empty, single-line editor shows this, so it
+                        // centres on that one line.
                         #[name = "placeholder"]
                         add_overlay = &gtk::Label {
                             set_label: &strings::show(&Message::ComposerPlaceholder),
                             set_halign: gtk::Align::Start,
-                            set_valign: gtk::Align::Start,
+                            set_valign: gtk::Align::Center,
                             set_can_target: false,
-                            set_margin_top: 8,
                             set_accessible_role: gtk::AccessibleRole::Presentation,
                             add_css_class: "dim-label",
                         },
                     },
                     #[name = "send"]
                     gtk::Button {
-                        set_icon_name: "mail-send-symbolic",
+                        set_icon_name: "arut-send-symbolic",
                         set_valign: gtk::Align::End,
                         set_action_name: Some("composer.send"),
                         add_css_class: "suggested-action",
@@ -209,25 +210,34 @@ impl SimpleComponent for Composer {
             ));
         }
         widgets.editor.add_controller(shortcuts);
-        // One Pango layout, measured when the font metric can have changed and
-        // never on a scroll. It is a shared cell rather than a local so the
-        // adjustment handler below reads the same measurement.
+        // The editor's natural height is its one-line height, so the
+        // scrolled window needs no minimum: an empty composer is exactly one
+        // line tall and the send button sits level with it. Only the cap
+        // needs the line height, read from the view's own layout when the
+        // font can have changed and never on a scroll. It is a shared cell
+        // rather than a local so the adjustment handler below reads the
+        // same measurement.
         let line = Rc::new(Cell::new(1));
         let resize = {
             let line = line.clone();
             move |editor: &gtk::TextView, scroll: &gtk::ScrolledWindow| {
-                // Use Pango's rounded pixel extents; truncating font metrics
+                // Pango's rounded pixel extents; truncating font metrics
                 // clips the seventh baseline at fractional font sizes.
                 let height = editor.create_pango_layout(Some("Ag")).pixel_size().1.max(1);
                 line.set(height);
-                let inset = editor.top_margin() + editor.bottom_margin();
-                scroll.set_min_content_height(height + inset);
                 // Bottom margin belongs to the end of the document, not every
                 // viewport. Counting it here exposes part of an eighth line.
                 scroll.set_max_content_height(height * 7 + editor.top_margin());
             }
         };
         resize(&widgets.editor, &widgets.scroll);
+        // The font is final once the widget is mapped, which is when the
+        // line height measured above is trustworthy.
+        widgets.editor.connect_map({
+            let scroll = widgets.scroll.clone();
+            let resize = resize.clone();
+            move |editor| resize(editor, &scroll)
+        });
         // Keep the icon beside a short draft's first line. For a tall editor it
         // stays at the bottom, where sending does not interrupt the text column.
         widgets.scroll.vadjustment().connect_changed({

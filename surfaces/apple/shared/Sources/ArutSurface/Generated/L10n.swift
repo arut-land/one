@@ -24,6 +24,7 @@ enum L10n {
     static func actionOpenHistory() -> String { String(localized: "action-open-history", table: "Localizable", bundle: .module) }
     static func actionPreviousConversation() -> String { String(localized: "action-previous-conversation", table: "Localizable", bundle: .module) }
     static func actionQuit() -> String { String(localized: "action-quit", table: "Localizable", bundle: .module) }
+    static func actionRetry() -> String { String(localized: "action-retry", table: "Localizable", bundle: .module) }
     static func actionScrollToLatest() -> String { String(localized: "action-scroll-to-latest", table: "Localizable", bundle: .module) }
     static func actionSearchConversations() -> String { String(localized: "action-search-conversations", table: "Localizable", bundle: .module) }
     static func actionSend() -> String { String(localized: "action-send", table: "Localizable", bundle: .module) }
@@ -93,4 +94,6 @@ enum L10n {
     static func readinessSocketUnreachable() -> String { String(localized: "readiness-socket-unreachable", table: "Localizable", bundle: .module) }
     static func readinessSpawnFailed() -> String { String(localized: "readiness-spawn-failed", table: "Localizable", bundle: .module) }
     static func readinessTimedOut() -> String { String(localized: "readiness-timed-out", table: "Localizable", bundle: .module) }
+    static func transcriptToday() -> String { String(localized: "transcript-today", table: "Localizable", bundle: .module) }
+    static func transcriptYesterday() -> String { String(localized: "transcript-yesterday", table: "Localizable", bundle: .module) }
 }

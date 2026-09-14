@@ -3,7 +3,9 @@ mod composer;
 mod conversation_model;
 mod conversations;
 mod decorations;
+mod icons;
 mod layout;
+mod motion;
 mod navigation;
 #[cfg(feature = "review")]
 mod review;
@@ -72,6 +74,7 @@ pub fn run() {
     // portal without activating an already-running personal instance.
     let app_id = std::env::var("ARUT_LINUX_APP_ID").unwrap_or_else(|_| "dev.arut.Arut".into());
     let app = relm4::RelmApp::new(&app_id);
+    icons::install(&gtk::gdk::Display::default().expect("display"));
     gtk::Window::set_default_icon_name("dev.arut.Arut");
     app.run::<shell::Shell>(session);
 }

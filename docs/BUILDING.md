@@ -13,7 +13,7 @@ Mise downloads BoltFFI's release binary. Cargo tools use cargo-binstall with sou
 | Windows distributable folder | `mise run publish:windows` | Same as Windows build |
 | Web development | `mise run surface:web` | None beyond mise |
 | JavaScript checks and store tests | `mise run check:ts` | None beyond mise |
-| Linux app | `mise run surface:linux` | GTK 4.22+, C/C++ compiler and pkg-config |
+| Linux app | `mise run surface:linux` | GTK 4.22+, C/C++ compiler, pkg-config and `glib-compile-resources` (the GLib development package) |
 | macOS build and Swift tests | `mise run check:apple` | Xcode |
 | Android build | `mise run surface:android` | Android SDK 35, NDK and `ANDROID_NDK_HOME` |
 | Wasm, Apple, Android, .NET bindings | `mise run ffi:wasm` and `ffi:apple`, `ffi:android`, `ffi:csharp` | Per target: Xcode, the NDK, the .NET SDK |
@@ -56,7 +56,7 @@ Below mise, each build system keeps its own cache. mr-boxington wraps cargo and 
 
 Windows Debug and Release packages use separate output directories selected by MSBuild's `Configuration`. `mise run ffi:csharp` generates Debug and `mise run ffi:csharp:release` generates Release. Separate tasks give each configuration explicit outputs and independent freshness checks. Both regenerate localization and handle descriptors before packaging bindings. The corresponding build and publish tasks select them automatically. Run the platform mise task before using a native IDE on a fresh checkout or after changing Rust APIs.
 
-TypeScript 5.9.3 is pinned both for generated bindings and workspace checks, in `mise.toml`'s `typescript_version` variable and the pnpm catalog, which must match. On Windows, the wasm task explicitly selects that package for BoltFFI's `npx tsc` subprocess.
+TypeScript 7.0.2 is pinned both for generated bindings and workspace checks, in `mise.toml`'s `typescript_version` variable and the pnpm catalog, which must match; `boltffi_version` pins the generator and must match the `@boltffi/runtime` catalog pin. On Windows, the wasm task explicitly selects that package for BoltFFI's `npx tsc` subprocess. Elsewhere BoltFFI finds `tsc` on PATH, and `bindings/ffi/wrappers/tsc` is first there: BoltFFI 0.30 names the generated file on the command line, which TypeScript 7 refuses while the workspace's tsconfig.json is discoverable, and it passes no library list for the ES2021 and DOM globals the generated code uses, so the wrapper adds both until BoltFFI does. The task also stages `@boltffi/runtime` beside the output for that check, because the workspace install that links the real one also links the package the task generates, so it cannot run first.
 
 ## Tool changes
 
