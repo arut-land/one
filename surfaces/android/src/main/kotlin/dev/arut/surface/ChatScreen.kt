@@ -65,6 +65,9 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.window.core.layout.WindowSizeClass
+// Strings are the binding library's resources (ADR 0022); AGP's R classes are
+// non-transitive, so the app names that R rather than its own.
+import dev.arut.bindings.R
 import dev.arut.bindings.ErrorSource
 import dev.arut.bindings.acceptedAt
 import dev.arut.bindings.generated.Messages
