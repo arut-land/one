@@ -68,7 +68,7 @@ impl RpcChannel for HttpRpcChannel {
         Box::pin(async move {
             let response = request.send().await.map_err(io)?;
             let success = response.status().is_success();
-            let metadata = metadata(response.headers());
+            let metadata = metadata(response.headers())?;
             let body = bounded_body(response).await?;
             if !success {
                 return Err(framing::parse_error(
@@ -86,11 +86,11 @@ impl RpcChannel for HttpRpcChannel {
         procedure: &str,
         request: Request<Vec<u8>>,
     ) -> RpcFuture<Response<RpcStream<Vec<u8>>>> {
-        let body = framing::envelope(0, &request.message);
+        let body = framing::envelope(framing::EnvelopeKind::Message, &request.message);
         let request = self.request(procedure, &request.metadata, true);
         Box::pin(async move {
             let response = request.body(body?).send().await.map_err(io)?;
-            let metadata = metadata(response.headers());
+            let metadata = metadata(response.headers())?;
             if !response.status().is_success() {
                 return Err(framing::parse_error(
                     &serde_json::from_slice(&bounded_body(response).await?).unwrap_or_default(),

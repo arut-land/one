@@ -23,7 +23,7 @@ pub mod feature;
 pub use arut_watch::Subscription;
 pub mod scopes;
 use arut_feature_chat::ports::IdSource;
-use arut_feature_chat::{ChatClient, ChatObserver};
+use arut_feature_chat::{ChatClient, ChatObserver, ConversationTitle};
 use arut_protocol::capability::v1::CapabilityServiceClient;
 use arut_protocol::capability_manifest::capability_client;
 use arut_protocol::chat::{composer::v1::ComposerServiceClient, v1::ChatServiceClient};
@@ -49,8 +49,20 @@ pub struct ProductSession<F: FeatureSet> {
     workspace: Arc<scopes::Workspace<F::Clients>>,
     pending_scope_id: String,
     conversations: Arc<Watch<Conversations>>,
+    pending_mutations: Mutex<HashMap<ConversationMutation, String>>,
     capability_service: CapabilityServiceClient,
     availability: Watch<SessionAvailability>,
+}
+
+#[derive(Clone, Hash, PartialEq, Eq)]
+enum ConversationMutation {
+    Rename {
+        chat_id: String,
+        title: ConversationTitle,
+    },
+    Delete {
+        chat_id: String,
+    },
 }
 
 type Established = Arc<Mutex<HashMap<String, ChatClient>>>;
@@ -61,8 +73,24 @@ type Established = Arc<Mutex<HashMap<String, ChatClient>>>;
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 struct Conversations {
     entries: Vec<Entry>,
-    selected_id: Option<String>,
+    selection: Selection,
     query: String,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+enum Selection {
+    #[default]
+    Pending,
+    Established(String),
+}
+
+impl Selection {
+    fn id(&self) -> Option<&str> {
+        match self {
+            Self::Pending => None,
+            Self::Established(id) => Some(id),
+        }
+    }
 }
 
 /// One conversation in the list, beside the two keys that decide whether it is
@@ -155,9 +183,9 @@ impl ChatObserver for RegisterChat {
                 .iter()
                 .position(|known| known.summary.id == chat_id);
             if known.is_none() && self.adopt_selection {
-                conversations.selected_id = Some(chat_id.to_owned());
+                conversations.selection = Selection::Established(chat_id.to_owned());
             }
-            let selected = conversations.selected_id.as_deref() == Some(chat_id);
+            let selected = conversations.selection.id() == Some(chat_id);
             let entry = match known {
                 Some(index) => {
                     let entry = &mut conversations.entries[index];
@@ -188,8 +216,12 @@ impl ChatObserver for RegisterChat {
 }
 
 /// Bounded single-line text from this chat's first or latest message, for a
-/// navigation list that cannot show line breaks.
+/// navigation list that cannot show line breaks. A conversation the person
+/// renamed keeps that title instead of a derived one.
 fn summary_text(chat: &ChatClient, first: bool, limit: usize) -> String {
+    if first && let Some(title) = chat.title() {
+        return title.into();
+    }
     let read = |message: Option<&arut_feature_chat::ChatMessage>| {
         message
             .map(|message| {
@@ -305,6 +337,12 @@ impl<F: HasChat> ProductSession<F> {
                 self.workspace.conversation_cancellation(),
             )
             .with_observer(registration.clone());
+            if let Some(title) = conversation
+                .title
+                .and_then(|title| ConversationTitle::try_from(title).ok())
+            {
+                client.set_title(title);
+            }
             registration.chat_changed(&conversation.id, &client);
         }
         Ok(())
@@ -335,6 +373,7 @@ impl<F: HasChat> ProductSession<F> {
             workspace,
             pending_scope_id: scope.pending_scope_id,
             conversations,
+            pending_mutations: Mutex::default(),
             capability_service: capabilities,
             availability: Watch::new(SessionAvailability {
                 composer: FeatureAvailability::Unknown,
@@ -399,15 +438,19 @@ impl<F: HasChat> ProductSession<F> {
     /// this session follows the same selection through one revision. Selecting
     /// a conversation also marks it read.
     pub fn select(&self, chat_id: Option<String>) {
+        let selection = match chat_id {
+            Some(id) if self.established(&id).is_some() => Selection::Established(id),
+            _ => Selection::Pending,
+        };
         self.conversations.update(|conversations| {
-            conversations.selected_id.clone_from(&chat_id);
-            let Some(chat_id) = chat_id else {
+            conversations.selection.clone_from(&selection);
+            let Selection::Established(chat_id) = &selection else {
                 return;
             };
             if let Some(entry) = conversations
                 .entries
                 .iter_mut()
-                .find(|entry| entry.summary.id == chat_id)
+                .find(|entry| entry.summary.id == chat_id.as_str())
             {
                 entry.seen_message_id = entry.last_message_id;
                 entry.derive();
@@ -417,14 +460,14 @@ impl<F: HasChat> ProductSession<F> {
 
     pub fn selected_id(&self) -> Option<String> {
         self.conversations
-            .read(|conversations| conversations.selected_id.clone())
+            .read(|conversations| conversations.selection.id().map(str::to_owned))
     }
 
     /// The title of the selected conversation, or `None` when the pending one
     /// is showing and the surface names it in its own words.
     pub fn selected_title(&self) -> Option<String> {
         self.conversations.read(|conversations| {
-            let selected = conversations.selected_id.as_deref()?;
+            let selected = conversations.selection.id()?;
             conversations
                 .entries
                 .iter()
@@ -443,6 +486,97 @@ impl<F: HasChat> ProductSession<F> {
     pub fn set_query(&self, query: String) {
         self.conversations
             .update(|conversations| conversations.query = query);
+    }
+
+    /// Renames one conversation, durably: the title becomes `title` and stays
+    /// that way across sessions. Returns `false` when the node did not accept it.
+    pub async fn rename(&self, chat_id: String, title: String) -> bool {
+        let Ok(title) = ConversationTitle::try_from(title) else {
+            return false;
+        };
+        let mutation = ConversationMutation::Rename {
+            chat_id: chat_id.clone(),
+            title: title.clone(),
+        };
+        let command_id = self.mutation_id(&mutation);
+        let request_title = title.clone().into();
+        let accepted = self
+            .chat_service()
+            .rename_conversation(Request::new(
+                arut_protocol::chat::v1::RenameConversationRequest {
+                    chat_id: chat_id.clone(),
+                    title: request_title,
+                    command_id,
+                },
+            ))
+            .await
+            .is_ok();
+        if accepted {
+            self.pending_mutations.lock().unwrap().remove(&mutation);
+            if let Some(chat) = self.established(&chat_id) {
+                chat.set_title(title.clone());
+            }
+            self.conversations.update(|conversations| {
+                if let Some(entry) = conversations
+                    .entries
+                    .iter_mut()
+                    .find(|entry| entry.summary.id == chat_id)
+                {
+                    entry.summary.title = title.into();
+                }
+            });
+        }
+        accepted
+    }
+
+    /// Deletes one conversation durably: its transcript and summary leave the
+    /// list for every surface on this session, and asking for it again returns
+    /// nothing. Returns `false` when the node did not accept it.
+    pub async fn delete(&self, chat_id: String) -> bool {
+        let mutation = ConversationMutation::Delete {
+            chat_id: chat_id.clone(),
+        };
+        let command_id = self.mutation_id(&mutation);
+        let accepted = self
+            .chat_service()
+            .delete_conversation(Request::new(
+                arut_protocol::chat::v1::DeleteConversationRequest {
+                    chat_id: chat_id.clone(),
+                    command_id,
+                },
+            ))
+            .await
+            .is_ok();
+        if accepted {
+            self.pending_mutations.lock().unwrap().remove(&mutation);
+            let mut pending = self.pending.lock().expect("pending chat poisoned");
+            if pending.id().as_deref() == Some(chat_id.as_str()) {
+                *pending = self.new_pending();
+            }
+            drop(pending);
+            self.established
+                .lock()
+                .expect("chat registry poisoned")
+                .remove(&chat_id);
+            self.conversations.update(|conversations| {
+                conversations
+                    .entries
+                    .retain(|entry| entry.summary.id != chat_id);
+                if conversations.selection.id() == Some(chat_id.as_str()) {
+                    conversations.selection = Selection::Pending;
+                }
+            });
+        }
+        accepted
+    }
+
+    fn mutation_id(&self, mutation: &ConversationMutation) -> String {
+        self.pending_mutations
+            .lock()
+            .unwrap()
+            .entry(mutation.clone())
+            .or_insert_with(|| self.ids.new_id())
+            .clone()
     }
 
     /// The conversation list a surface renders, newest first, narrowed to the
@@ -736,6 +870,53 @@ mod tests {
             registry.upgrade().is_none(),
             "a retained chat must not retain its session"
         );
+    }
+
+    #[test]
+    fn rename_and_delete_are_durable_and_update_the_live_session() {
+        let original = session();
+        let chat = original.chat();
+        let id = block_on(chat.send("derived title".into())).id.unwrap();
+
+        assert!(block_on(
+            original.rename(id.clone(), "  Project   notes  ".into())
+        ));
+        assert_eq!(original.selected_title(), Some("Project notes".into()));
+        block_on(chat.send("later message".into()));
+        assert_eq!(original.selected_title(), Some("Project notes".into()));
+
+        let restored = ProductSession::<(Chat,)>::new(
+            original.workspace.clients().clone(),
+            original.capability_service.clone(),
+            SessionScope {
+                node_id: "local".into(),
+                workspace_id: "default".into(),
+                pending_scope_id: "restored-rename".into(),
+            },
+            Arc::new(TestIds),
+        );
+        block_on(restored.initialize()).unwrap();
+        restored.select(Some(id.clone()));
+        assert_eq!(restored.selected_title(), Some("Project notes".into()));
+
+        assert!(block_on(restored.delete(id.clone())));
+        assert!(restored.chat_summaries().is_empty());
+        assert_eq!(restored.selected_id(), None);
+        assert!(restored.select_chat(&id).is_none());
+        assert_eq!(restored.chat().id(), None);
+
+        let after_delete = ProductSession::<(Chat,)>::new(
+            original.workspace.clients().clone(),
+            original.capability_service.clone(),
+            SessionScope {
+                node_id: "local".into(),
+                workspace_id: "default".into(),
+                pending_scope_id: "restored-delete".into(),
+            },
+            Arc::new(TestIds),
+        );
+        block_on(after_delete.initialize()).unwrap();
+        assert!(after_delete.chat_summaries().is_empty());
     }
 
     #[test]

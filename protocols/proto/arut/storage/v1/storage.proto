@@ -1,0 +1,16 @@
+syntax = "proto3";
+
+package arut.storage.v1;
+
+message Snapshot {
+  uint64 sequence = 1;
+  uint64 epoch = 2;
+  bytes data = 3;
+}
+
+message StoredRecord {
+  uint64 sequence = 1;
+  uint64 epoch = 2;
+  string command_id = 3;
+  bytes fact = 4;
+}

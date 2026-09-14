@@ -8,13 +8,40 @@ use serde_json::{Value, json};
 use tokio_util::codec::Decoder;
 pub const MAX_MESSAGE: usize = 8 * 1024 * 1024;
 
-pub(crate) fn envelope(flags: u8, body: &[u8]) -> Result<Vec<u8>, Status> {
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum EnvelopeKind {
+    Message,
+    End,
+}
+
+impl From<EnvelopeKind> for u8 {
+    fn from(kind: EnvelopeKind) -> Self {
+        match kind {
+            EnvelopeKind::Message => 0,
+            EnvelopeKind::End => 2,
+        }
+    }
+}
+
+impl TryFrom<u8> for EnvelopeKind {
+    type Error = Status;
+
+    fn try_from(flags: u8) -> Result<Self, Self::Error> {
+        match flags {
+            0 => Ok(Self::Message),
+            2 => Ok(Self::End),
+            _ => Err(Status::invalid_argument("unsupported envelope flags")),
+        }
+    }
+}
+
+pub(crate) fn envelope(kind: EnvelopeKind, body: &[u8]) -> Result<Vec<u8>, Status> {
     if body.len() > MAX_MESSAGE {
         return Err(message_limit());
     }
     let length = u32::try_from(body.len()).map_err(|_| message_limit())?;
     let mut bytes = Vec::with_capacity(5 + body.len());
-    bytes.push(flags);
+    bytes.push(kind.into());
     bytes.extend_from_slice(&length.to_be_bytes());
     bytes.extend_from_slice(body);
     Ok(bytes)
@@ -26,9 +53,9 @@ pub(crate) fn message_limit() -> Status {
 
 pub(crate) fn end_envelope(error: Option<Status>) -> Vec<u8> {
     let end = error.map_or_else(|| json!({}), |error| json!({"error": error_json(&error)}));
-    envelope(2, end.to_string().as_bytes()).unwrap_or_else(|_| {
+    envelope(EnvelopeKind::End, end.to_string().as_bytes()).unwrap_or_else(|_| {
         envelope(
-            2,
+            EnvelopeKind::End,
             br#"{"error":{"code":"resource_exhausted","message":"message exceeds limit"}}"#,
         )
         .expect("fixed end envelope fits the message limit")
@@ -40,17 +67,14 @@ pub(crate) fn end_envelope(error: Option<Status>) -> Vec<u8> {
 pub(crate) struct Envelope;
 
 impl Decoder for Envelope {
-    type Item = (u8, Vec<u8>);
+    type Item = (EnvelopeKind, Vec<u8>);
     type Error = Status;
 
     fn decode(&mut self, buffer: &mut BytesMut) -> Result<Option<Self::Item>, Status> {
         if buffer.len() < 5 {
             return Ok(None);
         }
-        let flags = buffer[0];
-        if flags != 0 && flags != 2 {
-            return Err(Status::invalid_argument("unsupported envelope flags"));
-        }
+        let kind = buffer[0].try_into()?;
         let length =
             u32::from_be_bytes(buffer[1..5].try_into().expect("five header bytes")) as usize;
         if length > MAX_MESSAGE {
@@ -61,7 +85,7 @@ impl Decoder for Envelope {
             return Ok(None);
         }
         buffer.advance(5);
-        Ok(Some((flags, buffer.split_to(length).to_vec())))
+        Ok(Some((kind, buffer.split_to(length).to_vec())))
     }
 }
 
@@ -92,15 +116,14 @@ pub(crate) fn parse_error(value: &Value) -> Status {
     let mut status = Status::new(code, value["message"].as_str().unwrap_or("RPC failed"));
     status.details = value["details"][0]["value"]
         .as_str()
-        .and_then(|value| decode_binary(value.as_bytes()))
+        .and_then(|value| decode_binary(value.as_bytes()).ok())
         .unwrap_or_default();
     status
 }
-pub(crate) fn decode_binary(value: &[u8]) -> Option<Vec<u8>> {
+pub(crate) fn decode_binary(value: &[u8]) -> Result<Vec<u8>, base64::DecodeError> {
     STANDARD_NO_PAD
         .decode(value)
         .or_else(|_| STANDARD.decode(value))
-        .ok()
 }
 
 fn code_name(code: Code) -> &'static str {
@@ -141,13 +164,13 @@ pub(crate) fn http_status(code: Code) -> u16 {
 mod tests {
     use super::*;
 
-    fn take(bytes: &[u8]) -> Result<Option<(u8, Vec<u8>)>, Status> {
+    fn take(bytes: &[u8]) -> Result<Option<(EnvelopeKind, Vec<u8>)>, Status> {
         Envelope.decode(&mut BytesMut::from(bytes))
     }
 
     #[test]
     fn framing_handles_fragmentation_limits_and_invalid_flags() {
-        let envelope = envelope(0, b"message").unwrap();
+        let envelope = envelope(EnvelopeKind::Message, b"message").unwrap();
         let mut buffer = BytesMut::new();
         for byte in &envelope[..envelope.len() - 1] {
             buffer.extend_from_slice(&[*byte]);
@@ -156,7 +179,7 @@ mod tests {
         buffer.extend_from_slice(&[*envelope.last().unwrap()]);
         let message = Envelope.decode(&mut buffer).unwrap();
 
-        assert_eq!(message, Some((0, b"message".to_vec())));
+        assert_eq!(message, Some((EnvelopeKind::Message, b"message".to_vec())));
         assert!(buffer.is_empty());
         assert!(take(&[1, 0, 0, 0, 0]).is_err());
         assert!(take(&[&[0][..], &((MAX_MESSAGE + 1) as u32).to_be_bytes()].concat()).is_err());
@@ -165,7 +188,9 @@ mod tests {
     #[test]
     fn outbound_envelopes_reject_oversized_messages() {
         assert_eq!(
-            envelope(0, &vec![0; MAX_MESSAGE + 1]).unwrap_err().code,
+            envelope(EnvelopeKind::Message, &vec![0; MAX_MESSAGE + 1])
+                .unwrap_err()
+                .code,
             Code::ResourceExhausted
         );
     }

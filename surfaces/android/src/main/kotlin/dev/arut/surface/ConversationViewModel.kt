@@ -134,6 +134,22 @@ class ConversationViewModel(private val session: ProductSessionHandle) : ViewMod
         current.value = handles
     }
 
+    fun rename(chatId: String, title: String) {
+        val trimmedTitle = title.trim()
+        if (trimmedTitle.isEmpty()) return
+        viewModelScope.launch { list.rename(chatId, trimmedTitle) }
+    }
+
+    fun delete(chatId: String) {
+        viewModelScope.launch {
+            if (!list.delete(chatId)) return@launch
+
+            val deleted = opened.remove(chatId)
+            if (deleted === current.value) current.value = open(null)
+            deleted?.close()
+        }
+    }
+
     fun edit(text: String) {
         // `edit` echoes locally and then writes; `viewModelScope` dispatches on
         // the main thread, so the writes reach Rust in typing order.

@@ -30,7 +30,7 @@ use process_wrap::tokio::JobObject;
 use process_wrap::tokio::ProcessGroup;
 use process_wrap::tokio::{ChildWrapper, CommandWrap, KillOnDrop};
 use std::{path::Path, path::PathBuf, sync::Arc, time::Duration};
-use tokio::io::{AsyncBufReadExt, BufReader};
+use tokio::io::BufReader;
 
 /// How long a reuse probe waits for a capability answer before treating the
 /// socket as unowned and spawning instead.
@@ -187,9 +187,24 @@ async fn spawn(
         .map_err(|error| Readiness::SpawnFailed.into_status(error.to_string()))?;
     let stdin = child.stdin().take().expect("piped child stdin");
     let stdout = child.stdout().take().expect("piped child stdout");
-    let mut line = String::new();
-    let read =
-        tokio::time::timeout(ready_timeout(), BufReader::new(stdout).read_line(&mut line)).await;
+    let read = tokio::time::timeout(ready_timeout(), async move {
+        use prost::Message;
+        use tokio::io::AsyncReadExt;
+
+        let mut stdout = BufReader::new(stdout);
+        let length = stdout.read_u32().await?;
+        if length > 64 {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "oversized readiness detail",
+            ));
+        }
+        let mut payload = vec![0; length as usize];
+        stdout.read_exact(&mut payload).await?;
+        arut_protocol::runtime::local::v1::ReadinessDetail::decode(payload.as_slice())
+            .map_err(|error| std::io::Error::new(std::io::ErrorKind::InvalidData, error))
+    })
+    .await;
     match read {
         Err(_) => {
             return Err(Readiness::TimedOut
@@ -198,7 +213,11 @@ async fn spawn(
         Ok(Err(error)) => return Err(Readiness::SpawnFailed.into_status(error.to_string())),
         Ok(Ok(_)) => {}
     }
-    let state = Readiness::parse(line.trim());
+    let state = read
+        .expect("handled timeout")
+        .expect("handled I/O failure")
+        .try_into()
+        .unwrap_or(Readiness::SpawnFailed);
     if state != Readiness::Ready {
         return Err(state.into_status(format!("the daemon exited before serving: {state}")));
     }

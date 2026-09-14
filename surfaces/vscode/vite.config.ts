@@ -1,9 +1,8 @@
 import { browserApp } from "@arut/chat-ui/vite";
 import { defineConfig } from "vite";
 
-// Two bundles from one root, and one `vite build` makes both: Vite's own pair of
-// environments is this surface's pair of sides -- `client` is the webview page,
-// `ssr` the extension host module that owns the session (ADR 0011).
+// Two bundles from one root, and one `vite build` makes both: `client` owns the
+// Wasm session in the webview, while `ssr` only registers and opens the panel.
 export default defineConfig(
   browserApp({
     builder: {},
@@ -13,11 +12,9 @@ export default defineConfig(
       client: {
         define: { "process.env.NODE_ENV": JSON.stringify("production") },
         build: {
-          lib: { entry: "src/webview.tsx", formats: ["iife"], name: "arutChat", cssFileName: "webview", fileName: () => "webview.js" },
+          lib: { entry: "src/webview.tsx", formats: ["es"], cssFileName: "webview", fileName: () => "webview.js" },
         },
       },
-      // The host resolves like a browser because the wasm it loads is the
-      // browser build, inlined so the extension ships as the one file.
       ssr: {
         consumer: "client",
         build: {

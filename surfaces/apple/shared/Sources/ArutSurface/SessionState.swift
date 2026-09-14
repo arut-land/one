@@ -117,6 +117,28 @@ final class SessionState {
         open(.established(rows[next].id))
     }
 
+    func rename(chatId: String, title: String) async -> Bool {
+        let title = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !title.isEmpty else { return false }
+        do {
+            let accepted = try await list.rename(chatId: chatId, title: title)
+            if accepted { conversations.refresh() }
+            return accepted
+        } catch {
+            return false
+        }
+    }
+
+    func delete(chatId: String) async -> Bool {
+        do {
+            let accepted = try await list.delete(chatId: chatId)
+            if accepted { conversations.refresh() }
+            return accepted
+        } catch {
+            return false
+        }
+    }
+
     private func open(_ selection: Selection) {
         guard selection != opened else { return }
         list.select(id: selection.id)

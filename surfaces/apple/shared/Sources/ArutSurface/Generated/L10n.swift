@@ -9,10 +9,13 @@ import Foundation
 enum L10n {
     static func actionAbout() -> String { String(localized: "action-about", table: "Localizable", bundle: .module) }
     static func actionAppHelp() -> String { String(localized: "action-app-help", table: "Localizable", bundle: .module) }
+    static func actionCancel() -> String { String(localized: "action-cancel", table: "Localizable", bundle: .module) }
     static func actionClearSearch() -> String { String(localized: "action-clear-search", table: "Localizable", bundle: .module) }
     static func actionCloseHistory() -> String { String(localized: "action-close-history", table: "Localizable", bundle: .module) }
     static func actionCollapseSidebar() -> String { String(localized: "action-collapse-sidebar", table: "Localizable", bundle: .module) }
+    static func actionConversationOptions(title: String) -> String { String(format: String(localized: "action-conversation-options", table: "Localizable", bundle: .module), title) }
     static func actionCopyMessage() -> String { String(localized: "action-copy-message", table: "Localizable", bundle: .module) }
+    static func actionDeleteConversation() -> String { String(localized: "action-delete-conversation", table: "Localizable", bundle: .module) }
     static func actionExpandSidebar() -> String { String(localized: "action-expand-sidebar", table: "Localizable", bundle: .module) }
     static func actionFocusComposer() -> String { String(localized: "action-focus-composer", table: "Localizable", bundle: .module) }
     static func actionMainMenu() -> String { String(localized: "action-main-menu", table: "Localizable", bundle: .module) }
@@ -24,7 +27,9 @@ enum L10n {
     static func actionOpenHistory() -> String { String(localized: "action-open-history", table: "Localizable", bundle: .module) }
     static func actionPreviousConversation() -> String { String(localized: "action-previous-conversation", table: "Localizable", bundle: .module) }
     static func actionQuit() -> String { String(localized: "action-quit", table: "Localizable", bundle: .module) }
+    static func actionRenameConversation() -> String { String(localized: "action-rename-conversation", table: "Localizable", bundle: .module) }
     static func actionRetry() -> String { String(localized: "action-retry", table: "Localizable", bundle: .module) }
+    static func actionSave() -> String { String(localized: "action-save", table: "Localizable", bundle: .module) }
     static func actionScrollToLatest() -> String { String(localized: "action-scroll-to-latest", table: "Localizable", bundle: .module) }
     static func actionSearchConversations() -> String { String(localized: "action-search-conversations", table: "Localizable", bundle: .module) }
     static func actionSend() -> String { String(localized: "action-send", table: "Localizable", bundle: .module) }
@@ -66,9 +71,13 @@ enum L10n {
     static func composerPlaceholder() -> String { String(localized: "composer-placeholder", table: "Localizable", bundle: .module) }
     static func composerStatusConnecting() -> String { String(localized: "composer-status-connecting", table: "Localizable", bundle: .module) }
     static func composerStatusFailed() -> String { String(localized: "composer-status-failed", table: "Localizable", bundle: .module) }
+    static func conversationDeleteMessage() -> String { String(localized: "conversation-delete-message", table: "Localizable", bundle: .module) }
+    static func conversationDeleteTitle() -> String { String(localized: "conversation-delete-title", table: "Localizable", bundle: .module) }
+    static func conversationRenameTitle() -> String { String(localized: "conversation-rename-title", table: "Localizable", bundle: .module) }
     static func conversationSearchEmpty() -> String { String(localized: "conversation-search-empty", table: "Localizable", bundle: .module) }
     static func conversationSearchPlaceholder() -> String { String(localized: "conversation-search-placeholder", table: "Localizable", bundle: .module) }
     static func labelChatHistory() -> String { String(localized: "label-chat-history", table: "Localizable", bundle: .module) }
+    static func labelConversationTitle() -> String { String(localized: "label-conversation-title", table: "Localizable", bundle: .module) }
     static func labelConversations() -> String { String(localized: "label-conversations", table: "Localizable", bundle: .module) }
     static func labelDraft() -> String { String(localized: "label-draft", table: "Localizable", bundle: .module) }
     static func labelDraftSync() -> String { String(localized: "label-draft-sync", table: "Localizable", bundle: .module) }

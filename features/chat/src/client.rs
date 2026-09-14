@@ -1,4 +1,5 @@
 //! Chat intent handling over the generated service contract.
+use crate::ConversationTitle;
 use crate::composer::ComposerClient;
 use crate::composer::ComposerScope;
 use crate::errors::{ChatError, ComposerError};
@@ -45,6 +46,9 @@ pub struct ChatClient {
     composer: ComposerClient,
     state: Arc<Watch<ChatState>>,
     messages: Arc<Mutex<BTreeMap<u64, ChatMessage>>>,
+    /// The durable conversation title, when the person renamed it. `None` means
+    /// the title is the first message, as the transcript defines it.
+    title: Arc<Mutex<Option<ConversationTitle>>>,
     stage: Stage,
     observer: Option<Arc<dyn ChatObserver>>,
     pending_send: Arc<Mutex<Option<SendMessageRequest>>>,
@@ -63,7 +67,7 @@ impl ChatClient {
     ) -> Self {
         let messages: BTreeMap<_, _> = messages
             .into_iter()
-            .filter_map(from_wire)
+            .filter_map(|message| ChatMessage::try_from(message).ok())
             .map(|message| (message.id, message))
             .collect();
         Self {
@@ -80,6 +84,7 @@ impl ChatClient {
                 ..Default::default()
             }))),
             messages: Arc::new(Mutex::new(messages)),
+            title: Arc::default(),
             stage: Stage::Established(id),
             observer: None,
             pending_send: Arc::default(),
@@ -106,6 +111,7 @@ impl ChatClient {
             ),
             state: Arc::new(Watch::new(derived(ChatState::default()))),
             messages: Arc::default(),
+            title: Arc::default(),
             pending_send: Arc::default(),
             stage: Stage::Pending(PendingStart {
                 scope_id: pending_scope_id,
@@ -119,6 +125,16 @@ impl ChatClient {
 
     pub fn id(&self) -> Option<String> {
         self.state.read(|state| state.id.clone())
+    }
+
+    /// The durable title the person gave this conversation, when it has one.
+    pub fn title(&self) -> Option<ConversationTitle> {
+        self.title.lock().unwrap().clone()
+    }
+
+    /// Caches the authority-accepted title for summary projection.
+    pub fn set_title(&self, title: ConversationTitle) {
+        *self.title.lock().unwrap() = Some(title);
     }
 
     /// Attach the session projection before publishing an established client.
@@ -166,7 +182,10 @@ impl ChatClient {
 
     fn accept_messages(&self, messages: Vec<WireMessage>) -> u64 {
         let mut stored = self.messages.lock().unwrap();
-        for message in messages.into_iter().filter_map(from_wire) {
+        for message in messages
+            .into_iter()
+            .filter_map(|message| ChatMessage::try_from(message).ok())
+        {
             stored.entry(message.id).or_insert(message);
         }
         stored.last_key_value().map_or(0, |(id, _)| *id)
@@ -315,19 +334,27 @@ fn derived(mut state: ChatState) -> ChatState {
     state
 }
 
-fn from_wire(message: WireMessage) -> Option<ChatMessage> {
-    let role = match WireRole::try_from(message.role).ok()? {
-        WireRole::User => ChatRole::User,
-        WireRole::Assistant => ChatRole::Assistant,
-        WireRole::Unspecified => return None,
-    };
-    Some(ChatMessage {
-        id: message.id,
-        role,
-        text: message.text,
-        accepted_at_ms: message.accepted_at_ms,
-        starts_time_group: false,
-        starts_speaker_group: false,
-        ends_speaker_group: false,
-    })
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct InvalidChatRole;
+
+impl TryFrom<WireMessage> for ChatMessage {
+    type Error = InvalidChatRole;
+
+    fn try_from(message: WireMessage) -> Result<Self, Self::Error> {
+        let role = match WireRole::try_from(message.role).map_err(|_| InvalidChatRole)? {
+            WireRole::User => ChatRole::User,
+            WireRole::Assistant => ChatRole::Assistant,
+            WireRole::Unspecified => return Err(InvalidChatRole),
+        };
+        Ok(Self {
+            id: message.id,
+            role,
+            text: message.text,
+            accepted_at_ms: message.accepted_at_ms,
+            starts_time_group: false,
+            previous_time_group_at_ms: None,
+            starts_speaker_group: false,
+            ends_speaker_group: false,
+        })
+    }
 }

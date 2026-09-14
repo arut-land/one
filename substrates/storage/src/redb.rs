@@ -5,6 +5,7 @@
 
 use crate::log::{LogStore, commit_policy, compaction_allowed, snapshot_allowed};
 use crate::{Fact, FactLog, KeyValue, Record, Result, Snapshot, StorageError};
+use arut_protocol::storage::v1::StoredRecord;
 use prost::Message;
 use redb::{
     Database, Error as RedbError, ReadableDatabase, ReadableTable, TableDefinition,
@@ -127,7 +128,7 @@ fn after<F: Fact>(
         std::ops::Bound::Unbounded,
     ))? {
         let (_, value) = entry?;
-        result.push(StoredRecord::decode(value.value())?.into_record()?);
+        result.push(StoredRecord::decode(value.value())?.try_into()?);
     }
     Ok(result)
 }
@@ -142,11 +143,11 @@ fn outcome<F: Fact>(
     if let Some(sequence) = commands.get(id)?
         && let Some(value) = records.get(sequence.value())?
     {
-        return Ok(Some(StoredRecord::decode(value.value())?.into_record()?));
+        return Ok(Some(StoredRecord::decode(value.value())?.try_into()?));
     }
     outcomes
         .get(id)?
-        .map(|value| StoredRecord::decode(value.value())?.into_record())
+        .map(|value| StoredRecord::decode(value.value())?.try_into())
         .transpose()
 }
 
@@ -220,7 +221,7 @@ impl<F: Fact> FactLog<F> for RedbLog<F> {
         cursor: Option<u64>,
         epoch: u64,
         id: &str,
-        decide: &mut crate::CommitDecision<'_, F>,
+        decide: Box<crate::CommitDecision<'_, F>>,
     ) -> Result<Option<Record<F>>> {
         let commit = Commit {
             write: self.database.begin_write()?,
@@ -349,18 +350,6 @@ storage_errors!(
     redb::StorageError
 );
 
-/// The on-disk shape of a record; the fact keeps its own Protobuf encoding.
-#[derive(Clone, PartialEq, prost::Message)]
-pub(crate) struct StoredRecord {
-    #[prost(uint64, tag = "1")]
-    pub sequence: u64,
-    #[prost(uint64, tag = "2")]
-    pub epoch: u64,
-    #[prost(string, tag = "3")]
-    pub command_id: String,
-    #[prost(bytes = "vec", tag = "4")]
-    pub fact: Vec<u8>,
-}
 impl<F: Fact> From<&Record<F>> for StoredRecord {
     fn from(record: &Record<F>) -> Self {
         Self {
@@ -371,13 +360,15 @@ impl<F: Fact> From<&Record<F>> for StoredRecord {
         }
     }
 }
-impl StoredRecord {
-    pub(crate) fn into_record<F: Fact>(self) -> Result<Record<F>> {
+impl<F: Fact> TryFrom<StoredRecord> for Record<F> {
+    type Error = StorageError;
+
+    fn try_from(stored: StoredRecord) -> Result<Self> {
         Ok(Record {
-            sequence: self.sequence,
-            epoch: self.epoch,
-            command_id: self.command_id,
-            fact: F::decode(&self.fact[..])?,
+            sequence: stored.sequence,
+            epoch: stored.epoch,
+            command_id: stored.command_id,
+            fact: F::decode(&stored.fact[..])?,
         })
     }
 }

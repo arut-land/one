@@ -1,0 +1,16 @@
+syntax = "proto3";
+
+package arut.runtime.local.v1;
+
+enum ReadinessState {
+  READINESS_STATE_UNSPECIFIED = 0;
+  READINESS_STATE_READY = 1;
+  READINESS_STATE_LEASE_HELD = 2;
+  READINESS_STATE_SOCKET_UNREACHABLE = 3;
+  READINESS_STATE_SPAWN_FAILED = 4;
+  READINESS_STATE_TIMED_OUT = 5;
+}
+
+message ReadinessDetail {
+  ReadinessState state = 1;
+}

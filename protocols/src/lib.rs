@@ -23,8 +23,9 @@ pub mod capability_manifest;
 mod tests {
     use crate::chat::v1::{
         CHAT_SERVICE_DESCRIPTOR, ChatMessage, ChatRole, ChatService, ChatServiceClient,
-        ChatServiceRouter, SendMessageRequest, SendMessageResponse, StartChatRequest,
-        StartChatResponse,
+        ChatServiceRouter, DeleteConversationRequest, DeleteConversationResponse,
+        RenameConversationRequest, RenameConversationResponse, SendMessageRequest,
+        SendMessageResponse, StartChatRequest, StartChatResponse,
     };
     use arut_rpc::{Request, Response, RpcFuture};
     use futures_executor::block_on;
@@ -60,6 +61,20 @@ mod tests {
             &self,
             _request: Request<StartChatRequest>,
         ) -> RpcFuture<Response<StartChatResponse>> {
+            unreachable!()
+        }
+
+        fn rename_conversation(
+            &self,
+            _request: Request<RenameConversationRequest>,
+        ) -> RpcFuture<Response<RenameConversationResponse>> {
+            unreachable!()
+        }
+
+        fn delete_conversation(
+            &self,
+            _request: Request<DeleteConversationRequest>,
+        ) -> RpcFuture<Response<DeleteConversationResponse>> {
             unreachable!()
         }
     }

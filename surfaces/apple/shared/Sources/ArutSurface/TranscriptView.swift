@@ -22,10 +22,7 @@ struct TranscriptView: View {
                     ForEach(messages, id: \.id) { message in
                         VStack {
                             if let stamp = acceptedAt(message.acceptedAtMs), message.startsTimeGroup {
-                                Text(
-                                    stamp,
-                                    format: .dateTime.month(.abbreviated).day().hour().minute()
-                                )
+                                Text(verbatim: timeGroupLabel(for: message, at: stamp))
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                                 .padding(.vertical)
@@ -76,6 +73,19 @@ struct TranscriptView: View {
     /// Outside the message-id namespace `scrollPosition(id:)` reads, so the
     /// sentinel cannot collide with a row however the core keys its rows.
     private static let bottomSentinelId = "transcript-bottom"
+
+    private func timeGroupLabel(
+        for message: ChatMessage,
+        at stamp: Date
+    ) -> String {
+        guard let previousMilliseconds = message.previousTimeGroupAtMs,
+              let previous = acceptedAt(previousMilliseconds),
+              Calendar.current.isDate(previous, inSameDayAs: stamp)
+        else {
+            return stamp.formatted(date: .abbreviated, time: .shortened)
+        }
+        return stamp.formatted(date: .omitted, time: .shortened)
+    }
 
     // Scroll visibility arrives on macOS 15/iOS 18; before that the sentinel's
     // appearance is the only signal that the reader is at the bottom.

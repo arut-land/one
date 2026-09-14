@@ -17,6 +17,7 @@ axum = "0.8.9"
 thiserror = "2.0.20"
 tokio = { version = "1.53.1", features = ["macros", "net", "rt-multi-thread", "signal", "process", "io-util", "io-std"] }
 process-wrap = { version = "10", default-features = false, features = ["tokio1", "process-group", "job-object", "kill-on-drop"] }
+prost = "0.14.4"
 
 [target.'cfg(unix)'.dependencies]
 rustix = { version = "1.1.4", features = ["process"] }

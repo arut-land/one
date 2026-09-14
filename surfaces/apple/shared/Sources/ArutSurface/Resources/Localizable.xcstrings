@@ -23,6 +23,17 @@
         }
       }
     },
+    "action-cancel": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cancel"
+          }
+        }
+      }
+    },
     "action-clear-search": {
       "extractionState": "manual",
       "localizations": {
@@ -56,6 +67,17 @@
         }
       }
     },
+    "action-conversation-options": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "More options for %1$@"
+          }
+        }
+      }
+    },
     "action-copy-message": {
       "extractionState": "manual",
       "localizations": {
@@ -63,6 +85,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Copy message"
+          }
+        }
+      }
+    },
+    "action-delete-conversation": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Delete"
           }
         }
       }
@@ -188,6 +221,17 @@
         }
       }
     },
+    "action-rename-conversation": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Rename"
+          }
+        }
+      }
+    },
     "action-retry": {
       "extractionState": "manual",
       "localizations": {
@@ -195,6 +239,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Retry"
+          }
+        }
+      }
+    },
+    "action-save": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Save"
           }
         }
       }
@@ -650,6 +705,39 @@
         }
       }
     },
+    "conversation-delete-message": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This conversation and its messages will be permanently deleted."
+          }
+        }
+      }
+    },
+    "conversation-delete-title": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Delete conversation?"
+          }
+        }
+      }
+    },
+    "conversation-rename-title": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Rename conversation"
+          }
+        }
+      }
+    },
     "conversation-search-empty": {
       "extractionState": "manual",
       "localizations": {
@@ -679,6 +767,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Chat history"
+          }
+        }
+      }
+    },
+    "label-conversation-title": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conversation title"
           }
         }
       }

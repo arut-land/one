@@ -1,11 +1,12 @@
 //! Serializes chat acceptance, retry identity, and durable draft promotion.
+use crate::ConversationTitle;
 use crate::command::{ChatCommand, CommandId, PendingDraft, Rejection};
 use crate::composer::{ComposerAuthority, ComposerScope, PromoteError};
 #[cfg(test)]
 use crate::facts::ChatProjection;
 use crate::ports::{Clock, IdSource};
 use arut_authority::{Authority, Outcome};
-use arut_protocol::chat::v1::ChatFact;
+use arut_protocol::chat::v1::{ChatFact, chat_fact};
 use arut_storage::{FactLog, StorageError};
 use std::sync::{Arc, Mutex};
 
@@ -62,20 +63,13 @@ impl ChatAuthority {
         self.authority.projection()
     }
     fn commit(&self, command: ChatCommand) -> Result<ChatFact, CommitError> {
-        let chat_id = command.chat_id.clone();
-        let pending_scope = command
-            .pending_scope
-            .as_ref()
-            .map(|pending| pending.scope_id.clone());
+        let expected = command.clone();
         match self
             .authority
             .execute_with_clock(command, || self.clock.now())?
         {
             Outcome::Applied(record) | Outcome::Duplicate(record) => {
-                if (pending_scope.is_none()
-                    && (record.fact.chat_id != chat_id || !record.fact.pending_scope_id.is_empty()))
-                    || pending_scope.is_some_and(|scope| record.fact.pending_scope_id != scope)
-                {
+                if !expected.matches(&record.fact) {
                     return Err(Rejection::CommandConflict.into());
                 }
                 Ok(record.fact)
@@ -95,11 +89,32 @@ impl ChatAuthority {
         chat_id: String,
         text: String,
     ) -> Result<ChatFact, CommitError> {
-        self.commit(ChatCommand {
+        self.commit(ChatCommand::Send {
             command_id,
             chat_id,
             text,
-            pending_scope: None,
+        })
+    }
+    pub(crate) fn rename(
+        &self,
+        command_id: CommandId,
+        chat_id: String,
+        title: ConversationTitle,
+    ) -> Result<ChatFact, CommitError> {
+        self.commit(ChatCommand::Rename {
+            command_id,
+            chat_id,
+            title,
+        })
+    }
+    pub(crate) fn delete(
+        &self,
+        command_id: CommandId,
+        chat_id: String,
+    ) -> Result<ChatFact, CommitError> {
+        self.commit(ChatCommand::Delete {
+            command_id,
+            chat_id,
         })
     }
     pub(crate) fn start(
@@ -111,22 +126,33 @@ impl ChatAuthority {
     ) -> Result<(ChatFact, crate::composer::ComposerSnapshot), CommitError> {
         let _start = self.start_gate.lock().map_err(|_| StorageError::Corrupt)?;
         let fact = if let Some(record) = self.authority.outcome_of(command_id.as_str())? {
-            if record.fact.pending_scope_id != pending_scope_id {
+            let expected = ChatCommand::Start {
+                command_id,
+                chat_id: record.fact.chat_id.clone(),
+                pending: PendingDraft {
+                    scope_id: pending_scope_id.clone(),
+                    revision,
+                },
+                text,
+            };
+            if !expected.matches(&record.fact) {
                 return Err(Rejection::CommandConflict.into());
             }
-            if let Some(revision) = record.fact.pending_revision {
-                self.composer.recover_pending(&pending_scope_id, revision)?;
-            }
+            let Some(chat_fact::Change::Started(started)) = &record.fact.change else {
+                return Err(Rejection::CommandConflict.into());
+            };
+            self.composer
+                .recover_pending(&pending_scope_id, started.pending_revision)?;
             record.fact
         } else {
             let chat_id = self.ids.new_id();
-            let command = ChatCommand {
+            let command = ChatCommand::Start {
                 command_id,
                 chat_id: chat_id.clone(),
-                pending_scope: Some(PendingDraft {
+                pending: PendingDraft {
                     scope_id: pending_scope_id.clone(),
                     revision,
-                }),
+                },
                 text: text.clone(),
             };
             match self.composer.promote_pending(

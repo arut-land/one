@@ -30,9 +30,13 @@ import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Menu
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Badge
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DrawerValue
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -58,9 +62,12 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -94,6 +101,8 @@ import dev.arut.ffi.ChatMessage
 import dev.arut.ffi.ChatRole
 import dev.arut.ffi.ChatSummary
 import java.text.DateFormat
+import java.util.Calendar
+import java.util.Date
 import kotlinx.coroutines.launch
 
 /**
@@ -123,6 +132,8 @@ class ChatActions(viewModel: ConversationViewModel) {
     val select: (String?) -> Unit = viewModel::select
     val search: (String) -> Unit = viewModel::search
     val newConversation: () -> Unit = viewModel::newConversation
+    val rename: (String, String) -> Unit = viewModel::rename
+    val delete: (String) -> Unit = viewModel::delete
     val edit: (String) -> Unit = viewModel::edit
     val send: () -> Unit = viewModel::send
 }
@@ -153,6 +164,8 @@ fun ChatScreen(
                 closeList()
             },
             onSearch = actions.search,
+            onRename = actions.rename,
+            onDelete = actions.delete,
             onNew = {
                 actions.newConversation()
                 closeList()
@@ -191,9 +204,13 @@ private fun ConversationList(
     conversations: Conversations,
     onSelect: (String?) -> Unit,
     onSearch: (String) -> Unit,
+    onRename: (String, String) -> Unit,
+    onDelete: (String) -> Unit,
     onNew: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    var renameTarget by remember { mutableStateOf<ChatSummary?>(null) }
+    var deleteTarget by remember { mutableStateOf<ChatSummary?>(null) }
     Column(modifier.padding(horizontal = 12.dp)) {
         TextButton(onClick = onNew, modifier = Modifier.fillMaxWidth()) {
             Icon(Icons.Filled.Add, contentDescription = null)
@@ -232,10 +249,31 @@ private fun ConversationList(
                     summary = summary,
                     selected = summary.id == conversations.selectedId,
                     onSelect = onSelect,
+                    onRename = { renameTarget = summary },
+                    onDelete = { deleteTarget = summary },
                     modifier = Modifier.animateItem(),
                 )
             }
         }
+    }
+    renameTarget?.let { summary ->
+        RenameConversationDialog(
+            summary = summary,
+            onDismiss = { renameTarget = null },
+            onRename = { title ->
+                onRename(summary.id, title)
+                renameTarget = null
+            },
+        )
+    }
+    deleteTarget?.let { summary ->
+        DeleteConversationDialog(
+            onDismiss = { deleteTarget = null },
+            onDelete = {
+                onDelete(summary.id)
+                deleteTarget = null
+            },
+        )
     }
 }
 
@@ -244,17 +282,108 @@ private fun ConversationRow(
     summary: ChatSummary,
     selected: Boolean,
     onSelect: (String?) -> Unit,
+    onRename: () -> Unit,
+    onDelete: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    var menuExpanded by remember { mutableStateOf(false) }
     val unread = stringResource(R.string.label_unread_messages)
     val description = if (summary.unread) "${summary.title}. $unread" else summary.title
     NavigationDrawerItem(
         label = { Text(summary.title, maxLines = 2, overflow = TextOverflow.Ellipsis) },
-        // Rust decides what is unread; the badge only draws it.
-        badge = if (summary.unread) ({ Badge() }) else null,
+        badge = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                // Rust decides what is unread; the badge only draws it.
+                if (summary.unread) Badge()
+                Box {
+                    IconButton(onClick = { menuExpanded = true }) {
+                        Icon(
+                            Icons.Filled.MoreVert,
+                            contentDescription =
+                                stringResource(R.string.action_conversation_options, summary.title),
+                        )
+                    }
+                    DropdownMenu(
+                        expanded = menuExpanded,
+                        onDismissRequest = { menuExpanded = false },
+                    ) {
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.action_rename_conversation)) },
+                            onClick = {
+                                menuExpanded = false
+                                onRename()
+                            },
+                        )
+                        DropdownMenuItem(
+                            text = {
+                                Text(
+                                    stringResource(R.string.action_delete_conversation),
+                                    color = MaterialTheme.colorScheme.error,
+                                )
+                            },
+                            onClick = {
+                                menuExpanded = false
+                                onDelete()
+                            },
+                        )
+                    }
+                }
+            }
+        },
         selected = selected,
         onClick = { onSelect(summary.id) },
         modifier = modifier.semantics { contentDescription = description },
+    )
+}
+
+@Composable
+private fun RenameConversationDialog(
+    summary: ChatSummary,
+    onDismiss: () -> Unit,
+    onRename: (String) -> Unit,
+) {
+    var title by rememberSaveable(summary.id) { mutableStateOf(summary.title) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.conversation_rename_title)) },
+        text = {
+            OutlinedTextField(
+                value = title,
+                onValueChange = { title = it },
+                label = {
+                    Text(stringResource(R.string.label_conversation_title))
+                },
+                singleLine = true,
+            )
+        },
+        confirmButton = {
+            TextButton(onClick = { onRename(title) }, enabled = title.isNotBlank()) {
+                Text(stringResource(R.string.action_save))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.action_cancel)) }
+        },
+    )
+}
+
+@Composable
+private fun DeleteConversationDialog(onDismiss: () -> Unit, onDelete: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.conversation_delete_title)) },
+        text = { Text(stringResource(R.string.conversation_delete_message)) },
+        confirmButton = {
+            TextButton(onClick = onDelete) {
+                Text(
+                    stringResource(R.string.action_delete_conversation),
+                    color = MaterialTheme.colorScheme.error,
+                )
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.action_cancel)) }
+        },
     )
 }
 
@@ -324,6 +453,7 @@ private fun MessageList(messages: List<ChatMessage>) {
     // The platform formatter follows the person's 12- or 24-hour setting and
     // is built once for the list rather than once per bubble.
     val timeFormat = remember(context) { android.text.format.DateFormat.getTimeFormat(context) }
+    val dateFormat = remember(context) { android.text.format.DateFormat.getMediumDateFormat(context) }
     val scroll = rememberLazyListState()
     val scope = rememberCoroutineScope()
     val nearBottom by remember(scroll) { derivedStateOf { scroll.isNearBottom() } }
@@ -350,6 +480,7 @@ private fun MessageList(messages: List<ChatMessage>) {
                     message = message,
                     announced = message.id == latestIncoming,
                     timeFormat = timeFormat,
+                    dateFormat = dateFormat,
                     modifier = Modifier.animateItem(),
                 )
             }
@@ -375,6 +506,7 @@ private fun MessageBubble(
     message: ChatMessage,
     announced: Boolean,
     timeFormat: DateFormat,
+    dateFormat: DateFormat,
     modifier: Modifier = Modifier,
 ) {
     val outgoing = message.role == ChatRole.USER
@@ -384,17 +516,31 @@ private fun MessageBubble(
         } else {
             stringResource(R.string.chat_role_assistant)
         }
-    // Rust supplies the instant; Android supplies the words.
-    val stamp = acceptedAt(message.acceptedAtMs)?.let(timeFormat::format).orEmpty()
+    // Rust supplies the instants; Android supplies the local date and time words.
+    val accepted = acceptedAt(message.acceptedAtMs)
+    val time = accepted?.let(timeFormat::format).orEmpty()
+    val groupStamp =
+        if (!message.startsTimeGroup) {
+            ""
+        } else {
+            val previous = message.previousTimeGroupAtMs?.let(::acceptedAt)
+            accepted?.let { date ->
+                if (previous == null || !date.isSameLocalDay(previous)) {
+                    "${dateFormat.format(date)}, ${timeFormat.format(date)}"
+                } else {
+                    timeFormat.format(date)
+                }
+            }.orEmpty()
+        }
     val description =
-        if (stamp.isEmpty()) "$speaker: ${message.text}" else "$speaker: ${message.text}. $stamp"
+        if (time.isEmpty()) "$speaker: ${message.text}" else "$speaker: ${message.text}. $time"
     // Rust says where a speaker's run ends; this only spaces after it.
     Column(
         modifier.fillMaxWidth().padding(bottom = if (message.endsSpeakerGroup) 12.dp else 0.dp)
     ) {
-        if (message.startsTimeGroup && stamp.isNotEmpty()) {
+        if (message.startsTimeGroup && groupStamp.isNotEmpty()) {
             Text(
-                text = stamp,
+                text = groupStamp,
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.align(Alignment.CenterHorizontally).padding(vertical = 8.dp),
@@ -519,8 +665,22 @@ private fun LazyListState.isNearBottom(): Boolean {
     return last.index >= layoutInfo.totalItemsCount - 1
 }
 
+private fun Date.isSameLocalDay(other: Date): Boolean {
+    val first = Calendar.getInstance().apply { time = this@isSameLocalDay }
+    val second = Calendar.getInstance().apply { time = other }
+    return first.get(Calendar.ERA) == second.get(Calendar.ERA) &&
+        first.get(Calendar.YEAR) == second.get(Calendar.YEAR) &&
+        first.get(Calendar.DAY_OF_YEAR) == second.get(Calendar.DAY_OF_YEAR)
+}
+
 @Preview
 @Composable
 private fun EmptyConversationPreview() {
     ArutTheme { EmptyConversation() }
+}
+
+@Preview
+@Composable
+private fun DeleteConversationDialogPreview() {
+    ArutTheme { DeleteConversationDialog(onDismiss = {}, onDelete = {}) }
 }

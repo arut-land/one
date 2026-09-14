@@ -14,8 +14,12 @@ use arut_storage::{Fact, FactLog, Record, Snapshot, StorageError};
 use prost::Message;
 use std::sync::{Arc, Mutex};
 
-pub trait Projection: Message + Default + Clone + 'static {
+pub trait Projection: Default + Clone + 'static {
     type Fact: Fact;
+    type Snapshot: Message + Default;
+
+    fn restore(snapshot: Self::Snapshot) -> Self;
+    fn snapshot(&self) -> Self::Snapshot;
     fn reduce(&mut self, fact: &Self::Fact);
 }
 
@@ -68,14 +72,16 @@ pub struct Authority<C: Command> {
 
 impl<C: Command> Authority<C> {
     pub fn open(log: Arc<dyn FactLog<C::Fact>>, epoch: u64) -> Result<Self, StorageError> {
-        let snapshot = log.snapshot()?;
-        let mut projection = snapshot
-            .as_ref()
-            .map(|s| C::Projection::decode(&s.data[..]))
-            .transpose()?
-            .unwrap_or_default();
-        let mut cursor = snapshot.as_ref().map_or(0, |s| s.sequence);
-        let mut current_epoch = snapshot.as_ref().map_or(1, |s| s.epoch);
+        let (mut projection, mut cursor, mut current_epoch) = match log.snapshot()? {
+            Some(snapshot) => (
+                C::Projection::restore(<C::Projection as Projection>::Snapshot::decode(
+                    &snapshot.data[..],
+                )?),
+                snapshot.sequence,
+                snapshot.epoch,
+            ),
+            None => (C::Projection::default(), 0, 1),
+        };
         for record in log.read_from(cursor)? {
             C::Projection::reduce(&mut projection, &record.fact);
             cursor = record.sequence;
@@ -121,14 +127,13 @@ impl<C: Command> Authority<C> {
             });
         }
         let id = command.command_id().to_owned();
-        let mut command = Some(command);
         let mut outcome = None;
         let cursor = state.cursor;
         let result = self.log.commit(
             Some(cursor),
             self.epoch,
             &id,
-            &mut |_, records, duplicate| {
+            Box::new(|_, records, duplicate| {
                 for record in records {
                     state.projection.reduce(&record.fact);
                     state.cursor = record.sequence;
@@ -137,18 +142,14 @@ impl<C: Command> Authority<C> {
                     outcome = Some(Outcome::Duplicate(record));
                     return Ok(None);
                 }
-                match decide(
-                    command.take().ok_or(StorageError::Corrupt)?,
-                    now(),
-                    &state.projection,
-                ) {
+                match decide(command, now(), &state.projection) {
                     Ok(fact) => Ok(Some(fact)),
                     Err(rejected) => {
                         outcome = Some(rejected);
                         Ok(None)
                     }
                 }
-            },
+            }),
         );
         let record = match result {
             Ok(Some(record)) => record,
@@ -179,7 +180,7 @@ impl<C: Command> Authority<C> {
         self.log.save_snapshot(Snapshot {
             sequence: state.cursor,
             epoch: self.epoch,
-            data: state.projection.encode_to_vec(),
+            data: state.projection.snapshot().encode_to_vec(),
         })?;
         if compact {
             self.log.compact(state.cursor)?;
@@ -219,6 +220,13 @@ mod tests {
     }
     impl Projection for Counter {
         type Fact = Tick;
+        type Snapshot = Self;
+        fn restore(snapshot: Self::Snapshot) -> Self {
+            snapshot
+        }
+        fn snapshot(&self) -> Self::Snapshot {
+            self.clone()
+        }
         fn reduce(&mut self, fact: &Tick) {
             self.total += fact.amount;
         }

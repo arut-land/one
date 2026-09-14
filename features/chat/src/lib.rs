@@ -1,7 +1,7 @@
 //! Chat commands, transcript projections, composer drafts, and services.
 //!
 //! `compose` requires the IdSource, Persist, Drafts, and Clock capability
-//! bundle. One command appends its message and operation facts atomically,
+//! bundle. One command appends its conversation fact atomically,
 //! stamped by the Clock port inside the authority transaction. UUIDv7 command
 //! IDs deduplicate retries; projections replay on restart.
 //!
@@ -20,6 +20,7 @@ mod facts;
 pub mod ports;
 mod projection;
 mod service;
+mod title;
 pub use client::{ChatClient, ChatObserver};
 // The crate root is the one name list a surface reaches these through: product
 // re-exports this crate as `arut_product_session::chat`, and nothing above
@@ -31,6 +32,7 @@ pub(crate) use facts::ChatProjection;
 pub use projection::{ChatMessage, ChatRole, ChatState, ChatStatus};
 #[cfg(test)]
 pub(crate) use service::ChatServiceImpl;
+pub use title::{ConversationTitle, InvalidConversationTitle};
 
 mod compose;
 pub use compose::{ChatClients, ChatFeature, ChatServices, ComposeError, compose};

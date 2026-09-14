@@ -1,4 +1,5 @@
 import ArutBindings
+import Foundation
 import SwiftUI
 
 public struct ChatView: View {
@@ -68,6 +69,9 @@ public struct ChatView: View {
 private struct ConversationSidebar: View {
     @Bindable var state: SessionState
     @FocusState private var searchFocused: Bool
+    @State private var renameTarget: ChatSummary?
+    @State private var renameTitle = ""
+    @State private var deleteTarget: ChatSummary?
 
     var body: some View {
         searchable
@@ -75,6 +79,34 @@ private struct ConversationSidebar: View {
             .navigationSplitViewColumnWidth(min: 210, ideal: 250, max: 340)
             .onChange(of: state.searchFocusRequest) { searchFocused = true }
             .safeAreaInset(edge: .bottom) { bottomBar }
+            .alert(
+                L10n.conversationRenameTitle(),
+                isPresented: renamePresented,
+                presenting: renameTarget
+            ) { summary in
+                TextField(L10n.conversationRenameTitle(), text: $renameTitle)
+                    .accessibilityLabel(L10n.conversationRenameTitle())
+                Button(L10n.actionCancel(), role: .cancel) {}
+                    .keyboardShortcut(.cancelAction)
+                Button(L10n.actionSave()) {
+                    Task { _ = await state.rename(chatId: summary.id, title: renameTitle) }
+                }
+                .keyboardShortcut(.defaultAction)
+                .disabled(renameTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            }
+            .alert(
+                L10n.conversationDeleteTitle(),
+                isPresented: deletePresented,
+                presenting: deleteTarget
+            ) { summary in
+                Button(L10n.actionDeleteConversation(), role: .destructive) {
+                    Task { _ = await state.delete(chatId: summary.id) }
+                }
+                Button(L10n.actionCancel(), role: .cancel) {}
+                    .keyboardShortcut(.cancelAction)
+            } message: { _ in
+                Text(L10n.conversationDeleteMessage())
+            }
     }
 
     /// The new-conversation action belongs beside the list, not in it: a button
@@ -115,7 +147,11 @@ private struct ConversationSidebar: View {
         List(selection: $state.selection) {
             Section(L10n.labelRecent()) {
                 ForEach(state.matches, id: \.id) { summary in
-                    ConversationRow(summary: summary)
+                    ConversationRow(
+                        summary: summary,
+                        rename: { beginRenaming(summary) },
+                        delete: { deleteTarget = summary }
+                    )
                 }
             }
         }
@@ -132,10 +168,31 @@ private struct ConversationSidebar: View {
             systemImage: state.search.isEmpty ? "bubble.left" : "magnifyingglass"
         )
     }
+
+    private var renamePresented: Binding<Bool> {
+        Binding(
+            get: { renameTarget != nil },
+            set: { if !$0 { renameTarget = nil } }
+        )
+    }
+
+    private var deletePresented: Binding<Bool> {
+        Binding(
+            get: { deleteTarget != nil },
+            set: { if !$0 { deleteTarget = nil } }
+        )
+    }
+
+    private func beginRenaming(_ summary: ChatSummary) {
+        renameTitle = summary.title
+        renameTarget = summary
+    }
 }
 
 private struct ConversationRow: View {
     let summary: ChatSummary
+    let rename: () -> Void
+    let delete: () -> Void
 
     var body: some View {
         Label {
@@ -154,6 +211,16 @@ private struct ConversationRow: View {
             Image(systemName: "bubble.left").foregroundStyle(.secondary)
         }
         .accessibilityValue(summary.unread ? L10n.labelUnreadMessages() : "")
+        .accessibilityAction(named: L10n.actionRenameConversation(), rename)
+        .accessibilityAction(named: L10n.actionDeleteConversation(), delete)
+        .contextMenu {
+            Button(action: rename) {
+                Label(L10n.actionRenameConversation(), systemImage: "pencil")
+            }
+            Button(role: .destructive, action: delete) {
+                Label(L10n.actionDeleteConversation(), systemImage: "trash")
+            }
+        }
         .tag(summary.id)
         .help(summary.title)
     }

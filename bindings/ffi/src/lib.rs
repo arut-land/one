@@ -129,4 +129,19 @@ mod tests {
         list.set_query("nothing here".into());
         assert!(list.state().is_empty());
     }
+
+    #[test]
+    fn conversation_mutations_cross_the_handle_boundary() {
+        let session = create_product_session("test".into());
+        let list = session.conversations();
+        futures_executor::block_on(session.chat().send("Original".into()));
+        let id = list.state()[0].id.clone();
+
+        assert!(futures_executor::block_on(
+            list.rename(id.clone(), "Renamed".into())
+        ));
+        assert_eq!(list.state()[0].title, "Renamed");
+        assert!(futures_executor::block_on(list.delete(id)));
+        assert!(list.state().is_empty());
+    }
 }

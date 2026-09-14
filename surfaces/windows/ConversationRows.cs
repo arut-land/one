@@ -55,6 +55,14 @@ public sealed record MessageRow(
     public static MessageRow From(ChatMessage message)
     {
         var timestamp = Arut.Bindings.Time.AcceptedAt(message.AcceptedAtMs);
+        var previousTimeGroup = message.PreviousTimeGroupAtMs is { } previousAt
+            ? Arut.Bindings.Time.AcceptedAt(previousAt)
+            : null;
+        var timeGroup = message.StartsTimeGroup && timestamp is { } current
+            ? previousTimeGroup is { } previous && previous.Date == current.Date
+                ? current.ToString("t")
+                : current.ToString("f")
+            : "";
         return new MessageRow(
             message.Id,
             message.Text,
@@ -63,7 +71,7 @@ public sealed record MessageRow(
             message.EndsSpeakerGroup,
             timestamp?.ToString("t") ?? "",
             timestamp?.ToString("f") ?? "",
-            message.StartsTimeGroup ? timestamp?.ToString("f") ?? "" : ""
+            timeGroup
         );
     }
 

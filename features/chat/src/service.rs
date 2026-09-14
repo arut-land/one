@@ -6,8 +6,10 @@ use crate::command::Rejection;
 use crate::composer::ComposerAuthority;
 use crate::ports::{Clock, IdSource};
 use arut_protocol::chat::v1::{
-    ChatFact, ChatService, ListConversationsRequest, ListConversationsResponse, SendMessageRequest,
-    SendMessageResponse, StartChatRequest, StartChatResponse,
+    ChatFact, ChatService, DeleteConversationRequest, DeleteConversationResponse,
+    ListConversationsRequest, ListConversationsResponse, RenameConversationRequest,
+    RenameConversationResponse, SendMessageRequest, SendMessageResponse, StartChatRequest,
+    StartChatResponse, chat_fact,
 };
 use arut_rpc::{Code, Request, Response, RpcFuture, Status};
 use arut_storage::{FactLog, StorageError};
@@ -87,8 +89,14 @@ impl ChatService for ChatServiceImpl {
                 message.chat_id,
                 message.text,
             )?;
+            let Some(chat_fact::Change::Sent(sent)) = fact.change else {
+                return Err(Status::new(
+                    Code::Internal,
+                    "send committed a non-message fact",
+                ));
+            };
             Ok(Response::new(SendMessageResponse {
-                messages: fact.messages,
+                messages: sent.messages,
             }))
         })())
     }
@@ -107,11 +115,52 @@ impl ChatService for ChatServiceImpl {
                 message.expected_revision,
                 message.text,
             )?;
+            let Some(chat_fact::Change::Started(started)) = fact.change else {
+                return Err(Status::new(
+                    Code::Internal,
+                    "start committed a non-message fact",
+                ));
+            };
             Ok(Response::new(StartChatResponse {
                 chat_id: fact.chat_id,
-                messages: fact.messages,
+                messages: started.messages,
                 composer: Some(snapshot.into()),
             }))
+        })())
+    }
+    fn rename_conversation(
+        &self,
+        request: Request<RenameConversationRequest>,
+    ) -> RpcFuture<Response<RenameConversationResponse>> {
+        let message = request.message;
+        ready((|| {
+            let fact = self.authority.rename(
+                message.command_id.try_into()?,
+                message.chat_id,
+                message
+                    .title
+                    .try_into()
+                    .map_err(|_| Status::invalid_argument("conversation title is empty"))?,
+            )?;
+            let Some(chat_fact::Change::Renamed(_)) = fact.change else {
+                return Err(Status::new(
+                    Code::Internal,
+                    "rename committed a different fact",
+                ));
+            };
+            Ok(Response::new(RenameConversationResponse {}))
+        })())
+    }
+    fn delete_conversation(
+        &self,
+        request: Request<DeleteConversationRequest>,
+    ) -> RpcFuture<Response<DeleteConversationResponse>> {
+        let message = request.message;
+        ready((|| {
+            let _fact = self
+                .authority
+                .delete(message.command_id.try_into()?, message.chat_id)?;
+            Ok(Response::new(DeleteConversationResponse {}))
         })())
     }
 }
@@ -183,6 +232,26 @@ mod tests {
             Code::AlreadyExists
         );
         assert_eq!(
+            block_on(service.start_chat(Request::new(StartChatRequest {
+                text: "different".into(),
+                ..request.clone()
+            })))
+            .unwrap_err()
+            .code,
+            Code::AlreadyExists,
+            "a retry ID cannot name different start content"
+        );
+        assert_eq!(
+            block_on(service.start_chat(Request::new(StartChatRequest {
+                expected_revision: request.expected_revision + 1,
+                ..request.clone()
+            })))
+            .unwrap_err()
+            .code,
+            Code::AlreadyExists,
+            "a retry ID cannot name a different draft revision"
+        );
+        assert_eq!(
             block_on(service.send_message(Request::new(SendMessageRequest {
                 command_id: request.command_id,
                 chat_id: first.chat_id,
@@ -224,5 +293,54 @@ mod tests {
                 .revision,
             0
         );
+    }
+
+    #[test]
+    fn conversation_mutations_are_durable_typed_and_retry_safe() {
+        let service = service(pending_draft());
+        let started = block_on(service.start_chat(Request::new(StartChatRequest {
+            pending_scope_id: "pending".into(),
+            command_id: Uuid::now_v7().to_string(),
+            expected_revision: 1,
+            text: "hello".into(),
+        })))
+        .unwrap()
+        .message;
+        let rename = RenameConversationRequest {
+            chat_id: started.chat_id.clone(),
+            title: "  Project   notes  ".into(),
+            command_id: Uuid::now_v7().to_string(),
+        };
+
+        let renamed = block_on(service.rename_conversation(Request::new(rename.clone())))
+            .unwrap()
+            .message;
+        assert_eq!(
+            block_on(service.rename_conversation(Request::new(rename.clone())))
+                .unwrap()
+                .message,
+            renamed,
+            "an uncertain response can retry the same durable command"
+        );
+        assert_eq!(
+            block_on(
+                service.delete_conversation(Request::new(DeleteConversationRequest {
+                    chat_id: started.chat_id.clone(),
+                    command_id: rename.command_id,
+                }))
+            )
+            .unwrap_err()
+            .code,
+            Code::AlreadyExists,
+            "one command ID cannot cross mutation variants"
+        );
+
+        let delete = DeleteConversationRequest {
+            chat_id: started.chat_id,
+            command_id: Uuid::now_v7().to_string(),
+        };
+        block_on(service.delete_conversation(Request::new(delete.clone()))).unwrap();
+        block_on(service.delete_conversation(Request::new(delete))).unwrap();
+        assert!(service.projection().conversations.is_empty());
     }
 }

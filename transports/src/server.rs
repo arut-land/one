@@ -1,4 +1,8 @@
-use crate::{framing, framing::Envelope, metadata::decode as metadata};
+use crate::{
+    framing,
+    framing::{Envelope, EnvelopeKind},
+    metadata::decode as metadata,
+};
 use arut_rpc::{Request, RpcChannel, Status};
 use axum::{
     Router,
@@ -51,7 +55,7 @@ async fn invoke(
     let message = if streaming {
         let mut buffer = BytesMut::from(&body[..]);
         match Envelope.decode(&mut buffer) {
-            Ok(Some((0, message))) if buffer.is_empty() => message,
+            Ok(Some((EnvelopeKind::Message, message))) if buffer.is_empty() => message,
             _ => return failure(Status::invalid_argument("expected one request envelope")),
         }
     } else {
@@ -60,10 +64,11 @@ async fn invoke(
         }
         body.to_vec()
     };
-    let request = Request {
-        message,
-        metadata: metadata(&incoming),
+    let metadata = match metadata(&incoming) {
+        Ok(metadata) => metadata,
+        Err(error) => return failure(error),
     };
+    let request = Request { message, metadata };
     let procedure = format!("/{procedure}");
     if !streaming {
         return match channel.unary(&procedure, request).await {

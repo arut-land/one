@@ -67,20 +67,19 @@ pub fn append<F: Fact>(
     command_id: &str,
     fact: F,
 ) -> Result<Record<F>, StorageError> {
-    let mut fact = Some(fact);
     let mut duplicate = None;
     let appended = log.commit(
         None,
         epoch,
         command_id,
-        &mut |actual, _, prior| match prior {
+        Box::new(|actual, _, prior| match prior {
             Some(prior) => {
                 duplicate = Some(prior);
                 Ok(None)
             }
             None if expected != actual => Err(StorageError::Conflict { actual }),
-            None => Ok(fact.take()),
-        },
+            None => Ok(Some(fact)),
+        }),
     )?;
     appended.or(duplicate).ok_or(StorageError::Corrupt)
 }
@@ -89,26 +88,41 @@ pub fn fact_log(log: &dyn FactLog<String>) {
     assert!(log.read_from(0).unwrap().is_empty());
     let mut decisions = 0;
     assert!(
-        log.commit(Some(0), 1, "unused", &mut |_, records, duplicate| {
-            decisions += 1;
-            assert!(records.is_empty());
-            assert!(duplicate.is_none());
-            Ok(None)
-        })
+        log.commit(
+            Some(0),
+            1,
+            "unused",
+            Box::new(|_, records, duplicate| {
+                decisions += 1;
+                assert!(records.is_empty());
+                assert!(duplicate.is_none());
+                Ok(None)
+            })
+        )
         .unwrap()
         .is_none()
     );
     assert_eq!(decisions, 1);
     let first = log
-        .commit(Some(0), 1, "one", &mut |_, _, _| Ok(Some("first".into())))
+        .commit(
+            Some(0),
+            1,
+            "one",
+            Box::new(|_, _, _| Ok(Some("first".into()))),
+        )
         .unwrap()
         .unwrap();
     assert!(
-        log.commit(Some(0), 1, "one", &mut |_, records, duplicate| {
-            assert_eq!(records, std::slice::from_ref(&first));
-            assert_eq!(duplicate, Some(first.clone()));
-            Ok(None)
-        })
+        log.commit(
+            Some(0),
+            1,
+            "one",
+            Box::new(|_, records, duplicate| {
+                assert_eq!(records, std::slice::from_ref(&first));
+                assert_eq!(duplicate, Some(first.clone()));
+                Ok(None)
+            })
+        )
         .unwrap()
         .is_none()
     );
@@ -128,15 +142,21 @@ pub fn fact_log(log: &dyn FactLog<String>) {
     );
     assert_eq!(log.read_from(1).unwrap().len(), 1);
     assert_eq!(
-        log.commit(Some(2), 1, "one", &mut |_, _, _| panic!(
-            "stale epoch must not decide"
-        )),
+        log.commit(
+            Some(2),
+            1,
+            "one",
+            Box::new(|_, _, _| panic!("stale epoch must not decide"))
+        ),
         Err(StorageError::Epoch { current: 2 })
     );
     assert_eq!(
-        log.commit(Some(3), 2, "future", &mut |_, _, _| panic!(
-            "future cursor must not decide"
-        )),
+        log.commit(
+            Some(3),
+            2,
+            "future",
+            Box::new(|_, _, _| panic!("future cursor must not decide"))
+        ),
         Err(StorageError::Conflict { actual: 2 })
     );
     assert!(matches!(
@@ -156,18 +176,26 @@ pub fn fact_log(log: &dyn FactLog<String>) {
         StorageError::CursorUnavailable { through: 2 }
     );
     assert!(
-        log.commit(Some(2), 2, "one", &mut |_, records, duplicate| {
-            assert!(records.is_empty());
-            assert_eq!(duplicate, Some(first.clone()));
-            Ok(None)
-        })
+        log.commit(
+            Some(2),
+            2,
+            "one",
+            Box::new(|_, records, duplicate| {
+                assert!(records.is_empty());
+                assert_eq!(duplicate, Some(first.clone()));
+                Ok(None)
+            })
+        )
         .unwrap()
         .is_none()
     );
     assert_eq!(
-        log.commit(Some(0), 2, "one", &mut |_, _, _| panic!(
-            "compacted cursor must not decide"
-        )),
+        log.commit(
+            Some(0),
+            2,
+            "one",
+            Box::new(|_, _, _| panic!("compacted cursor must not decide"))
+        ),
         Err(StorageError::CursorUnavailable { through: 2 })
     );
     assert_eq!(log.outcome_of("one").unwrap(), Some(first));
@@ -189,18 +217,23 @@ const EMPTY_DIGEST: &str = "af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a
 /// Blobs are addressed by the BLAKE3 of their content, everywhere alike.
 pub fn blobs(store: &dyn BlobStore) {
     let id = store.put_blob(b"content").unwrap();
-    assert_eq!(id, CONTENT_DIGEST);
+    assert_eq!(id.as_ref(), CONTENT_DIGEST);
     assert_eq!(id, digest(b"content"));
     assert_eq!(id, store.put_blob(b"content").unwrap());
     assert_eq!(store.get_blob(&id).unwrap(), Some(b"content".to_vec()));
     assert_ne!(id, store.put_blob(b"different").unwrap());
 
     let empty = store.put_blob(b"").unwrap();
-    assert_eq!(empty, EMPTY_DIGEST);
+    assert_eq!(empty.as_ref(), EMPTY_DIGEST);
     assert_eq!(store.get_blob(&empty).unwrap(), Some(Vec::new()));
 
     // A well-formed digest nobody stored is absent, not an error.
-    assert!(store.get_blob(&"0".repeat(64)).unwrap().is_none());
+    assert!(
+        store
+            .get_blob(&"0".repeat(64).parse().unwrap())
+            .unwrap()
+            .is_none()
+    );
     // Anything that is not a digest is refused before it can reach a path.
     for malformed in [
         "",
@@ -210,7 +243,7 @@ pub fn blobs(store: &dyn BlobStore) {
         &CONTENT_DIGEST.to_uppercase(),
         "../values/key",
     ] {
-        assert_eq!(store.get_blob(malformed), Err(StorageError::Corrupt));
+        assert!(malformed.parse::<arut_storage::BlobDigest>().is_err());
     }
 }
 pub fn key_value(store: &dyn KeyValue) {

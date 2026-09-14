@@ -187,6 +187,7 @@ dependencies = [
  "axum",
  "futures-util",
  "process-wrap",
+ "prost",
  "rustix",
  "thiserror",
  "tokio",
@@ -196,6 +197,7 @@ dependencies = [
 name = "arut-storage"
 version = "0.1.0"
 dependencies = [
+ "arut-protocol",
  "blake3",
  "prost",
  "redb",

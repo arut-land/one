@@ -43,6 +43,21 @@
   <data name="action_app_help_uid_text.Text" xml:space="preserve">
     <value>Arut Help</value>
   </data>
+  <data name="action_cancel" xml:space="preserve">
+    <value>Cancel</value>
+  </data>
+  <data name="action_cancel_uid_content.Content" xml:space="preserve">
+    <value>Cancel</value>
+  </data>
+  <data name="action_cancel_uid_name.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Cancel</value>
+  </data>
+  <data name="action_cancel_uid_placeholder.PlaceholderText" xml:space="preserve">
+    <value>Cancel</value>
+  </data>
+  <data name="action_cancel_uid_text.Text" xml:space="preserve">
+    <value>Cancel</value>
+  </data>
   <data name="action_clear_search" xml:space="preserve">
     <value>Clear the search</value>
   </data>
@@ -88,6 +103,21 @@
   <data name="action_collapse_sidebar_uid_text.Text" xml:space="preserve">
     <value>Collapse sidebar</value>
   </data>
+  <data name="action_conversation_options" xml:space="preserve">
+    <value>More options for {0}</value>
+  </data>
+  <data name="action_conversation_options_uid_content.Content" xml:space="preserve">
+    <value>More options for {0}</value>
+  </data>
+  <data name="action_conversation_options_uid_name.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>More options for {0}</value>
+  </data>
+  <data name="action_conversation_options_uid_placeholder.PlaceholderText" xml:space="preserve">
+    <value>More options for {0}</value>
+  </data>
+  <data name="action_conversation_options_uid_text.Text" xml:space="preserve">
+    <value>More options for {0}</value>
+  </data>
   <data name="action_copy_message" xml:space="preserve">
     <value>Copy message</value>
   </data>
@@ -102,6 +132,21 @@
   </data>
   <data name="action_copy_message_uid_text.Text" xml:space="preserve">
     <value>Copy message</value>
+  </data>
+  <data name="action_delete_conversation" xml:space="preserve">
+    <value>Delete</value>
+  </data>
+  <data name="action_delete_conversation_uid_content.Content" xml:space="preserve">
+    <value>Delete</value>
+  </data>
+  <data name="action_delete_conversation_uid_name.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Delete</value>
+  </data>
+  <data name="action_delete_conversation_uid_placeholder.PlaceholderText" xml:space="preserve">
+    <value>Delete</value>
+  </data>
+  <data name="action_delete_conversation_uid_text.Text" xml:space="preserve">
+    <value>Delete</value>
   </data>
   <data name="action_expand_sidebar" xml:space="preserve">
     <value>Expand sidebar</value>
@@ -268,6 +313,21 @@
   <data name="action_quit_uid_text.Text" xml:space="preserve">
     <value>Quit</value>
   </data>
+  <data name="action_rename_conversation" xml:space="preserve">
+    <value>Rename</value>
+  </data>
+  <data name="action_rename_conversation_uid_content.Content" xml:space="preserve">
+    <value>Rename</value>
+  </data>
+  <data name="action_rename_conversation_uid_name.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Rename</value>
+  </data>
+  <data name="action_rename_conversation_uid_placeholder.PlaceholderText" xml:space="preserve">
+    <value>Rename</value>
+  </data>
+  <data name="action_rename_conversation_uid_text.Text" xml:space="preserve">
+    <value>Rename</value>
+  </data>
   <data name="action_retry" xml:space="preserve">
     <value>Retry</value>
   </data>
@@ -282,6 +342,21 @@
   </data>
   <data name="action_retry_uid_text.Text" xml:space="preserve">
     <value>Retry</value>
+  </data>
+  <data name="action_save" xml:space="preserve">
+    <value>Save</value>
+  </data>
+  <data name="action_save_uid_content.Content" xml:space="preserve">
+    <value>Save</value>
+  </data>
+  <data name="action_save_uid_name.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Save</value>
+  </data>
+  <data name="action_save_uid_placeholder.PlaceholderText" xml:space="preserve">
+    <value>Save</value>
+  </data>
+  <data name="action_save_uid_text.Text" xml:space="preserve">
+    <value>Save</value>
   </data>
   <data name="action_scroll_to_latest" xml:space="preserve">
     <value>Scroll to latest message</value>
@@ -502,6 +577,51 @@
   <data name="composer_status_failed" xml:space="preserve">
     <value>Could not synchronize the draft. Check the node connection.</value>
   </data>
+  <data name="conversation_delete_message" xml:space="preserve">
+    <value>This conversation and its messages will be permanently deleted.</value>
+  </data>
+  <data name="conversation_delete_message_uid_content.Content" xml:space="preserve">
+    <value>This conversation and its messages will be permanently deleted.</value>
+  </data>
+  <data name="conversation_delete_message_uid_name.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>This conversation and its messages will be permanently deleted.</value>
+  </data>
+  <data name="conversation_delete_message_uid_placeholder.PlaceholderText" xml:space="preserve">
+    <value>This conversation and its messages will be permanently deleted.</value>
+  </data>
+  <data name="conversation_delete_message_uid_text.Text" xml:space="preserve">
+    <value>This conversation and its messages will be permanently deleted.</value>
+  </data>
+  <data name="conversation_delete_title" xml:space="preserve">
+    <value>Delete conversation?</value>
+  </data>
+  <data name="conversation_delete_title_uid_content.Content" xml:space="preserve">
+    <value>Delete conversation?</value>
+  </data>
+  <data name="conversation_delete_title_uid_name.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Delete conversation?</value>
+  </data>
+  <data name="conversation_delete_title_uid_placeholder.PlaceholderText" xml:space="preserve">
+    <value>Delete conversation?</value>
+  </data>
+  <data name="conversation_delete_title_uid_text.Text" xml:space="preserve">
+    <value>Delete conversation?</value>
+  </data>
+  <data name="conversation_rename_title" xml:space="preserve">
+    <value>Rename conversation</value>
+  </data>
+  <data name="conversation_rename_title_uid_content.Content" xml:space="preserve">
+    <value>Rename conversation</value>
+  </data>
+  <data name="conversation_rename_title_uid_name.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Rename conversation</value>
+  </data>
+  <data name="conversation_rename_title_uid_placeholder.PlaceholderText" xml:space="preserve">
+    <value>Rename conversation</value>
+  </data>
+  <data name="conversation_rename_title_uid_text.Text" xml:space="preserve">
+    <value>Rename conversation</value>
+  </data>
   <data name="conversation_search_empty" xml:space="preserve">
     <value>No matching conversations</value>
   </data>
@@ -546,6 +666,21 @@
   </data>
   <data name="label_chat_history_uid_text.Text" xml:space="preserve">
     <value>Chat history</value>
+  </data>
+  <data name="label_conversation_title" xml:space="preserve">
+    <value>Conversation title</value>
+  </data>
+  <data name="label_conversation_title_uid_content.Content" xml:space="preserve">
+    <value>Conversation title</value>
+  </data>
+  <data name="label_conversation_title_uid_name.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Conversation title</value>
+  </data>
+  <data name="label_conversation_title_uid_placeholder.PlaceholderText" xml:space="preserve">
+    <value>Conversation title</value>
+  </data>
+  <data name="label_conversation_title_uid_text.Text" xml:space="preserve">
+    <value>Conversation title</value>
   </data>
   <data name="label_conversations" xml:space="preserve">
     <value>Conversations</value>

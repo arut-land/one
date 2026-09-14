@@ -125,7 +125,7 @@ pub(crate) fn xcstrings(source_locale: &str, locales: &[Locale]) -> String {
                     let mut plural = serde_json::Map::new();
                     for (category, pattern) in variants {
                         plural.insert(
-                            category.name().to_owned(),
+                            category.to_string(),
                             serde_json::json!({
                                 "stringUnit": unit(&render(
                                     pattern, &order, apple_placeholder, apple_text,
@@ -178,11 +178,7 @@ pub(crate) fn strings_xml(locale: &Locale) -> String {
                 let _ = writeln!(out, "    <plurals name=\"{name}\">");
                 for (category, pattern) in variants {
                     let value = render(pattern, &order, android_placeholder, android_text);
-                    let _ = writeln!(
-                        out,
-                        "        <item quantity=\"{}\">{value}</item>",
-                        category.name()
-                    );
+                    let _ = writeln!(out, "        <item quantity=\"{category}\">{value}</item>");
                 }
                 out.push_str("    </plurals>\n");
             }
@@ -244,7 +240,7 @@ pub(crate) fn uid_names(locale: &Locale) -> BTreeSet<String> {
 /// control supports. `arut-dev check` rejects unknown UIDs.
 #[must_use]
 pub(crate) fn resw(locale: &Locale) -> String {
-    let mut entries: BTreeMap<String, (String, Option<&'static str>)> = BTreeMap::new();
+    let mut entries: BTreeMap<String, (String, Option<String>)> = BTreeMap::new();
     for (id, message) in &locale.messages {
         let name = resource_name(id);
         let order = message.arguments();
@@ -264,10 +260,10 @@ pub(crate) fn resw(locale: &Locale) -> String {
             Message::Plural { variants, .. } => {
                 for (category, pattern) in variants {
                     entries.insert(
-                        format!("{name}_{}", category.name()),
+                        format!("{name}_{category}"),
                         (
                             render(pattern, &order, windows_placeholder, windows_text),
-                            Some(category.name()),
+                            Some(category.to_string()),
                         ),
                     );
                 }

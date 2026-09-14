@@ -49,6 +49,14 @@ impl ConversationsHandle {
     pub fn set_query(&self, query: String) {
         self.inner.set_query(query);
     }
+    /// Rename one conversation durably. `false` means the node did not accept it.
+    pub async fn rename(&self, chat_id: String, title: String) -> bool {
+        self.inner.rename(chat_id, title).await
+    }
+    /// Delete one conversation durably. `false` means the node did not accept it.
+    pub async fn delete(&self, chat_id: String) -> bool {
+        self.inner.delete(chat_id).await
+    }
 }
 
 #[export]
