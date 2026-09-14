@@ -16,6 +16,7 @@ pub fn install(
     }
     let action = gio::SimpleAction::new("review", Some(glib::VariantTy::STRING));
     let weak = window.downgrade();
+    let original_animations = window.settings().is_gtk_enable_animations();
     let chats = Rc::new(RefCell::new(Vec::<String>::new()));
     action.connect_activate(move |_, parameter| {
         let Some(window) = weak.upgrade() else { return };
@@ -107,6 +108,24 @@ pub fn install(
                 let search = descendant::<gtk::SearchEntry>(&window).expect("search");
                 search.set_text("Saturday");
                 search.emit_by_name::<()>("search-changed", &[]);
+            }
+            "sidebar-toggle" => {
+                sender.input(Msg::ToggleSidebarAnimated);
+            }
+            "motion-disabled" => window.settings().set_gtk_enable_animations(false),
+            "motion-restored" => window.settings().set_gtk_enable_animations(original_animations),
+            "sidebar-settled" => {
+                let sidebar = descendant::<gtk::Revealer>(&window).expect("sidebar");
+                assert_eq!(sidebar.is_child_revealed(), sidebar.reveals_child(), "interrupted sidebar must settle immediately");
+                assert_eq!(sidebar.transition_duration(), 0);
+            }
+            "sidebar-collapsed" => {
+                let sidebar = descendant::<gtk::Revealer>(&window).expect("sidebar");
+                assert!(!sidebar.reveals_child());
+                let (minimum, natural, _, _) = sidebar.measure(gtk::Orientation::Horizontal, -1);
+                assert_eq!((minimum, natural), (0, 0), "collapsed sidebar width");
+                let surface = sidebar.next_sibling().unwrap();
+                assert_eq!(surface.width(), sidebar.parent().unwrap().width(), "full-width chat surface");
             }
             "clear-search" => {
                 descendant::<gtk::SearchEntry>(&window).expect("search").set_text("");

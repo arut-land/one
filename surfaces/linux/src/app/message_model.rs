@@ -47,14 +47,17 @@ impl Messages {
             .map_or(0, |row| row.borrow::<ChatMessage>().id)
     }
     pub fn refresh(&self, read_after: impl FnOnce(u64) -> Vec<ChatMessage>) {
-        for message in read_after(self.last_id()) {
-            let position = self.n_items();
-            self.imp()
-                .0
-                .borrow_mut()
-                .push(glib::BoxedAnyObject::new(message));
-            self.items_changed(position, 0, 1);
+        let messages = read_after(self.last_id());
+        if messages.is_empty() {
+            return;
         }
+        let position = self.n_items();
+        let count = messages.len() as u32;
+        self.imp()
+            .0
+            .borrow_mut()
+            .extend(messages.into_iter().map(glib::BoxedAnyObject::new));
+        self.items_changed(position, 0, count);
     }
 }
 
@@ -94,6 +97,6 @@ mod tests {
         });
         assert_eq!(model.item(0).unwrap(), first);
         assert!(model.item(3).is_none());
-        assert_eq!(*events.borrow(), [(0, 0, 1), (1, 0, 1), (2, 0, 1)]);
+        assert_eq!(*events.borrow(), [(0, 0, 1), (1, 0, 2)]);
     }
 }

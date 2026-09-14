@@ -24,13 +24,13 @@ pub struct Shell {
     drafts: HashMap<String, Controller<Composer>>,
     positions: HashMap<String, f64>,
     narrow: bool,
-    search_focus: Rc<Cell<bool>>,
+    displayed: Option<String>,
     generation: u64,
     available: bool,
     restore_pending: bool,
     error: String,
     _tasks: Tasks,
-    _theme: crate::app::theme::Theme,
+    theme: crate::app::theme::Theme,
     _decorations: Option<crate::app::decorations::Decorations>,
 }
 
@@ -38,10 +38,12 @@ pub struct Shell {
 pub enum Msg {
     New,
     ToggleSidebar,
+    ToggleSidebarAnimated,
     FocusComposer,
     Search,
     Escape,
     Latest,
+    SummariesChanged,
     Narrow(bool),
     Select(String),
     ChatId(u64, Option<String>),
@@ -63,48 +65,67 @@ impl Component for Shell {
             set_default_size: (900, 600),
             gtk::Box {
                 set_orientation: gtk::Orientation::Vertical,
-                set_spacing: 8,
                 #[name = "header"]
                 gtk::HeaderBar {
                     #[name = "toolbar"]
                     pack_start = &gtk::Box {
-                    set_spacing: 6,
-                    gtk::Button {
-                        set_icon_name: "sidebar-show-symbolic",
-                        set_tooltip_text: Some(&strings::show(&Message::ActionToggleSidebarShortcut { shortcut: "Ctrl+B".into() })),
-                        update_property: &[gtk::accessible::Property::Label(&strings::show(&Message::ActionToggleSidebar))],
-                        set_action_name: Some("win.sidebar"),
-                    },
-                    gtk::Button {
-                        set_icon_name: "list-add-symbolic",
-                        set_tooltip_text: Some(&strings::show(&Message::ActionNewConversationShortcut { shortcut: "Ctrl+N".into() })),
-                        update_property: &[gtk::accessible::Property::Label(&strings::show(&Message::ActionNewConversation))],
-                        set_action_name: Some("win.new"),
-                    },
-                    #[local_ref]
-                    availability -> gtk::Label {},
+                        set_spacing: 6,
+                        add_css_class: "arut-toolbar",
+                        #[name = "sidebar_toggle"]
+                        gtk::ToggleButton {
+                            set_icon_name: "sidebar-show-symbolic",
+                            add_css_class: "flat",
+                            #[watch]
+                            set_active: !model.navigation.collapsed,
+                            set_tooltip_text: Some(&strings::show(&Message::ActionToggleSidebarShortcut { shortcut: "Ctrl+B".into() })),
+                            update_property: &[gtk::accessible::Property::Label(&strings::show(&Message::ActionToggleSidebar))],
+                        },
+                        gtk::Button {
+                            set_icon_name: "chat-message-new-symbolic",
+                            add_css_class: "flat",
+                            set_tooltip_text: Some(&strings::show(&Message::ActionNewConversationShortcut { shortcut: "Ctrl+N".into() })),
+                            update_property: &[gtk::accessible::Property::Label(&strings::show(&Message::ActionNewConversation))],
+                            set_action_name: Some("win.new"),
+                        },
+                        #[name = "conversation_title"]
+                        gtk::Label {
+                            set_hexpand: true,
+                            set_xalign: 0.0,
+                            set_ellipsize: gtk::pango::EllipsizeMode::End,
+                            set_max_width_chars: 32,
+                            set_margin_start: 12,
+                            add_css_class: "heading",
+                        },
+                        #[local_ref]
+                        availability -> gtk::Label {},
                     },
                 },
                 gtk::Box {
-                    set_spacing: 12,
                     set_vexpand: true,
                     #[name = "sidebar"]
                     gtk::Revealer {
                         set_transition_type: gtk::RevealerTransitionType::SlideRight,
+                        set_transition_duration: 0,
                         #[watch]
                         set_reveal_child: !model.navigation.collapsed,
                         #[local_ref]
                         conversations -> gtk::Box {},
                     },
-                    #[name = "body"]
+                    #[name = "chat_surface"]
                     gtk::Box {
-                        set_orientation: gtk::Orientation::Vertical,
-                        set_spacing: 8,
                         set_hexpand: true,
-                        #[local_ref]
-                        transcript -> gtk::Box {},
-                        #[local_ref]
-                        composer -> gtk::Box {},
+                        add_css_class: "arut-chat-surface",
+                        #[name = "body"]
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_spacing: 12,
+                            set_margin_top: 12,
+                            set_hexpand: true,
+                            #[local_ref]
+                            transcript -> gtk::Box {},
+                            #[local_ref]
+                            composer -> gtk::Box {},
+                        },
                     },
                 },
                 gtk::Box {
@@ -149,11 +170,18 @@ impl Component for Shell {
             .launch(session.chat())
             .forward(sender.input_sender(), |()| Msg::Latest);
         let mut tasks = Tasks::default();
+        tasks.observe(session.conversations_changes(), {
+            let input = sender.input_sender().clone();
+            move || {
+                let _ = input.send(Msg::SummariesChanged);
+            }
+        });
         let initialize = session.clone();
         let input = sender.input_sender().clone();
         tasks.spawn(async move {
             let _ = input.send(Msg::Initialized(initialize.initialize().await));
         });
+        let displayed = session.chat().id();
         let mut model = Self {
             session,
             navigation: Navigation::load(),
@@ -164,13 +192,13 @@ impl Component for Shell {
             drafts: HashMap::new(),
             positions: HashMap::new(),
             narrow: false,
-            search_focus: Rc::default(),
+            displayed,
             generation: 0,
             available: false,
             restore_pending: true,
             error: String::new(),
             _tasks: tasks,
-            _theme: crate::app::theme::Theme::install(&root),
+            theme: crate::app::theme::Theme::install(&root),
             _decorations: None,
         };
         let conversations = model.conversations.widget();
@@ -183,15 +211,9 @@ impl Component for Shell {
             &widgets.header,
             &widgets.toolbar,
         ));
-        let body_parent = widgets
-            .body
-            .parent()
-            .unwrap()
-            .downcast::<gtk::Box>()
-            .unwrap();
-        body_parent.remove(&widgets.body);
+        widgets.chat_surface.remove(&widgets.body);
         let column = crate::app::layout::Column::new(&widgets.body, 880);
-        body_parent.append(&column);
+        widgets.chat_surface.append(&column);
         let content = root.child().unwrap();
         root.set_child(None::<&gtk::Widget>);
         let responsive = crate::app::layout::Column::new(&content, i32::MAX);
@@ -200,14 +222,34 @@ impl Component for Shell {
             move |narrow| sender.input(Msg::Narrow(narrow))
         });
         root.set_child(Some(&responsive));
-        crate::app::theme::reveal_motion(&widgets.sidebar);
-        widgets.sidebar.connect_child_revealed_notify({
-            let request = model.search_focus.clone();
-            let search = model.conversations.model().search.clone();
-            move |sidebar| {
-                if sidebar.is_child_revealed() && request.replace(false) {
-                    search.grab_focus();
+        model.theme.bind_sidebar(&widgets.sidebar);
+        let pointer_toggle = Rc::new(Cell::new(false));
+        let input_source = gtk::EventControllerLegacy::new();
+        input_source.set_propagation_phase(gtk::PropagationPhase::Capture);
+        input_source.connect_event({
+            let pointer = pointer_toggle.clone();
+            move |_, event| {
+                match event.event_type() {
+                    gtk::gdk::EventType::ButtonPress | gtk::gdk::EventType::TouchBegin => {
+                        pointer.set(true);
+                    }
+                    gtk::gdk::EventType::KeyPress
+                    | gtk::gdk::EventType::TouchCancel
+                    | gtk::gdk::EventType::LeaveNotify => pointer.set(false),
+                    _ => (),
                 }
+                gtk::glib::Propagation::Proceed
+            }
+        });
+        widgets.sidebar_toggle.add_controller(input_source);
+        widgets.sidebar_toggle.connect_clicked({
+            let sender = sender.clone();
+            move |_| {
+                sender.input(if pointer_toggle.replace(false) {
+                    Msg::ToggleSidebarAnimated
+                } else {
+                    Msg::ToggleSidebar
+                });
             }
         });
         let shortcuts = gtk::ShortcutController::new();
@@ -254,6 +296,20 @@ impl Component for Shell {
         sender: ComponentSender<Self>,
         _: &Self::Root,
     ) {
+        let focus_search = matches!(message, Msg::Search);
+        let sidebar_motion = matches!(message, Msg::ToggleSidebarAnimated) && !self.narrow;
+        if matches!(
+            message,
+            Msg::ToggleSidebar
+                | Msg::ToggleSidebarAnimated
+                | Msg::Search
+                | Msg::FocusComposer
+                | Msg::Narrow(_)
+                | Msg::New
+                | Msg::Select(_)
+        ) {
+            self.theme.sidebar_motion(&widgets.sidebar, sidebar_motion);
+        }
         match message {
             Msg::New => {
                 self.restore_pending = false;
@@ -265,7 +321,7 @@ impl Component for Shell {
                     self.show_chat(chat, widgets, &sender);
                 }
             }
-            Msg::ToggleSidebar => {
+            Msg::ToggleSidebar | Msg::ToggleSidebarAnimated => {
                 self.navigation.collapsed = !self.navigation.collapsed;
                 self.navigation.save();
             }
@@ -277,11 +333,6 @@ impl Component for Shell {
             }
             Msg::Search => {
                 self.navigation.collapsed = false;
-                self.search_focus.set(true);
-                if widgets.sidebar.is_child_revealed() {
-                    self.search_focus.set(false);
-                    self.conversations.model().search.grab_focus();
-                }
             }
             Msg::Escape => {
                 let search = &self.conversations.model().search;
@@ -302,26 +353,30 @@ impl Component for Shell {
                 self.navigation.collapsed = narrow;
             }
             Msg::ChatId(generation, id) if generation == self.generation => {
-                // Initial pending projection must not overwrite the saved selection before restore.
-                if id.is_some() {
+                self.displayed.clone_from(&id);
+                if !self.restore_pending {
                     self.select_navigation(id);
                 }
             }
-            Msg::ChatId(_, _) => (),
+            Msg::SummariesChanged | Msg::ChatId(_, _) => (),
             Msg::Availability(value) => {
                 self.available = value == FeatureAvailability::Available;
                 self.composer.emit(ComposerMsg::Enabled(self.available));
             }
             Msg::Initialized(result) => match result {
                 Ok(()) => {
-                    if self.restore_pending
-                        && let Some(chat) = self
+                    if self.restore_pending {
+                        self.restore_pending = false;
+                        let chat = self
                             .navigation
                             .selected
                             .as_deref()
-                            .and_then(|id| self.session.select_chat(id))
-                    {
-                        self.show_chat(chat, widgets, &sender);
+                            .and_then(|id| self.session.select_chat(id));
+                        if let Some(chat) = chat {
+                            self.show_chat(chat, widgets, &sender);
+                        } else {
+                            self.select_navigation(self.displayed.clone());
+                        }
                     }
                 }
                 Err(error) => self.error = strings::rpc(&error),
@@ -331,11 +386,22 @@ impl Component for Shell {
             .sidebar
             .set_hexpand(self.narrow && !self.navigation.collapsed);
         widgets
-            .body
-            .parent()
-            .unwrap()
+            .chat_surface
             .set_visible(!self.narrow || self.navigation.collapsed);
+        let title = self
+            .session
+            .chat_summaries()
+            .into_iter()
+            .find(|summary| Some(&summary.id) == self.displayed.as_ref())
+            .map_or_else(
+                || strings::show(&Message::ActionNewConversation),
+                |summary| summary.title,
+            );
+        widgets.conversation_title.set_label(&title);
         self.update_view(widgets, sender);
+        if focus_search {
+            self.conversations.model().search.grab_focus();
+        }
     }
 }
 
@@ -346,7 +412,7 @@ impl Shell {
         if self.navigation.selected == id {
             return;
         }
-        self.navigation.selected = id.clone();
+        self.navigation.selected = id;
         self.navigation.save();
     }
     fn show_chat(
@@ -355,13 +421,13 @@ impl Shell {
         widgets: &ShellWidgets,
         sender: &ComponentSender<Self>,
     ) {
-        let old_key = self
-            .navigation
-            .selected
-            .clone()
-            .unwrap_or_else(|| "pending".into());
+        let old_key = self.displayed.clone().unwrap_or_else(|| "pending".into());
         let new_key = chat.id().unwrap_or_else(|| "pending".into());
-        if old_key == new_key && !self.restore_pending {
+        if old_key == new_key {
+            self.select_navigation(self.displayed.clone());
+            if self.narrow {
+                self.navigation.collapsed = true;
+            }
             self.composer.emit(ComposerMsg::Focus);
             return;
         }
@@ -369,7 +435,8 @@ impl Shell {
             .insert(old_key.clone(), self.transcript.model().adjustment.value());
         self.generation += 1;
         let generation = self.generation;
-        self.select_navigation(chat.id());
+        self.displayed = chat.id();
+        self.select_navigation(self.displayed.clone());
         widgets.body.remove(self.transcript.widget());
         widgets.body.remove(self.composer.widget());
         self.transcript = Transcript::builder()

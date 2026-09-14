@@ -82,7 +82,7 @@ impl Component for Composer {
                     },
                     #[name = "send"]
                     gtk::Button {
-                        set_icon_name: "go-up-symbolic",
+                        set_icon_name: "mail-send-symbolic",
                         set_valign: gtk::Align::End,
                         set_action_name: Some("composer.send"),
                         add_css_class: "suggested-action",

@@ -12,6 +12,8 @@ mod imp {
         title: RefCell<String>,
         #[property(get, set)]
         unread: Cell<bool>,
+        #[property(get, set)]
+        preview: RefCell<String>,
     }
     #[glib::object_subclass]
     impl ObjectSubclass for ConversationItem {

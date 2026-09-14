@@ -27,14 +27,14 @@ impl SimpleComponent for Transcript {
             set_hexpand: true,
             gtk::Overlay {
                 set_vexpand: true,
-            #[name = "scroll"]
-            gtk::ScrolledWindow {
-                set_vexpand: true,
-                set_hscrollbar_policy: gtk::PolicyType::Never,
-                update_property: &[gtk::accessible::Property::Label(&strings::show(&Message::LabelTranscript))],
-                #[local_ref]
-                list -> gtk::ListView {},
-            },
+                #[name = "scroll"]
+                gtk::ScrolledWindow {
+                    set_vexpand: true,
+                    set_hscrollbar_policy: gtk::PolicyType::Never,
+                    update_property: &[gtk::accessible::Property::Label(&strings::show(&Message::LabelTranscript))],
+                    #[local_ref]
+                    list -> gtk::ListView {},
+                },
                 #[name = "empty"]
                 add_overlay = &gtk::Box {
                     set_orientation: gtk::Orientation::Vertical,
@@ -42,6 +42,8 @@ impl SimpleComponent for Transcript {
                     set_halign: gtk::Align::Center,
                     set_valign: gtk::Align::Center,
                     set_can_target: false,
+                    set_margin_start: 24,
+                    set_margin_end: 24,
                     gtk::Image {
                         set_icon_name: Some("mail-message-new-symbolic"),
                         set_pixel_size: 48,
@@ -51,7 +53,7 @@ impl SimpleComponent for Transcript {
                     gtk::Label {
                         set_label: &strings::show(&Message::ChatEmptyTitle),
                         set_wrap: true,
-                        add_css_class: "title-2",
+                        add_css_class: "arut-empty-title",
                     },
                     gtk::Label {
                         set_label: &strings::show(&Message::ChatEmptyHint),
@@ -60,16 +62,22 @@ impl SimpleComponent for Transcript {
                         add_css_class: "dim-label",
                     },
                 },
-            },
-            #[name = "latest"]
-            gtk::Revealer {
-                set_transition_type: gtk::RevealerTransitionType::SlideUp,
-                gtk::Button {
-                    set_halign: gtk::Align::Center,
-                    set_icon_name: "go-bottom-symbolic",
-                    set_action_name: Some("transcript.latest"),
-                    set_tooltip_text: Some(&strings::show(&Message::ActionScrollToLatest)),
-                    update_property: &[gtk::accessible::Property::Label(&strings::show(&Message::ActionScrollToLatest))],
+                #[name = "latest"]
+                add_overlay = &gtk::Revealer {
+                    set_halign: gtk::Align::End,
+                    set_valign: gtk::Align::End,
+                    set_margin_end: 20,
+                    set_margin_bottom: 16,
+                    set_transition_type: gtk::RevealerTransitionType::Crossfade,
+                    set_transition_duration: 160,
+                    gtk::Button {
+                        add_css_class: "circular",
+                        add_css_class: "arut-latest",
+                        set_icon_name: "go-down-symbolic",
+                        set_action_name: Some("transcript.latest"),
+                        set_tooltip_text: Some(&strings::show(&Message::ActionScrollToLatest)),
+                        update_property: &[gtk::accessible::Property::Label(&strings::show(&Message::ActionScrollToLatest))],
+                    },
                 },
             },
             #[name = "status"]
@@ -132,7 +140,6 @@ impl SimpleComponent for Transcript {
         });
         actions.add_action(&latest);
         root.insert_action_group("transcript", Some(&actions));
-        crate::app::theme::reveal_motion(&widgets.latest);
         let state = ViewState::default();
         state
             .bind_property("status", &widgets.status, "label")

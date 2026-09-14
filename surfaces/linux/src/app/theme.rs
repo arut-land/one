@@ -8,15 +8,7 @@ use ashpd::desktop::{
 };
 use futures_util::StreamExt;
 use gtk::{gdk, glib, prelude::*};
-use std::{
-    cell::{Cell, RefCell},
-    rc::Rc,
-};
-
-thread_local! {
-    static REDUCED: Cell<bool> = const { Cell::new(true) };
-    static REVEAL_DURATION: u32 = gtk::Revealer::new().transition_duration();
-}
+use std::{cell::RefCell, rc::Rc};
 
 /// The provider augments Arut classes only. GTK remains responsible for the theme.
 pub struct Theme {
@@ -24,15 +16,32 @@ pub struct Theme {
     display: gdk::Display,
     settings: gtk::Settings,
     signals: Vec<glib::SignalHandlerId>,
+    appearance: Rc<RefCell<Appearance>>,
     _tasks: Tasks,
 }
 
 struct Appearance {
     accent: Option<gdk::RGBA>,
     reduced_motion: bool,
+    sidebar: glib::WeakRef<gtk::Revealer>,
 }
 
 impl Theme {
+    pub fn bind_sidebar(&self, sidebar: &gtk::Revealer) {
+        self.appearance.borrow().sidebar.set(Some(sidebar));
+    }
+
+    pub fn sidebar_motion(&self, sidebar: &gtk::Revealer, animate: bool) {
+        let enabled = animate
+            && self.settings.is_gtk_enable_animations()
+            && !self.appearance.borrow().reduced_motion;
+        if enabled {
+            sidebar.set_transition_duration(200);
+        } else {
+            settle_sidebar(sidebar);
+        }
+    }
+
     pub fn install(widget: &impl IsA<gtk::Widget>) -> Self {
         let widget = widget.as_ref();
         let display = widget.display();
@@ -45,7 +54,8 @@ impl Theme {
         );
         let appearance = Rc::new(RefCell::new(Appearance {
             accent: None,
-            reduced_motion: true,
+            reduced_motion: false,
+            sidebar: glib::WeakRef::new(),
         }));
         refresh(widget, &settings, &provider, &appearance.borrow());
         let mut signals = Vec::new();
@@ -70,7 +80,9 @@ impl Theme {
         let weak = widget.downgrade();
         let portal_provider = provider.clone();
         let portal_settings = settings.clone();
+        let portal_appearance = appearance.clone();
         tasks.spawn(async move {
+            let appearance = portal_appearance;
             let portal = match PortalSettings::new().await {
                 Ok(portal) => portal,
                 Err(error) => {
@@ -143,6 +155,7 @@ impl Theme {
             display,
             settings,
             signals,
+            appearance,
             _tasks: tasks,
         }
     }
@@ -175,9 +188,10 @@ fn refresh(
     let contrast = settings.gtk_interface_contrast();
     provider.set_prefers_contrast(contrast);
     let high_contrast = contrast == gtk::InterfaceContrast::More;
-    REDUCED.set(appearance.reduced_motion);
     let reduced_motion = appearance.reduced_motion || !settings.is_gtk_enable_animations();
-    update_reveals(widget, reduced_motion);
+    if reduced_motion && let Some(sidebar) = appearance.sidebar.upgrade() {
+        settle_sidebar(&sidebar);
+    }
     let mut css = String::new();
     let mut defined = std::collections::HashSet::new();
     // Palette lookup and theme notification pattern adapted from WaterUI (MIT):
@@ -205,18 +219,23 @@ fn refresh(
         defined.insert("accent");
         css.push_str(&format!("@define-color arut_accent {accent};\n"));
     }
-    // Every style color is a palette name; none is a hard-coded RGB value.
-    // Themes may omit a name. In that case retain the native widget styling.
-    css.push_str(".arut-message { padding: 10px; border-radius: 12px;  } .arut-composer { border-radius: 18px; } .arut-composer textview, .arut-composer textview text { background-color: transparent; }\n");
-    css.push_str(".arut-transcript, .arut-transcript > row { background-color: transparent; } .arut-transcript > row { padding: 0; } .arut-error { padding: 12px; border-radius: 8px; }\n");
+    css.push_str(include_str!("style.css"));
     for (required, rule) in [
         (
             &["background", "foreground"][..],
             ".arut-window { background-color: @arut_background; color: @arut_foreground; }",
         ),
         (
-            &["surface_variant", "muted_foreground"][..],
-            ".arut-conversations { background-color: @arut_surface_variant; color: @arut_muted_foreground; }",
+            &["surface_variant"][..],
+            ".arut-sidebar { background-color: @arut_surface_variant; }",
+        ),
+        (
+            &["surface", "foreground"][..],
+            ".arut-chat-surface { background-color: @arut_surface; color: @arut_foreground; }",
+        ),
+        (
+            &["selection", "selection_foreground"][..],
+            ".arut-conversations row:selected { background-color: @arut_selection; color: @arut_selection_foreground; } .arut-conversations row:selected .dim-label { opacity: 0.85; }",
         ),
         (
             &["selection", "selection_foreground"][..],
@@ -224,15 +243,19 @@ fn refresh(
         ),
         (
             &["surface", "foreground"][..],
-            ".arut-message { background-color: @arut_surface; color: @arut_foreground; }",
+            ".arut-composer { background-color: @arut_surface; color: @arut_foreground; }",
         ),
         (
             &["border"][..],
-            ".arut-message, .arut-error { border: 1px solid @arut_border; }",
+            ".arut-message.arut-outgoing, .arut-error { border: 1px solid @arut_border; } .arut-sidebar { border-right: 1px solid @arut_border; } .arut-composer { box-shadow: 0 2px 6px alpha(@arut_border, 0.35); }",
         ),
         (
             &["muted_foreground"][..],
             ".arut-availability { color: @arut_muted_foreground; font-size: smaller; padding: 4px; }",
+        ),
+        (
+            &["accent"][..],
+            ".arut-composer:focus-within { outline: 2px solid @arut_accent; outline-offset: -2px; }",
         ),
     ] {
         if required.iter().all(|name| defined.contains(name)) {
@@ -241,7 +264,7 @@ fn refresh(
         }
     }
     if high_contrast {
-        css.push_str(".arut-message { border-width: 2px; }\n");
+        css.push_str(".arut-message, .arut-message.arut-outgoing, .arut-composer { border: 2px solid currentColor; }\n");
     }
     if reduced_motion {
         css.push_str(".arut-window, .arut-window * { transition: none; animation: none; }\n");
@@ -257,53 +280,12 @@ fn lookup(widget: &gtk::Widget, name: &str) -> Option<gdk::RGBA> {
     widget.style_context().lookup_color(name)
 }
 
-pub fn reveal_motion(revealer: &gtk::Revealer) {
-    let settings = gtk::Settings::default().expect("GTK settings");
-    let duration = REVEAL_DURATION.with(|duration| *duration);
-    let weak = revealer.downgrade();
-    let update = move |settings: &gtk::Settings| {
-        if let Some(revealer) = weak.upgrade() {
-            revealer.set_transition_duration(
-                if settings.is_gtk_enable_animations() && !REDUCED.get() {
-                    duration
-                } else {
-                    0
-                },
-            );
-        }
-    };
-    update(&settings);
-    // Object-bound signal disconnects when the revealer is destroyed.
-    settings.connect_closure(
-        "notify::gtk-enable-animations",
-        false,
-        glib::closure_local!(
-            #[weak]
-            revealer,
-            move |settings: gtk::Settings, _: glib::ParamSpec| {
-                revealer.set_transition_duration(
-                    if settings.is_gtk_enable_animations() && !REDUCED.get() {
-                        duration
-                    } else {
-                        0
-                    },
-                );
-            }
-        ),
-    );
-}
-
-fn update_reveals(widget: &gtk::Widget, reduced: bool) {
-    if let Some(revealer) = widget.downcast_ref::<gtk::Revealer>() {
-        revealer.set_transition_duration(if reduced {
-            0
-        } else {
-            REVEAL_DURATION.with(|duration| *duration)
-        });
-    }
-    let mut child = widget.first_child();
-    while let Some(current) = child {
-        update_reveals(&current, reduced);
-        child = current.next_sibling();
+fn settle_sidebar(sidebar: &gtk::Revealer) {
+    sidebar.set_transition_duration(0);
+    if sidebar.is_child_revealed() != sidebar.reveals_child() && sidebar.is_mapped() {
+        // Changing duration does not stop GTK's active progress tracker.
+        // Unmapping settles it at the target before the next allocation.
+        sidebar.set_visible(false);
+        sidebar.set_visible(true);
     }
 }

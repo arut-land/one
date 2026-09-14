@@ -2,7 +2,7 @@
 use crate::app::{
     availability::Availability,
     composer::{Composer, Msg as ComposerMsg},
-    conversations::Conversations,
+    conversations::{Conversations, Msg as ConversationsMsg},
     transcript::Transcript,
 };
 use gtk::{glib, prelude::*};
@@ -99,6 +99,7 @@ fn recycled_models_search_and_ordered_drafts_work_over_ipc() {
     let context = glib::MainContext::default();
     let _guard = context.acquire().unwrap();
     let executor = desktop_executor().unwrap();
+    let _entered = executor.enter();
     let directory = std::env::temp_dir().join(format!("arut-gtk-test-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&directory);
     std::fs::create_dir_all(&directory).unwrap();
@@ -137,6 +138,17 @@ fn recycled_models_search_and_ordered_drafts_work_over_ipc() {
     // Realize and allocate without mapping: tests must not take desktop focus.
     WidgetExt::realize(&window);
     content.allocate(800, 600, -1, None);
+    let transcript_scroll: gtk::ScrolledWindow = descendant(transcript.widget());
+    let latest: gtk::Revealer = descendant(transcript.widget());
+    let viewport = transcript_scroll.height();
+    latest.set_reveal_child(true);
+    content.allocate(800, 600, -1, None);
+    assert_eq!(
+        transcript_scroll.height(),
+        viewport,
+        "latest-message overlay must not resize the transcript"
+    );
+    latest.set_reveal_child(false);
     let availability = Availability::builder().launch(session.clone()).detach();
     drain(&context);
     assert_eq!(availability.widget().label(), "Ready");
@@ -188,6 +200,8 @@ fn recycled_models_search_and_ordered_drafts_work_over_ipc() {
     let history: gtk::ListView = descendant(conversations.widget());
     let history_model = history.model().unwrap();
     let original_conversation = history_model.item(0).unwrap();
+    conversations.emit(ConversationsMsg::Selected(chat.id()));
+    drain(&context);
     let second = session.new_chat();
     context.block_on(second.send("another conversation".into()));
     drain(&context);
@@ -200,6 +214,16 @@ fn recycled_models_search_and_ordered_drafts_work_over_ipc() {
     search.set_text("");
     search.emit_by_name::<()>("search-changed", &[]);
     drain(&context);
+    let selection = history_model.downcast::<gtk::SingleSelection>().unwrap();
+    assert_eq!(
+        selection.selected_item().unwrap(),
+        original_conversation,
+        "clearing search restores the selected conversation"
+    );
+    let preview = original_conversation
+        .downcast::<crate::app::conversation_model::ConversationItem>()
+        .unwrap();
+    assert!(!preview.preview().is_empty());
     let scroll: gtk::ScrolledWindow = descendant(composer.widget());
     editor.buffer().set_text(
         &(0..12)
@@ -252,14 +276,37 @@ fn recycled_models_search_and_ordered_drafts_work_over_ipc() {
         "unmounted composer must stop watching"
     );
     window.close();
+    crate::app::navigation::Navigation {
+        selected: chat.id(),
+        collapsed: false,
+    }
+    .save();
     let shell = crate::app::shell::Shell::builder()
         .launch(session.clone())
         .detach();
     WidgetExt::realize(shell.widget());
+    wait_until(&context, || {
+        let editor: gtk::TextView = descendant(shell.widget());
+        editor.buffer().text(
+            &editor.buffer().start_iter(),
+            &editor.buffer().end_iter(),
+            true,
+        ) == "after unmount"
+    });
+    shell.emit(crate::app::shell::Msg::Select(second.id().unwrap()));
     drain(&context);
     shell.emit(crate::app::shell::Msg::Select(chat.id().unwrap()));
     drain(&context);
     let draft: gtk::TextView = descendant(shell.widget());
+    assert_eq!(
+        draft.buffer().text(
+            &draft.buffer().start_iter(),
+            &draft.buffer().end_iter(),
+            true
+        ),
+        "after unmount",
+        "restored chat must not reuse the startup pending composer"
+    );
     draft.buffer().set_text("preserved immediately");
     shell.emit(crate::app::shell::Msg::Select(second.id().unwrap()));
     drain(&context);
@@ -286,6 +333,42 @@ fn recycled_models_search_and_ordered_drafts_work_over_ipc() {
     WidgetExt::activate_action(shell.widget(), "win.escape", None).unwrap();
     drain(&context);
     assert!(search.text().is_empty());
+    let sidebar: gtk::Revealer = descendant(shell.widget());
+    let toggle: gtk::ToggleButton = descendant(shell.widget());
+    let content = shell.widget().child().unwrap();
+    content.allocate(1000, 600, -1, None);
+    drain(&context);
+    assert!(toggle.is_active());
+    assert!(sidebar.measure(gtk::Orientation::Horizontal, -1).0 > 0);
+    WidgetExt::activate_action(shell.widget(), "win.sidebar", None).unwrap();
+    drain(&context);
+    content.allocate(1000, 600, -1, None);
+    assert!(!toggle.is_active());
+    assert_eq!(
+        sidebar.transition_duration(),
+        0,
+        "keyboard navigation is immediate"
+    );
+    let (minimum, natural, _, _) = sidebar.measure(gtk::Orientation::Horizontal, -1);
+    assert_eq!(
+        (minimum, natural),
+        (0, 0),
+        "collapsed sidebar must release all width"
+    );
+    let surface = sidebar.next_sibling().unwrap();
+    assert_eq!(
+        surface.width(),
+        sidebar.parent().unwrap().width(),
+        "chat surface must fill the row when the sidebar closes"
+    );
+    let settings = gtk::Settings::default().unwrap();
+    let animations = settings.is_gtk_enable_animations();
+    settings.set_gtk_enable_animations(false);
+    toggle.emit_clicked();
+    drain(&context);
+    assert!(sidebar.reveals_child());
+    assert_eq!(sidebar.transition_duration(), 0);
+    settings.set_gtk_enable_animations(animations);
     shell.widget().close();
     drop(shell);
     drain(&context);

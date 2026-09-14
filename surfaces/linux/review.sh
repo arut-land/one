@@ -15,7 +15,7 @@ cargo build -q -p arut-linux -p arut-runtime-local
 binary="${CARGO_TARGET_DIR:-$PWD/target}/debug/arut-linux"
 output=arut-review
 app=dev.arut.Review
-captures=${ARUT_REVIEW_OUTPUT:-/tmp/claude-1000/-home-raj-Projects-arut/ca942c4c-75e0-42ba-8f7d-899d981bde7f/scratchpad}
+captures=${ARUT_REVIEW_OUTPUT:-/tmp/arut-linux-review}
 step=${ARUT_REVIEW_STEP:-final}
 mkdir -p "$captures"
 run_dir=$(mktemp -d /tmp/arut-linux-review.XXXXXX)
@@ -74,8 +74,8 @@ for size in 1280x800 1920x1080 800x600; do
   data="$run_dir/$size"
   mkdir -p "$data"
   log="$data/app.log"
-  printf -v command 'env G_DEBUG=fatal-criticals ARUT_REVIEW=1 ARUT_LINUX_APP_ID=%q XDG_DATA_HOME=%q XDG_STATE_HOME=%q TMPDIR=%q timeout 90s %s %q > %q 2>&1' \
-    "$app" "$data/data" "$data/state" "$data" "$debugger" "$binary" "$log"
+  printf -v command 'env G_DEBUG=fatal-criticals GTK_THEME=%q ARUT_REVIEW=1 ARUT_LINUX_APP_ID=%q XDG_DATA_HOME=%q XDG_STATE_HOME=%q TMPDIR=%q timeout 90s %s %q > %q 2>&1' \
+    "${GTK_THEME:-}" "$app" "$data/data" "$data/state" "$data" "$debugger" "$binary" "$log"
   hyprctl eval "hl.exec_cmd([[$command]], {workspace=\"name:arut-review silent\",no_initial_focus=true})" >/dev/null
   for _ in {1..200}; do
     if rg -q 'first frame painted' "$log" 2>/dev/null; then break; fi
@@ -107,6 +107,22 @@ for size in 1280x800 1920x1080 800x600; do
   capture scrolled-up
   shortcut b
   capture collapsed
+  fixture sidebar-collapsed
+  fixture sidebar-toggle
+  sleep 0.05
+  fixture sidebar-toggle
+  capture interrupted-sidebar
+  fixture sidebar-collapsed
+  fixture sidebar-toggle
+  sleep 0.05
+  shortcut f
+  fixture sidebar-settled
+  capture expanded-sidebar
+  fixture sidebar-toggle
+  sleep 0.05
+  fixture motion-disabled
+  fixture sidebar-settled
+  fixture motion-restored
   shortcut f
   fixture search
   capture search

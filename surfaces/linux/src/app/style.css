@@ -1,0 +1,86 @@
+.arut-sidebar {
+    padding: 20px 12px 12px;
+}
+
+.arut-conversations,
+.arut-conversations listview,
+.arut-transcript,
+.arut-transcript > row {
+    background-color: transparent;
+}
+
+.arut-conversation-row {
+    padding: 10px 8px;
+}
+
+.arut-conversations row {
+    border-radius: 8px;
+    margin-bottom: 4px;
+}
+
+.arut-transcript > row {
+    padding: 0;
+}
+
+.arut-message {
+    padding: 12px 16px;
+    border-radius: 16px;
+}
+
+.arut-composer {
+    border-radius: 16px;
+}
+
+.arut-composer textview,
+.arut-composer textview text {
+    background-color: transparent;
+}
+
+.arut-empty-title {
+    font-size: 1.5em;
+    font-weight: 700;
+}
+
+.arut-latest {
+    min-width: 32px;
+    min-height: 32px;
+}
+
+.arut-error {
+    padding: 12px;
+    border-radius: 8px;
+}
+
+.arut-conversations row {
+    transition: background-color 160ms ease, color 160ms ease;
+}
+
+.arut-conversations row:selected {
+    font-weight: 500;
+}
+
+.arut-conversation-row .heading {
+    font-weight: 500;
+}
+
+.arut-conversations row:selected .heading {
+    font-weight: 700;
+}
+
+.arut-toolbar {
+    padding: 4px 8px;
+}
+
+.arut-toolbar button {
+    min-width: 24px;
+    min-height: 24px;
+}
+
+.arut-chat-surface {
+    border-radius: 12px 0 0 0;
+}
+
+.arut-toolbar image,
+.arut-composer button image {
+    -gtk-icon-size: 20px;
+}
