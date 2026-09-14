@@ -8,6 +8,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation.Peers;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
+using Microsoft.UI.Xaml.Media;
 
 namespace Arut.Surface.Windows;
 
@@ -26,6 +27,8 @@ public sealed partial class ChatView : UserControl, IAsyncDisposable
     {
         ViewModel = new ChatViewModel(session);
         InitializeComponent();
+        InitializeMotion();
+        ViewModel.PropertyChanging += ConversationChanging;
         ViewModel.PropertyChanged += ConversationChanged;
         ViewModel.Start();
         FollowMessages();
@@ -40,12 +43,23 @@ public sealed partial class ChatView : UserControl, IAsyncDisposable
 
     public TitleBar WindowTitleBar => AppTitleBar;
 
+    private void ConversationChanging(object? sender, PropertyChangingEventArgs args)
+    {
+        // Cancel while the old templates still exist. PropertyChanged is too
+        // late: compiled bindings may already have recycled animation targets.
+        if (args.PropertyName == nameof(ViewModel.Conversation))
+            CancelSendTransition();
+    }
+
     private void ConversationChanged(object? sender, PropertyChangedEventArgs args)
     {
         if (disposed || args.PropertyName != nameof(ViewModel.Conversation))
             return;
+        arrivingMessages.Clear();
+        CancelSendTransition();
         FollowMessages();
         followLatest = true;
+        animateNextScroll = false;
         QueueScroll();
     }
 
@@ -64,15 +78,9 @@ public sealed partial class ChatView : UserControl, IAsyncDisposable
         if (change.NewItems is null)
             return;
         foreach (MessageRow row in change.NewItems)
-            if (!row.IsOutgoing)
-                FrameworkElementAutomationPeer
-                    .CreatePeerForElement(Transcript)
-                    ?.RaiseNotificationEvent(
-                        AutomationNotificationKind.Other,
-                        AutomationNotificationProcessing.CurrentThenMostRecent,
-                        $"{row.Author}: {row.Text}",
-                        "IncomingMessage"
-                    );
+        {
+            ObserveMessageMotion(row);
+        }
     }
 
     private void NewChat(XamlUICommand sender, ExecuteRequestedEventArgs args)
@@ -81,14 +89,22 @@ public sealed partial class ChatView : UserControl, IAsyncDisposable
         FocusComposer();
     }
 
-    // The list's own selection is the only path into it; `SelectedIndex` is
-    // two-way bound, so this only moves focus after a deliberate pick.
-    private void ChatSelected(object sender, SelectionChangedEventArgs args)
+    // Selection updates the view model; only activation transfers focus. Arrow
+    // navigation and incoming projection updates leave focus in the history.
+    private void ChatActivated(object sender, ItemClickEventArgs args)
     {
-        if (disposed || History.FocusState == FocusState.Unfocused)
+        if (disposed)
             return;
         FocusComposer();
     }
+
+    private void AnnounceMessage(MessageRow row) =>
+        FrameworkElementAutomationPeer.CreatePeerForElement(Transcript)?.RaiseNotificationEvent(
+            AutomationNotificationKind.Other,
+            AutomationNotificationProcessing.CurrentThenMostRecent,
+            $"{row.Author}: {row.Text}",
+            "IncomingMessage"
+        );
 
     private void CopyMessage(XamlUICommand sender, ExecuteRequestedEventArgs args)
     {
@@ -97,15 +113,26 @@ public sealed partial class ChatView : UserControl, IAsyncDisposable
         Copy(text);
     }
 
-    private void CopySelectedMessage(
+    private void CopyFocusedMessage(
         KeyboardAccelerator sender,
         KeyboardAcceleratorInvokedEventArgs args
     )
     {
-        if (Transcript.SelectedItem is not MessageRow message)
+        var focused = FocusManager.GetFocusedElement(XamlRoot) as DependencyObject;
+        // Let native text selection copy the selected range before offering
+        // whole-message copy to a keyboard-focused container.
+        if (focused is TextBlock { SelectedText.Length: > 0 })
             return;
-        Copy(message.Text);
-        args.Handled = true;
+        while (focused is not null && focused != Transcript)
+        {
+            if (focused is ListViewItem { Content: MessageRow message })
+            {
+                Copy(message.Text);
+                args.Handled = true;
+                return;
+            }
+            focused = VisualTreeHelper.GetParent(focused);
+        }
     }
 
     private static void Copy(string text)
@@ -181,12 +208,17 @@ public sealed partial class ChatView : UserControl, IAsyncDisposable
 
     private void Send()
     {
-        followLatest = true;
-        Composer.Focus(FocusState.Keyboard);
         var command = ViewModel.Conversation.SendCommand;
         if (command.CanExecute(null))
+        {
+            PrepareSendTransition();
             command.Execute(null);
+        }
     }
+
+    // Button.Click runs before its bound command, capturing the current editor
+    // before the accepted send clears it. Keyboard sends take the same path.
+    private void SendClicked(object sender, RoutedEventArgs args) => PrepareSendTransition();
 
     private static bool IsDown(VirtualKey key) =>
         InputKeyboardSource.GetKeyStateForCurrentThread(key).HasFlag(CoreVirtualKeyStates.Down);
@@ -203,6 +235,8 @@ public sealed partial class ChatView : UserControl, IAsyncDisposable
         if (disposed)
             return;
         disposed = true;
+        DisposeMotion();
+        ViewModel.PropertyChanging -= ConversationChanging;
         ViewModel.PropertyChanged -= ConversationChanged;
         messages?.CollectionChanged -= MessagesChanged;
         await ViewModel.DisposeAsync();

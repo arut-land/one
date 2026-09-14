@@ -16,377 +16,377 @@
   <data name="action_about" xml:space="preserve">
     <value>About Arut</value>
   </data>
-  <data name="action_about.AutomationProperties.Name" xml:space="preserve">
+  <data name="action_about_uid_content.Content" xml:space="preserve">
     <value>About Arut</value>
   </data>
-  <data name="action_about.Content" xml:space="preserve">
+  <data name="action_about_uid_name.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
     <value>About Arut</value>
   </data>
-  <data name="action_about.PlaceholderText" xml:space="preserve">
+  <data name="action_about_uid_placeholder.PlaceholderText" xml:space="preserve">
     <value>About Arut</value>
   </data>
-  <data name="action_about.Text" xml:space="preserve">
+  <data name="action_about_uid_text.Text" xml:space="preserve">
     <value>About Arut</value>
   </data>
   <data name="action_app_help" xml:space="preserve">
     <value>Arut Help</value>
   </data>
-  <data name="action_app_help.AutomationProperties.Name" xml:space="preserve">
+  <data name="action_app_help_uid_content.Content" xml:space="preserve">
     <value>Arut Help</value>
   </data>
-  <data name="action_app_help.Content" xml:space="preserve">
+  <data name="action_app_help_uid_name.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
     <value>Arut Help</value>
   </data>
-  <data name="action_app_help.PlaceholderText" xml:space="preserve">
+  <data name="action_app_help_uid_placeholder.PlaceholderText" xml:space="preserve">
     <value>Arut Help</value>
   </data>
-  <data name="action_app_help.Text" xml:space="preserve">
+  <data name="action_app_help_uid_text.Text" xml:space="preserve">
     <value>Arut Help</value>
   </data>
   <data name="action_clear_search" xml:space="preserve">
     <value>Clear the search</value>
   </data>
-  <data name="action_clear_search.AutomationProperties.Name" xml:space="preserve">
+  <data name="action_clear_search_uid_content.Content" xml:space="preserve">
     <value>Clear the search</value>
   </data>
-  <data name="action_clear_search.Content" xml:space="preserve">
+  <data name="action_clear_search_uid_name.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
     <value>Clear the search</value>
   </data>
-  <data name="action_clear_search.PlaceholderText" xml:space="preserve">
+  <data name="action_clear_search_uid_placeholder.PlaceholderText" xml:space="preserve">
     <value>Clear the search</value>
   </data>
-  <data name="action_clear_search.Text" xml:space="preserve">
+  <data name="action_clear_search_uid_text.Text" xml:space="preserve">
     <value>Clear the search</value>
   </data>
   <data name="action_close_history" xml:space="preserve">
     <value>Close chat history</value>
   </data>
-  <data name="action_close_history.AutomationProperties.Name" xml:space="preserve">
+  <data name="action_close_history_uid_content.Content" xml:space="preserve">
     <value>Close chat history</value>
   </data>
-  <data name="action_close_history.Content" xml:space="preserve">
+  <data name="action_close_history_uid_name.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
     <value>Close chat history</value>
   </data>
-  <data name="action_close_history.PlaceholderText" xml:space="preserve">
+  <data name="action_close_history_uid_placeholder.PlaceholderText" xml:space="preserve">
     <value>Close chat history</value>
   </data>
-  <data name="action_close_history.Text" xml:space="preserve">
+  <data name="action_close_history_uid_text.Text" xml:space="preserve">
     <value>Close chat history</value>
   </data>
   <data name="action_collapse_sidebar" xml:space="preserve">
     <value>Collapse sidebar</value>
   </data>
-  <data name="action_collapse_sidebar.AutomationProperties.Name" xml:space="preserve">
+  <data name="action_collapse_sidebar_uid_content.Content" xml:space="preserve">
     <value>Collapse sidebar</value>
   </data>
-  <data name="action_collapse_sidebar.Content" xml:space="preserve">
+  <data name="action_collapse_sidebar_uid_name.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
     <value>Collapse sidebar</value>
   </data>
-  <data name="action_collapse_sidebar.PlaceholderText" xml:space="preserve">
+  <data name="action_collapse_sidebar_uid_placeholder.PlaceholderText" xml:space="preserve">
     <value>Collapse sidebar</value>
   </data>
-  <data name="action_collapse_sidebar.Text" xml:space="preserve">
+  <data name="action_collapse_sidebar_uid_text.Text" xml:space="preserve">
     <value>Collapse sidebar</value>
   </data>
   <data name="action_copy_message" xml:space="preserve">
     <value>Copy message</value>
   </data>
-  <data name="action_copy_message.AutomationProperties.Name" xml:space="preserve">
+  <data name="action_copy_message_uid_content.Content" xml:space="preserve">
     <value>Copy message</value>
   </data>
-  <data name="action_copy_message.Content" xml:space="preserve">
+  <data name="action_copy_message_uid_name.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
     <value>Copy message</value>
   </data>
-  <data name="action_copy_message.PlaceholderText" xml:space="preserve">
+  <data name="action_copy_message_uid_placeholder.PlaceholderText" xml:space="preserve">
     <value>Copy message</value>
   </data>
-  <data name="action_copy_message.Text" xml:space="preserve">
+  <data name="action_copy_message_uid_text.Text" xml:space="preserve">
     <value>Copy message</value>
   </data>
   <data name="action_expand_sidebar" xml:space="preserve">
     <value>Expand sidebar</value>
   </data>
-  <data name="action_expand_sidebar.AutomationProperties.Name" xml:space="preserve">
+  <data name="action_expand_sidebar_uid_content.Content" xml:space="preserve">
     <value>Expand sidebar</value>
   </data>
-  <data name="action_expand_sidebar.Content" xml:space="preserve">
+  <data name="action_expand_sidebar_uid_name.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
     <value>Expand sidebar</value>
   </data>
-  <data name="action_expand_sidebar.PlaceholderText" xml:space="preserve">
+  <data name="action_expand_sidebar_uid_placeholder.PlaceholderText" xml:space="preserve">
     <value>Expand sidebar</value>
   </data>
-  <data name="action_expand_sidebar.Text" xml:space="preserve">
+  <data name="action_expand_sidebar_uid_text.Text" xml:space="preserve">
     <value>Expand sidebar</value>
   </data>
   <data name="action_focus_composer" xml:space="preserve">
     <value>Focus message field</value>
   </data>
-  <data name="action_focus_composer.AutomationProperties.Name" xml:space="preserve">
+  <data name="action_focus_composer_uid_content.Content" xml:space="preserve">
     <value>Focus message field</value>
   </data>
-  <data name="action_focus_composer.Content" xml:space="preserve">
+  <data name="action_focus_composer_uid_name.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
     <value>Focus message field</value>
   </data>
-  <data name="action_focus_composer.PlaceholderText" xml:space="preserve">
+  <data name="action_focus_composer_uid_placeholder.PlaceholderText" xml:space="preserve">
     <value>Focus message field</value>
   </data>
-  <data name="action_focus_composer.Text" xml:space="preserve">
+  <data name="action_focus_composer_uid_text.Text" xml:space="preserve">
     <value>Focus message field</value>
   </data>
   <data name="action_main_menu" xml:space="preserve">
     <value>Main menu</value>
   </data>
-  <data name="action_main_menu.AutomationProperties.Name" xml:space="preserve">
+  <data name="action_main_menu_uid_content.Content" xml:space="preserve">
     <value>Main menu</value>
   </data>
-  <data name="action_main_menu.Content" xml:space="preserve">
+  <data name="action_main_menu_uid_name.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
     <value>Main menu</value>
   </data>
-  <data name="action_main_menu.PlaceholderText" xml:space="preserve">
+  <data name="action_main_menu_uid_placeholder.PlaceholderText" xml:space="preserve">
     <value>Main menu</value>
   </data>
-  <data name="action_main_menu.Text" xml:space="preserve">
+  <data name="action_main_menu_uid_text.Text" xml:space="preserve">
     <value>Main menu</value>
   </data>
   <data name="action_new_chat" xml:space="preserve">
     <value>New chat</value>
   </data>
-  <data name="action_new_chat.AutomationProperties.Name" xml:space="preserve">
-    <value>New chat</value>
-  </data>
-  <data name="action_new_chat.Content" xml:space="preserve">
-    <value>New chat</value>
-  </data>
-  <data name="action_new_chat.PlaceholderText" xml:space="preserve">
-    <value>New chat</value>
-  </data>
-  <data name="action_new_chat.Text" xml:space="preserve">
-    <value>New chat</value>
-  </data>
   <data name="action_new_chat_shortcut" xml:space="preserve">
     <value>New chat ({0})</value>
   </data>
-  <data name="action_new_chat_shortcut.AutomationProperties.Name" xml:space="preserve">
+  <data name="action_new_chat_shortcut_uid_content.Content" xml:space="preserve">
     <value>New chat ({0})</value>
   </data>
-  <data name="action_new_chat_shortcut.Content" xml:space="preserve">
+  <data name="action_new_chat_shortcut_uid_name.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
     <value>New chat ({0})</value>
   </data>
-  <data name="action_new_chat_shortcut.PlaceholderText" xml:space="preserve">
+  <data name="action_new_chat_shortcut_uid_placeholder.PlaceholderText" xml:space="preserve">
     <value>New chat ({0})</value>
   </data>
-  <data name="action_new_chat_shortcut.Text" xml:space="preserve">
+  <data name="action_new_chat_shortcut_uid_text.Text" xml:space="preserve">
     <value>New chat ({0})</value>
+  </data>
+  <data name="action_new_chat_uid_content.Content" xml:space="preserve">
+    <value>New chat</value>
+  </data>
+  <data name="action_new_chat_uid_name.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>New chat</value>
+  </data>
+  <data name="action_new_chat_uid_placeholder.PlaceholderText" xml:space="preserve">
+    <value>New chat</value>
+  </data>
+  <data name="action_new_chat_uid_text.Text" xml:space="preserve">
+    <value>New chat</value>
   </data>
   <data name="action_new_conversation" xml:space="preserve">
-    <value>New conversation</value>
-  </data>
-  <data name="action_new_conversation.AutomationProperties.Name" xml:space="preserve">
-    <value>New conversation</value>
-  </data>
-  <data name="action_new_conversation.Content" xml:space="preserve">
-    <value>New conversation</value>
-  </data>
-  <data name="action_new_conversation.PlaceholderText" xml:space="preserve">
-    <value>New conversation</value>
-  </data>
-  <data name="action_new_conversation.Text" xml:space="preserve">
     <value>New conversation</value>
   </data>
   <data name="action_new_conversation_shortcut" xml:space="preserve">
     <value>New conversation ({0})</value>
   </data>
-  <data name="action_new_conversation_shortcut.AutomationProperties.Name" xml:space="preserve">
+  <data name="action_new_conversation_shortcut_uid_content.Content" xml:space="preserve">
     <value>New conversation ({0})</value>
   </data>
-  <data name="action_new_conversation_shortcut.Content" xml:space="preserve">
+  <data name="action_new_conversation_shortcut_uid_name.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
     <value>New conversation ({0})</value>
   </data>
-  <data name="action_new_conversation_shortcut.PlaceholderText" xml:space="preserve">
+  <data name="action_new_conversation_shortcut_uid_placeholder.PlaceholderText" xml:space="preserve">
     <value>New conversation ({0})</value>
   </data>
-  <data name="action_new_conversation_shortcut.Text" xml:space="preserve">
+  <data name="action_new_conversation_shortcut_uid_text.Text" xml:space="preserve">
     <value>New conversation ({0})</value>
+  </data>
+  <data name="action_new_conversation_uid_content.Content" xml:space="preserve">
+    <value>New conversation</value>
+  </data>
+  <data name="action_new_conversation_uid_name.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>New conversation</value>
+  </data>
+  <data name="action_new_conversation_uid_placeholder.PlaceholderText" xml:space="preserve">
+    <value>New conversation</value>
+  </data>
+  <data name="action_new_conversation_uid_text.Text" xml:space="preserve">
+    <value>New conversation</value>
   </data>
   <data name="action_next_conversation" xml:space="preserve">
     <value>Next conversation</value>
   </data>
-  <data name="action_next_conversation.AutomationProperties.Name" xml:space="preserve">
+  <data name="action_next_conversation_uid_content.Content" xml:space="preserve">
     <value>Next conversation</value>
   </data>
-  <data name="action_next_conversation.Content" xml:space="preserve">
+  <data name="action_next_conversation_uid_name.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
     <value>Next conversation</value>
   </data>
-  <data name="action_next_conversation.PlaceholderText" xml:space="preserve">
+  <data name="action_next_conversation_uid_placeholder.PlaceholderText" xml:space="preserve">
     <value>Next conversation</value>
   </data>
-  <data name="action_next_conversation.Text" xml:space="preserve">
+  <data name="action_next_conversation_uid_text.Text" xml:space="preserve">
     <value>Next conversation</value>
   </data>
   <data name="action_open_history" xml:space="preserve">
     <value>Open chat history</value>
   </data>
-  <data name="action_open_history.AutomationProperties.Name" xml:space="preserve">
+  <data name="action_open_history_uid_content.Content" xml:space="preserve">
     <value>Open chat history</value>
   </data>
-  <data name="action_open_history.Content" xml:space="preserve">
+  <data name="action_open_history_uid_name.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
     <value>Open chat history</value>
   </data>
-  <data name="action_open_history.PlaceholderText" xml:space="preserve">
+  <data name="action_open_history_uid_placeholder.PlaceholderText" xml:space="preserve">
     <value>Open chat history</value>
   </data>
-  <data name="action_open_history.Text" xml:space="preserve">
+  <data name="action_open_history_uid_text.Text" xml:space="preserve">
     <value>Open chat history</value>
   </data>
   <data name="action_previous_conversation" xml:space="preserve">
     <value>Previous conversation</value>
   </data>
-  <data name="action_previous_conversation.AutomationProperties.Name" xml:space="preserve">
+  <data name="action_previous_conversation_uid_content.Content" xml:space="preserve">
     <value>Previous conversation</value>
   </data>
-  <data name="action_previous_conversation.Content" xml:space="preserve">
+  <data name="action_previous_conversation_uid_name.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
     <value>Previous conversation</value>
   </data>
-  <data name="action_previous_conversation.PlaceholderText" xml:space="preserve">
+  <data name="action_previous_conversation_uid_placeholder.PlaceholderText" xml:space="preserve">
     <value>Previous conversation</value>
   </data>
-  <data name="action_previous_conversation.Text" xml:space="preserve">
+  <data name="action_previous_conversation_uid_text.Text" xml:space="preserve">
     <value>Previous conversation</value>
   </data>
   <data name="action_quit" xml:space="preserve">
     <value>Quit</value>
   </data>
-  <data name="action_quit.AutomationProperties.Name" xml:space="preserve">
+  <data name="action_quit_uid_content.Content" xml:space="preserve">
     <value>Quit</value>
   </data>
-  <data name="action_quit.Content" xml:space="preserve">
+  <data name="action_quit_uid_name.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
     <value>Quit</value>
   </data>
-  <data name="action_quit.PlaceholderText" xml:space="preserve">
+  <data name="action_quit_uid_placeholder.PlaceholderText" xml:space="preserve">
     <value>Quit</value>
   </data>
-  <data name="action_quit.Text" xml:space="preserve">
+  <data name="action_quit_uid_text.Text" xml:space="preserve">
     <value>Quit</value>
   </data>
   <data name="action_scroll_to_latest" xml:space="preserve">
     <value>Scroll to latest message</value>
   </data>
-  <data name="action_scroll_to_latest.AutomationProperties.Name" xml:space="preserve">
+  <data name="action_scroll_to_latest_uid_content.Content" xml:space="preserve">
     <value>Scroll to latest message</value>
   </data>
-  <data name="action_scroll_to_latest.Content" xml:space="preserve">
+  <data name="action_scroll_to_latest_uid_name.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
     <value>Scroll to latest message</value>
   </data>
-  <data name="action_scroll_to_latest.PlaceholderText" xml:space="preserve">
+  <data name="action_scroll_to_latest_uid_placeholder.PlaceholderText" xml:space="preserve">
     <value>Scroll to latest message</value>
   </data>
-  <data name="action_scroll_to_latest.Text" xml:space="preserve">
+  <data name="action_scroll_to_latest_uid_text.Text" xml:space="preserve">
     <value>Scroll to latest message</value>
   </data>
   <data name="action_search_conversations" xml:space="preserve">
     <value>Search conversations</value>
   </data>
-  <data name="action_search_conversations.AutomationProperties.Name" xml:space="preserve">
+  <data name="action_search_conversations_uid_content.Content" xml:space="preserve">
     <value>Search conversations</value>
   </data>
-  <data name="action_search_conversations.Content" xml:space="preserve">
+  <data name="action_search_conversations_uid_name.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
     <value>Search conversations</value>
   </data>
-  <data name="action_search_conversations.PlaceholderText" xml:space="preserve">
+  <data name="action_search_conversations_uid_placeholder.PlaceholderText" xml:space="preserve">
     <value>Search conversations</value>
   </data>
-  <data name="action_search_conversations.Text" xml:space="preserve">
+  <data name="action_search_conversations_uid_text.Text" xml:space="preserve">
     <value>Search conversations</value>
   </data>
   <data name="action_send" xml:space="preserve">
     <value>Send</value>
   </data>
-  <data name="action_send.AutomationProperties.Name" xml:space="preserve">
-    <value>Send</value>
-  </data>
-  <data name="action_send.Content" xml:space="preserve">
-    <value>Send</value>
-  </data>
-  <data name="action_send.PlaceholderText" xml:space="preserve">
-    <value>Send</value>
-  </data>
-  <data name="action_send.Text" xml:space="preserve">
-    <value>Send</value>
-  </data>
   <data name="action_send_message" xml:space="preserve">
     <value>Send message</value>
   </data>
-  <data name="action_send_message.AutomationProperties.Name" xml:space="preserve">
+  <data name="action_send_message_uid_content.Content" xml:space="preserve">
     <value>Send message</value>
   </data>
-  <data name="action_send_message.Content" xml:space="preserve">
+  <data name="action_send_message_uid_name.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
     <value>Send message</value>
   </data>
-  <data name="action_send_message.PlaceholderText" xml:space="preserve">
+  <data name="action_send_message_uid_placeholder.PlaceholderText" xml:space="preserve">
     <value>Send message</value>
   </data>
-  <data name="action_send_message.Text" xml:space="preserve">
+  <data name="action_send_message_uid_text.Text" xml:space="preserve">
     <value>Send message</value>
+  </data>
+  <data name="action_send_uid_content.Content" xml:space="preserve">
+    <value>Send</value>
+  </data>
+  <data name="action_send_uid_name.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Send</value>
+  </data>
+  <data name="action_send_uid_placeholder.PlaceholderText" xml:space="preserve">
+    <value>Send</value>
+  </data>
+  <data name="action_send_uid_text.Text" xml:space="preserve">
+    <value>Send</value>
   </data>
   <data name="action_toggle_history" xml:space="preserve">
-    <value>Toggle chat history</value>
-  </data>
-  <data name="action_toggle_history.AutomationProperties.Name" xml:space="preserve">
-    <value>Toggle chat history</value>
-  </data>
-  <data name="action_toggle_history.Content" xml:space="preserve">
-    <value>Toggle chat history</value>
-  </data>
-  <data name="action_toggle_history.PlaceholderText" xml:space="preserve">
-    <value>Toggle chat history</value>
-  </data>
-  <data name="action_toggle_history.Text" xml:space="preserve">
     <value>Toggle chat history</value>
   </data>
   <data name="action_toggle_history_shortcut" xml:space="preserve">
     <value>Toggle chat history ({0})</value>
   </data>
-  <data name="action_toggle_history_shortcut.AutomationProperties.Name" xml:space="preserve">
+  <data name="action_toggle_history_shortcut_uid_content.Content" xml:space="preserve">
     <value>Toggle chat history ({0})</value>
   </data>
-  <data name="action_toggle_history_shortcut.Content" xml:space="preserve">
+  <data name="action_toggle_history_shortcut_uid_name.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
     <value>Toggle chat history ({0})</value>
   </data>
-  <data name="action_toggle_history_shortcut.PlaceholderText" xml:space="preserve">
+  <data name="action_toggle_history_shortcut_uid_placeholder.PlaceholderText" xml:space="preserve">
     <value>Toggle chat history ({0})</value>
   </data>
-  <data name="action_toggle_history_shortcut.Text" xml:space="preserve">
+  <data name="action_toggle_history_shortcut_uid_text.Text" xml:space="preserve">
     <value>Toggle chat history ({0})</value>
+  </data>
+  <data name="action_toggle_history_uid_content.Content" xml:space="preserve">
+    <value>Toggle chat history</value>
+  </data>
+  <data name="action_toggle_history_uid_name.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Toggle chat history</value>
+  </data>
+  <data name="action_toggle_history_uid_placeholder.PlaceholderText" xml:space="preserve">
+    <value>Toggle chat history</value>
+  </data>
+  <data name="action_toggle_history_uid_text.Text" xml:space="preserve">
+    <value>Toggle chat history</value>
   </data>
   <data name="action_toggle_sidebar" xml:space="preserve">
-    <value>Toggle sidebar</value>
-  </data>
-  <data name="action_toggle_sidebar.AutomationProperties.Name" xml:space="preserve">
-    <value>Toggle sidebar</value>
-  </data>
-  <data name="action_toggle_sidebar.Content" xml:space="preserve">
-    <value>Toggle sidebar</value>
-  </data>
-  <data name="action_toggle_sidebar.PlaceholderText" xml:space="preserve">
-    <value>Toggle sidebar</value>
-  </data>
-  <data name="action_toggle_sidebar.Text" xml:space="preserve">
     <value>Toggle sidebar</value>
   </data>
   <data name="action_toggle_sidebar_shortcut" xml:space="preserve">
     <value>Toggle sidebar ({0})</value>
   </data>
-  <data name="action_toggle_sidebar_shortcut.AutomationProperties.Name" xml:space="preserve">
+  <data name="action_toggle_sidebar_shortcut_uid_content.Content" xml:space="preserve">
     <value>Toggle sidebar ({0})</value>
   </data>
-  <data name="action_toggle_sidebar_shortcut.Content" xml:space="preserve">
+  <data name="action_toggle_sidebar_shortcut_uid_name.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
     <value>Toggle sidebar ({0})</value>
   </data>
-  <data name="action_toggle_sidebar_shortcut.PlaceholderText" xml:space="preserve">
+  <data name="action_toggle_sidebar_shortcut_uid_placeholder.PlaceholderText" xml:space="preserve">
     <value>Toggle sidebar ({0})</value>
   </data>
-  <data name="action_toggle_sidebar_shortcut.Text" xml:space="preserve">
+  <data name="action_toggle_sidebar_shortcut_uid_text.Text" xml:space="preserve">
     <value>Toggle sidebar ({0})</value>
+  </data>
+  <data name="action_toggle_sidebar_uid_content.Content" xml:space="preserve">
+    <value>Toggle sidebar</value>
+  </data>
+  <data name="action_toggle_sidebar_uid_name.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Toggle sidebar</value>
+  </data>
+  <data name="action_toggle_sidebar_uid_placeholder.PlaceholderText" xml:space="preserve">
+    <value>Toggle sidebar</value>
+  </data>
+  <data name="action_toggle_sidebar_uid_text.Text" xml:space="preserve">
+    <value>Toggle sidebar</value>
   </data>
   <data name="app_name" xml:space="preserve">
     <value>Arut</value>
@@ -490,196 +490,196 @@
   <data name="conversation_search_empty" xml:space="preserve">
     <value>No matching conversations</value>
   </data>
-  <data name="conversation_search_empty.AutomationProperties.Name" xml:space="preserve">
+  <data name="conversation_search_empty_uid_content.Content" xml:space="preserve">
     <value>No matching conversations</value>
   </data>
-  <data name="conversation_search_empty.Content" xml:space="preserve">
+  <data name="conversation_search_empty_uid_name.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
     <value>No matching conversations</value>
   </data>
-  <data name="conversation_search_empty.PlaceholderText" xml:space="preserve">
+  <data name="conversation_search_empty_uid_placeholder.PlaceholderText" xml:space="preserve">
     <value>No matching conversations</value>
   </data>
-  <data name="conversation_search_empty.Text" xml:space="preserve">
+  <data name="conversation_search_empty_uid_text.Text" xml:space="preserve">
     <value>No matching conversations</value>
   </data>
   <data name="conversation_search_placeholder" xml:space="preserve">
     <value>Search conversations</value>
   </data>
-  <data name="conversation_search_placeholder.AutomationProperties.Name" xml:space="preserve">
+  <data name="conversation_search_placeholder_uid_content.Content" xml:space="preserve">
     <value>Search conversations</value>
   </data>
-  <data name="conversation_search_placeholder.Content" xml:space="preserve">
+  <data name="conversation_search_placeholder_uid_name.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
     <value>Search conversations</value>
   </data>
-  <data name="conversation_search_placeholder.PlaceholderText" xml:space="preserve">
+  <data name="conversation_search_placeholder_uid_placeholder.PlaceholderText" xml:space="preserve">
     <value>Search conversations</value>
   </data>
-  <data name="conversation_search_placeholder.Text" xml:space="preserve">
+  <data name="conversation_search_placeholder_uid_text.Text" xml:space="preserve">
     <value>Search conversations</value>
   </data>
   <data name="label_chat_history" xml:space="preserve">
     <value>Chat history</value>
   </data>
-  <data name="label_chat_history.AutomationProperties.Name" xml:space="preserve">
+  <data name="label_chat_history_uid_content.Content" xml:space="preserve">
     <value>Chat history</value>
   </data>
-  <data name="label_chat_history.Content" xml:space="preserve">
+  <data name="label_chat_history_uid_name.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
     <value>Chat history</value>
   </data>
-  <data name="label_chat_history.PlaceholderText" xml:space="preserve">
+  <data name="label_chat_history_uid_placeholder.PlaceholderText" xml:space="preserve">
     <value>Chat history</value>
   </data>
-  <data name="label_chat_history.Text" xml:space="preserve">
+  <data name="label_chat_history_uid_text.Text" xml:space="preserve">
     <value>Chat history</value>
   </data>
   <data name="label_conversations" xml:space="preserve">
     <value>Conversations</value>
   </data>
-  <data name="label_conversations.AutomationProperties.Name" xml:space="preserve">
+  <data name="label_conversations_uid_content.Content" xml:space="preserve">
     <value>Conversations</value>
   </data>
-  <data name="label_conversations.Content" xml:space="preserve">
+  <data name="label_conversations_uid_name.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
     <value>Conversations</value>
   </data>
-  <data name="label_conversations.PlaceholderText" xml:space="preserve">
+  <data name="label_conversations_uid_placeholder.PlaceholderText" xml:space="preserve">
     <value>Conversations</value>
   </data>
-  <data name="label_conversations.Text" xml:space="preserve">
+  <data name="label_conversations_uid_text.Text" xml:space="preserve">
     <value>Conversations</value>
   </data>
   <data name="label_draft" xml:space="preserve">
     <value>Message draft</value>
   </data>
-  <data name="label_draft.AutomationProperties.Name" xml:space="preserve">
-    <value>Message draft</value>
-  </data>
-  <data name="label_draft.Content" xml:space="preserve">
-    <value>Message draft</value>
-  </data>
-  <data name="label_draft.PlaceholderText" xml:space="preserve">
-    <value>Message draft</value>
-  </data>
-  <data name="label_draft.Text" xml:space="preserve">
-    <value>Message draft</value>
-  </data>
   <data name="label_draft_sync" xml:space="preserve">
     <value>Draft synchronization</value>
   </data>
-  <data name="label_draft_sync.AutomationProperties.Name" xml:space="preserve">
+  <data name="label_draft_sync_uid_content.Content" xml:space="preserve">
     <value>Draft synchronization</value>
   </data>
-  <data name="label_draft_sync.Content" xml:space="preserve">
+  <data name="label_draft_sync_uid_name.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
     <value>Draft synchronization</value>
   </data>
-  <data name="label_draft_sync.PlaceholderText" xml:space="preserve">
+  <data name="label_draft_sync_uid_placeholder.PlaceholderText" xml:space="preserve">
     <value>Draft synchronization</value>
   </data>
-  <data name="label_draft_sync.Text" xml:space="preserve">
+  <data name="label_draft_sync_uid_text.Text" xml:space="preserve">
     <value>Draft synchronization</value>
+  </data>
+  <data name="label_draft_uid_content.Content" xml:space="preserve">
+    <value>Message draft</value>
+  </data>
+  <data name="label_draft_uid_name.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Message draft</value>
+  </data>
+  <data name="label_draft_uid_placeholder.PlaceholderText" xml:space="preserve">
+    <value>Message draft</value>
+  </data>
+  <data name="label_draft_uid_text.Text" xml:space="preserve">
+    <value>Message draft</value>
   </data>
   <data name="label_keyboard_shortcuts" xml:space="preserve">
     <value>Keyboard shortcuts</value>
   </data>
-  <data name="label_keyboard_shortcuts.AutomationProperties.Name" xml:space="preserve">
+  <data name="label_keyboard_shortcuts_uid_content.Content" xml:space="preserve">
     <value>Keyboard shortcuts</value>
   </data>
-  <data name="label_keyboard_shortcuts.Content" xml:space="preserve">
+  <data name="label_keyboard_shortcuts_uid_name.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
     <value>Keyboard shortcuts</value>
   </data>
-  <data name="label_keyboard_shortcuts.PlaceholderText" xml:space="preserve">
+  <data name="label_keyboard_shortcuts_uid_placeholder.PlaceholderText" xml:space="preserve">
     <value>Keyboard shortcuts</value>
   </data>
-  <data name="label_keyboard_shortcuts.Text" xml:space="preserve">
+  <data name="label_keyboard_shortcuts_uid_text.Text" xml:space="preserve">
     <value>Keyboard shortcuts</value>
   </data>
   <data name="label_message_status" xml:space="preserve">
     <value>Message status</value>
   </data>
-  <data name="label_message_status.AutomationProperties.Name" xml:space="preserve">
+  <data name="label_message_status_uid_content.Content" xml:space="preserve">
     <value>Message status</value>
   </data>
-  <data name="label_message_status.Content" xml:space="preserve">
+  <data name="label_message_status_uid_name.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
     <value>Message status</value>
   </data>
-  <data name="label_message_status.PlaceholderText" xml:space="preserve">
+  <data name="label_message_status_uid_placeholder.PlaceholderText" xml:space="preserve">
     <value>Message status</value>
   </data>
-  <data name="label_message_status.Text" xml:space="preserve">
+  <data name="label_message_status_uid_text.Text" xml:space="preserve">
     <value>Message status</value>
   </data>
   <data name="label_node_availability" xml:space="preserve">
     <value>Node availability</value>
   </data>
-  <data name="label_node_availability.AutomationProperties.Name" xml:space="preserve">
+  <data name="label_node_availability_uid_content.Content" xml:space="preserve">
     <value>Node availability</value>
   </data>
-  <data name="label_node_availability.Content" xml:space="preserve">
+  <data name="label_node_availability_uid_name.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
     <value>Node availability</value>
   </data>
-  <data name="label_node_availability.PlaceholderText" xml:space="preserve">
+  <data name="label_node_availability_uid_placeholder.PlaceholderText" xml:space="preserve">
     <value>Node availability</value>
   </data>
-  <data name="label_node_availability.Text" xml:space="preserve">
+  <data name="label_node_availability_uid_text.Text" xml:space="preserve">
     <value>Node availability</value>
   </data>
   <data name="label_recent" xml:space="preserve">
     <value>Recent</value>
   </data>
-  <data name="label_recent.AutomationProperties.Name" xml:space="preserve">
+  <data name="label_recent_uid_content.Content" xml:space="preserve">
     <value>Recent</value>
   </data>
-  <data name="label_recent.Content" xml:space="preserve">
+  <data name="label_recent_uid_name.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
     <value>Recent</value>
   </data>
-  <data name="label_recent.PlaceholderText" xml:space="preserve">
+  <data name="label_recent_uid_placeholder.PlaceholderText" xml:space="preserve">
     <value>Recent</value>
   </data>
-  <data name="label_recent.Text" xml:space="preserve">
+  <data name="label_recent_uid_text.Text" xml:space="preserve">
     <value>Recent</value>
   </data>
   <data name="label_shortcuts_general" xml:space="preserve">
     <value>General</value>
   </data>
-  <data name="label_shortcuts_general.AutomationProperties.Name" xml:space="preserve">
+  <data name="label_shortcuts_general_uid_content.Content" xml:space="preserve">
     <value>General</value>
   </data>
-  <data name="label_shortcuts_general.Content" xml:space="preserve">
+  <data name="label_shortcuts_general_uid_name.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
     <value>General</value>
   </data>
-  <data name="label_shortcuts_general.PlaceholderText" xml:space="preserve">
+  <data name="label_shortcuts_general_uid_placeholder.PlaceholderText" xml:space="preserve">
     <value>General</value>
   </data>
-  <data name="label_shortcuts_general.Text" xml:space="preserve">
+  <data name="label_shortcuts_general_uid_text.Text" xml:space="preserve">
     <value>General</value>
   </data>
   <data name="label_transcript" xml:space="preserve">
     <value>Conversation transcript</value>
   </data>
-  <data name="label_transcript.AutomationProperties.Name" xml:space="preserve">
+  <data name="label_transcript_uid_content.Content" xml:space="preserve">
     <value>Conversation transcript</value>
   </data>
-  <data name="label_transcript.Content" xml:space="preserve">
+  <data name="label_transcript_uid_name.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
     <value>Conversation transcript</value>
   </data>
-  <data name="label_transcript.PlaceholderText" xml:space="preserve">
+  <data name="label_transcript_uid_placeholder.PlaceholderText" xml:space="preserve">
     <value>Conversation transcript</value>
   </data>
-  <data name="label_transcript.Text" xml:space="preserve">
+  <data name="label_transcript_uid_text.Text" xml:space="preserve">
     <value>Conversation transcript</value>
   </data>
   <data name="label_unread_messages" xml:space="preserve">
     <value>Unread messages</value>
   </data>
-  <data name="label_unread_messages.AutomationProperties.Name" xml:space="preserve">
+  <data name="label_unread_messages_uid_content.Content" xml:space="preserve">
     <value>Unread messages</value>
   </data>
-  <data name="label_unread_messages.Content" xml:space="preserve">
+  <data name="label_unread_messages_uid_name.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
     <value>Unread messages</value>
   </data>
-  <data name="label_unread_messages.PlaceholderText" xml:space="preserve">
+  <data name="label_unread_messages_uid_placeholder.PlaceholderText" xml:space="preserve">
     <value>Unread messages</value>
   </data>
-  <data name="label_unread_messages.Text" xml:space="preserve">
+  <data name="label_unread_messages_uid_text.Text" xml:space="preserve">
     <value>Unread messages</value>
   </data>
   <data name="node_failure_cancelled" xml:space="preserve">

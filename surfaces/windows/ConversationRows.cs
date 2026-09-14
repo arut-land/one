@@ -1,7 +1,40 @@
+using CommunityToolkit.Mvvm.ComponentModel;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 
 namespace Arut.Surface.Windows;
+
+/// <summary>A stable native row whose displayed fields update in place.</summary>
+public sealed partial class ConversationRow : ObservableObject
+{
+    public ConversationRow(ChatSummary summary)
+    {
+        Id = summary.Id;
+        Title = summary.Title;
+        Preview = summary.Preview;
+        Unread = summary.Unread;
+    }
+
+    public string Id { get; }
+
+    [ObservableProperty]
+    public partial string Title { get; set; }
+
+    [ObservableProperty]
+    public partial string Preview { get; set; }
+
+    [ObservableProperty]
+    public partial bool Unread { get; set; }
+
+    public void Update(ChatSummary summary)
+    {
+        Title = summary.Title;
+        Preview = summary.Preview;
+        Unread = summary.Unread;
+    }
+
+    public override string ToString() => Title;
+}
 
 /// <summary>
 /// One transcript row. Rust decides the grouping (<c>StartsTimeGroup</c>,

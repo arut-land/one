@@ -29,7 +29,7 @@ public sealed partial class ConversationViewModel : ObservableObject, IAsyncDisp
             row => row.Id,
             cursor => [.. chat.MessagesAfter(cursor).Select(MessageRow.From)]
         );
-        Draft = new Draft(composer.State().Text, text => composer.Replace(text, lifetime.Token))
+        Draft = new Draft(() => composer.State().Text, text => composer.Replace(text, lifetime.Token))
         {
             Faulted = Report,
         };

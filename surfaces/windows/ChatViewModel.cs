@@ -50,7 +50,7 @@ public sealed partial class ChatViewModel : ObservableObject, IAsyncDisposable
     [ObservableProperty]
     public partial string Title { get; set; }
 
-    public ObservableCollection<ChatSummary> Conversations { get; } = [];
+    public ObservableCollection<ConversationRow> Conversations { get; } = [];
     public bool IsHistoryEmpty => Conversations.Count == 0;
     public string HistoryEmptyLabel =>
         Search.Length == 0 ? L10n.Get(L10n.ChatHistoryEmpty) : L10n.Get(L10n.ConversationSearchEmpty);
@@ -109,7 +109,17 @@ public sealed partial class ChatViewModel : ObservableObject, IAsyncDisposable
         {
             // The rows that stayed keep their containers, so the pane keeps its
             // scroll offset and the selection never flickers through -1.
-            Reconcile.Apply(Conversations, rows, row => row.Id);
+            // FFI summaries contain arrays with reference equality. Bind stable
+            // observable rows, so a new projection does not replace every item.
+            var existing = Conversations.ToDictionary(row => row.Id);
+            var next = rows.Select(summary =>
+            {
+                if (!existing.TryGetValue(summary.Id, out var row))
+                    return new ConversationRow(summary);
+                row.Update(summary);
+                return row;
+            }).ToArray();
+            Reconcile.Apply(Conversations, next, row => row.Id);
             Search = list.Query();
             SelectedIndex =
                 selected is null ? -1 : Array.FindIndex(rows, row => row.Id == selected);

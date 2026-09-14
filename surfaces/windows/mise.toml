@@ -22,7 +22,7 @@ extends = "dotnet"
 alias = "publish:windows"
 description = "Publish a self-contained Windows x64 app folder"
 dir = "{{config_root}}/../.."
-depends = [{ task = "//bindings/ffi:csharp", args = ["--release"] }]
+depends = ["//bindings/ffi:csharp-release"]
 run = "dotnet publish surfaces/windows/Arut.Windows.csproj -c Release -o surfaces/windows/bin/publish"
 
 [tasks.fmt]
@@ -30,7 +30,8 @@ extends = "dotnet"
 alias = "fmt:dotnet"
 description = "Format C# in place; `mise run fmt:dotnet --verify-no-changes` checks instead"
 dir = "{{config_root}}/../.."
-run = "dotnet format surfaces/windows/Arut.Windows.csproj {{arg(name='flags', var=true, default='')}}"
+raw_args = true
+run = "dotnet format surfaces/windows/Arut.Windows.csproj"
 
 [tasks.check]
 extends = "dotnet"

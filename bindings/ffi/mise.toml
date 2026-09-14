@@ -66,11 +66,22 @@ outputs = ["../generated/android"]
 extends = "ffi"
 alias = "ffi:csharp"
 tools.dotnet = "{{vars.dotnet_version}}"
-description = "Generate and package the .NET bindings; pass --release for Release"
-usage = 'flag "-r --release" help="Generate the Release package instead of Debug"'
-run = "boltffi pack csharp --deny-skipped --overlay csharp-{% if usage.release %}release{% else %}debug{% endif %}.toml"
-run_windows = "powershell -NoProfile -File ../../surfaces/windows/build-bindings.ps1 {% if usage.release %}--release{% endif %}"
-sources = ["@group:core", "csharp-debug.toml", "csharp-release.toml"]
+description = "Generate and package the Debug .NET bindings"
+depends = ["//:generate"]
+run = "boltffi pack csharp --deny-skipped --overlay csharp-debug.toml"
+run_windows = "powershell -NoProfile -File ../../surfaces/windows/build-bindings.ps1"
+sources = ["@group:core", "csharp-debug.toml", "csharp-release.toml", "../../surfaces/windows/build-bindings.ps1"]
 # Debug and Release are separate package directories, so freshness has to be
 # tracked per configuration.
-outputs = ["../generated/csharp/{% if usage.release %}Release{% else %}Debug{% endif %}"]
+outputs = ["../generated/csharp/Debug/BoltFFI.CSharp.csproj", "../generated/csharp/Debug/runtimes"]
+
+[tasks.csharp-release]
+extends = "ffi"
+alias = "ffi:csharp:release"
+tools.dotnet = "{{vars.dotnet_version}}"
+description = "Generate and package the Release .NET bindings"
+depends = ["//:generate"]
+run = "boltffi pack csharp --deny-skipped --overlay csharp-release.toml --release"
+run_windows = "powershell -NoProfile -File ../../surfaces/windows/build-bindings.ps1 -Release"
+sources = ["@group:core", "csharp-release.toml", "../../surfaces/windows/build-bindings.ps1"]
+outputs = ["../generated/csharp/Release/BoltFFI.CSharp.csproj", "../generated/csharp/Release/runtimes"]

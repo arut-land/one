@@ -1,5 +1,6 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 
 namespace Arut.Surface.Windows;
@@ -14,6 +15,7 @@ public sealed partial class ChatView
     private ScrollViewer? transcriptScroll;
     private bool followLatest = true;
     private bool scrollPending;
+    private bool animateNextScroll;
 
     private void TranscriptLoaded(object sender, RoutedEventArgs args)
     {
@@ -23,6 +25,12 @@ public sealed partial class ChatView
         transcriptScroll = scroll;
         if (scroll is null)
             return;
+        scroll.DirectManipulationStarted += (_, _) => CancelSendTransition();
+        scroll.AddHandler(
+            UIElement.PointerWheelChangedEvent,
+            new PointerEventHandler((_, _) => CancelSendTransition()),
+            true
+        );
         scroll.ViewChanged += (_, change) =>
         {
             if (disposed || change.IsIntermediate || scrollPending)
@@ -49,8 +57,11 @@ public sealed partial class ChatView
 
     private void ScrollToLatest(object sender, RoutedEventArgs args)
     {
+        CancelSendTransition();
         Composer.Focus(FocusState.Keyboard);
         followLatest = true;
+        animateNextScroll = motionSettings.AnimationsEnabled;
+        UpdateAffordances();
         QueueScroll();
     }
 
@@ -60,24 +71,43 @@ public sealed partial class ChatView
             return;
         scrollPending = DispatcherQueue.TryEnqueue(() =>
         {
-            scrollPending = false;
-            if (disposed || transcriptScroll is not { } scroll)
-                return;
-            UpdateScrollMode();
-            if (followLatest && ViewModel.Conversation.Messages.LastOrDefault() is { } last)
+            var animate = animateNextScroll;
+            animateNextScroll = false;
+            try
             {
-                Transcript.ScrollIntoView(last);
-                scroll.ChangeView(null, scroll.ScrollableHeight, null, true);
+                if (disposed || transcriptScroll is not { } scroll)
+                    return;
+                UpdateScrollMode();
+                if (followLatest && !animate && ViewModel.Conversation.Messages.LastOrDefault() is { } last)
+                    Transcript.ScrollIntoView(last);
+                // The footer and realized rows determine the final extent.
+                // Reading ScrollableHeight before this layout can leave a new
+                // reply behind the composer and be mistaken for user scrolling.
+                Transcript.UpdateLayout();
+                if (followLatest)
+                    scroll.ChangeView(null, scroll.ScrollableHeight, null, !animate);
+                StartMessageMotion();
+                UpdateAffordances();
             }
-            UpdateAffordances();
+            finally
+            {
+                scrollPending = false;
+            }
         });
     }
 
-    private void UpdateAffordances() =>
+    private void UpdateAffordances()
+    {
+        var distance = transcriptScroll is { } scroll ? scroll.ScrollableHeight - scroll.VerticalOffset : 0;
+        // Hysteresis prevents the affordance flickering around the tail. A
+        // small scroll adjustment does not need another control on screen.
+        var threshold = LatestSurface.Visibility == Visibility.Visible ? 48 : 120;
         LatestSurface.Visibility =
             !ViewModel.Conversation.IsEmpty && !followLatest
+                && sendTransition is null && distance > threshold
                 ? Visibility.Visible
                 : Visibility.Collapsed;
+    }
 
     private void UpdateScrollMode()
     {

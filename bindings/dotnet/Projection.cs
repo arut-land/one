@@ -234,14 +234,17 @@ public readonly struct EchoScope : IDisposable
 /// </remarks>
 public sealed partial class Draft : ObservableObject
 {
+    private readonly Func<string> read;
     private readonly Func<string, Task> replace;
     private readonly EchoGuard echo = new();
     private int unacknowledged;
 
-    public Draft(string text, Func<string, Task> replace)
+    public Draft(Func<string> read, Func<string, Task> replace)
     {
+        this.read = read;
         this.replace = replace;
-        Text = text;
+        using (echo.Applying())
+            Text = read();
     }
 
     [ObservableProperty]
@@ -268,9 +271,11 @@ public sealed partial class Draft : ObservableObject
     private async Task WriteAsync(string value)
     {
         unacknowledged++;
+        var acknowledged = false;
         try
         {
             await replace(value);
+            acknowledged = true;
         }
         catch (OperationCanceledException) { }
         catch (Exception exception)
@@ -280,6 +285,11 @@ public sealed partial class Draft : ObservableObject
         finally
         {
             unacknowledged--;
+            // Revisions can arrive before the write continuation, including a
+            // send clearing the draft. Reread once all local edits are settled
+            // so ignoring an in-flight echo cannot lose the last projection.
+            if (acknowledged && unacknowledged == 0)
+                Absorb(read());
         }
     }
 }

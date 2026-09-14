@@ -195,11 +195,14 @@ pub(crate) fn strings_xml(locale: &Locale) -> String {
 /// The XAML properties an `x:Uid` may resolve. WinUI reads `<Uid>.<property>`
 /// out of the `.resw` and assigns it, so a label a control carries needs no C#
 /// at all.
-const UID_PROPERTIES: [&str; 4] = [
-    "Content",
-    "Text",
-    "PlaceholderText",
-    "AutomationProperties.Name",
+const UID_PROPERTIES: [(&str, &str); 4] = [
+    ("content", "Content"),
+    ("text", "Text"),
+    ("placeholder", "PlaceholderText"),
+    (
+        "name",
+        "[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name",
+    ),
 ];
 
 /// The message ids WinUI XAML may name with `x:Uid`.
@@ -223,7 +226,9 @@ pub(crate) fn uid_names(locale: &Locale) -> BTreeSet<String> {
         .messages
         .iter()
         .filter(|(id, message)| takes_uid(id) && message.selector().is_none())
-        .map(|(id, _)| resource_name(id))
+        .flat_map(|(id, _)| {
+            UID_PROPERTIES.map(|(suffix, _)| format!("{}_uid_{suffix}", resource_name(id)))
+        })
         .collect()
 }
 
@@ -234,10 +239,9 @@ pub(crate) fn uid_names(locale: &Locale) -> BTreeSet<String> {
 /// the shape WinUI's own plural resources take and what `ResourceLoader`
 /// lookups by suffix expect.
 ///
-/// A caption message also gets one `<key>.<property>` entry per
-/// [`UID_PROPERTIES`], so XAML can carry `x:Uid="<key>"` instead of binding a
-/// C# property. `arut-dev check` fails when the XAML names a UID this file
-/// does not define.
+/// Each caption property gets its own `<key>_uid_<suffix>` UID. This keeps
+/// string values separate from PRI scopes and applies only the property the
+/// control supports. `arut-dev check` rejects unknown UIDs.
 #[must_use]
 pub(crate) fn resw(locale: &Locale) -> String {
     let mut entries: BTreeMap<String, (String, Option<&'static str>)> = BTreeMap::new();
@@ -248,8 +252,11 @@ pub(crate) fn resw(locale: &Locale) -> String {
             Message::Simple(pattern) => {
                 let value = render(pattern, &order, windows_placeholder, windows_text);
                 if takes_uid(id) {
-                    for property in UID_PROPERTIES {
-                        entries.insert(format!("{name}.{property}"), (value.clone(), None));
+                    for (suffix, property) in UID_PROPERTIES {
+                        entries.insert(
+                            format!("{name}_uid_{suffix}.{property}"),
+                            (value.clone(), None),
+                        );
                     }
                 }
                 entries.insert(name, (value, None));
@@ -384,19 +391,39 @@ pub(crate) mod tests {
         let out = resw(&english(
             "action-send = Send\nchat-error-cancelled = Gone\n",
         ));
-        assert!(out.contains("name=\"action_send.Content\""), "{out}");
         assert!(
-            out.contains("name=\"action_send.AutomationProperties.Name\""),
+            out.contains("name=\"action_send_uid_content.Content\""),
+            "{out}"
+        );
+        assert!(
+            out.contains("name=\"action_send_uid_name.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name\""),
             "{out}"
         );
         assert!(out.contains("name=\"action_send\""), "{out}");
+        // A resource value cannot also be a PRI scope containing properties.
+        assert!(!out.contains("name=\"action_send."), "{out}");
+        for uid in uid_names(&english("action-send = Send\n")) {
+            assert_eq!(
+                out.matches(&format!("name=\"{uid}.")).count(),
+                1,
+                "each UID must assign exactly one supported property: {uid}"
+            );
+        }
         // An error is chosen in C# from a typed value, so it never sits in XAML.
         assert!(!out.contains("chat_error_cancelled.Text"), "{out}");
         assert_eq!(
             uid_names(&english(
                 "action-send = Send\nchat-error-cancelled = Gone\n"
             )),
-            ["action_send".to_owned()].into_iter().collect()
+            [
+                "action_send_uid_content",
+                "action_send_uid_text",
+                "action_send_uid_placeholder",
+                "action_send_uid_name"
+            ]
+            .into_iter()
+            .map(str::to_owned)
+            .collect()
         );
     }
 
