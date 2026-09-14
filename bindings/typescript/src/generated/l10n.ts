@@ -28,6 +28,7 @@ export type MessageKey =
   | "action-open-history"
   | "action-previous-conversation"
   | "action-quit"
+  | "action-retry"
   | "action-scroll-to-latest"
   | "action-search-conversations"
   | "action-send"
@@ -96,7 +97,9 @@ export type MessageKey =
   | "readiness-ready"
   | "readiness-socket-unreachable"
   | "readiness-spawn-failed"
-  | "readiness-timed-out";
+  | "readiness-timed-out"
+  | "transcript-today"
+  | "transcript-yesterday";
 
 /** The arguments each parameterised message interpolates. */
 export interface Args {
@@ -129,6 +132,7 @@ export const placeables: Record<MessageKey, readonly string[]> = {
   "action-open-history": [],
   "action-previous-conversation": [],
   "action-quit": [],
+  "action-retry": [],
   "action-scroll-to-latest": [],
   "action-search-conversations": [],
   "action-send": [],
@@ -198,6 +202,8 @@ export const placeables: Record<MessageKey, readonly string[]> = {
   "readiness-socket-unreachable": [],
   "readiness-spawn-failed": [],
   "readiness-timed-out": [],
+  "transcript-today": [],
+  "transcript-yesterday": [],
 };
 
 /** Format one message. */

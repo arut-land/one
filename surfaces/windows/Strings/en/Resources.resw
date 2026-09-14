@@ -268,6 +268,21 @@
   <data name="action_quit_uid_text.Text" xml:space="preserve">
     <value>Quit</value>
   </data>
+  <data name="action_retry" xml:space="preserve">
+    <value>Retry</value>
+  </data>
+  <data name="action_retry_uid_content.Content" xml:space="preserve">
+    <value>Retry</value>
+  </data>
+  <data name="action_retry_uid_name.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Retry</value>
+  </data>
+  <data name="action_retry_uid_placeholder.PlaceholderText" xml:space="preserve">
+    <value>Retry</value>
+  </data>
+  <data name="action_retry_uid_text.Text" xml:space="preserve">
+    <value>Retry</value>
+  </data>
   <data name="action_scroll_to_latest" xml:space="preserve">
     <value>Scroll to latest message</value>
   </data>
@@ -726,5 +741,11 @@
   </data>
   <data name="readiness_timed_out" xml:space="preserve">
     <value>Your node did not finish starting in time.</value>
+  </data>
+  <data name="transcript_today" xml:space="preserve">
+    <value>Today</value>
+  </data>
+  <data name="transcript_yesterday" xml:space="preserve">
+    <value>Yesterday</value>
   </data>
 </root>

@@ -13,7 +13,7 @@ Mise downloads BoltFFI's release binary. Cargo tools use cargo-binstall with sou
 | Windows distributable folder | `mise run publish:windows` | Same as Windows build |
 | Web development | `mise run surface:web` | None beyond mise |
 | JavaScript checks and store tests | `mise run check:ts` | None beyond mise |
-| Linux app | `mise run surface:linux` | GTK 4.22+, C/C++ compiler and pkg-config |
+| Linux app | `mise run surface:linux` | GTK 4.22+, C/C++ compiler, pkg-config and `glib-compile-resources` (the GLib development package) |
 | macOS build and Swift tests | `mise run check:apple` | Xcode |
 | Android build | `mise run surface:android` | Android SDK 35, NDK and `ANDROID_NDK_HOME` |
 | Wasm, Apple, Android, .NET bindings | `mise run ffi:wasm` and `ffi:apple`, `ffi:android`, `ffi:csharp` | Per target: Xcode, the NDK, the .NET SDK |

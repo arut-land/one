@@ -62,10 +62,6 @@ impl ConversationItem {
             weight.set_start_index(start);
             weight.set_end_index(end);
             attributes.insert(weight);
-            let mut underline = pango::AttrInt::new_underline(pango::Underline::Single);
-            underline.set_start_index(start);
-            underline.set_end_index(end);
-            attributes.insert(underline);
         }
         Some(attributes)
     }
@@ -87,7 +83,7 @@ mod tests {
             .collect();
         // "société" starts after "Café " -- five characters, six bytes, and
         // runs to the end of a string that is longer in bytes than in chars.
-        assert_eq!(bounds, [(6, 15), (6, 15)]);
+        assert_eq!(bounds, [(6, 15)]);
         assert_eq!(&title[6..15], "société");
         assert!(ConversationItem::highlight_of(title, &[]).is_none());
     }

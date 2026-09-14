@@ -18,6 +18,7 @@
     <string name="action_open_history">Open chat history</string>
     <string name="action_previous_conversation">Previous conversation</string>
     <string name="action_quit">Quit</string>
+    <string name="action_retry">Retry</string>
     <string name="action_scroll_to_latest">Scroll to latest message</string>
     <string name="action_search_conversations">Search conversations</string>
     <string name="action_send">Send</string>
@@ -87,4 +88,6 @@
     <string name="readiness_socket_unreachable">Your node\'s socket exists, but nothing answered on it.</string>
     <string name="readiness_spawn_failed">Your node process could not be started.</string>
     <string name="readiness_timed_out">Your node did not finish starting in time.</string>
+    <string name="transcript_today">Today</string>
+    <string name="transcript_yesterday">Yesterday</string>
 </resources>

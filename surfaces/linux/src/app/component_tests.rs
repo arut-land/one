@@ -191,6 +191,47 @@ fn watch_observers_coalesce_and_stop_on_drop() {
 
 #[test]
 #[ignore = "requires a GTK display; run with --ignored --test-threads=1"]
+fn bundled_icons_resolve_without_an_installed_theme() {
+    let Some(_fixture) = fixture("bundled_icons_resolve_without_an_installed_theme") else {
+        return;
+    };
+    let display = gtk::gdk::Display::default().expect("display");
+    crate::app::icons::install(&display);
+    let theme = gtk::IconTheme::for_display(&display);
+    for name in [
+        "arut-sidebar-hide-symbolic",
+        "arut-sidebar-show-symbolic",
+        "arut-new-conversation-symbolic",
+        "arut-menu-symbolic",
+        "arut-send-symbolic",
+        "arut-latest-symbolic",
+        "arut-warning-symbolic",
+        "arut-empty-symbolic",
+        "arut-unread-symbolic",
+        "dev.arut.Arut",
+    ] {
+        assert!(
+            theme.has_icon(name),
+            "{name} is not in the bundled resource"
+        );
+    }
+    let icon = theme.lookup_icon(
+        "arut-send-symbolic",
+        &[],
+        16,
+        1,
+        gtk::TextDirection::Ltr,
+        gtk::IconLookupFlags::empty(),
+    );
+    assert_eq!(
+        icon.file().map(|file| file.uri().to_string()).as_deref(),
+        Some("resource:///dev/arut/Arut/icons/scalable/actions/arut-send-symbolic.svg"),
+        "the icon comes from the bundled resource, under the symbolic name GTK recolors"
+    );
+}
+
+#[test]
+#[ignore = "requires a GTK display; run with --ignored --test-threads=1"]
 fn column_caps_reading_width() {
     let Some(_fixture) = fixture("column_caps_reading_width") else {
         return;
