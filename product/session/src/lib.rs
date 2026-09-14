@@ -40,10 +40,8 @@ pub struct SessionScope {
     pub pending_scope_id: String,
 }
 
-/// A session over the features `F` names.
-///
-/// The default set is the one every root composes today; a root that names its
-/// own writes `ProductSession<MyFeatures>` and nothing else changes.
+/// A session over the features `F` names. A root writes
+/// `ProductSession<(Chat, Approvals)>` and nothing else changes.
 pub struct ProductSession<F: FeatureSet> {
     pending: Mutex<ChatClient>,
     ids: Arc<dyn IdSource>,
@@ -257,10 +255,6 @@ fn match_ranges(text: &str, query: &[char]) -> Vec<MatchRange> {
     ranges
 }
 
-fn contains(text: &str, query: &[char]) -> bool {
-    !match_ranges(text, query).is_empty()
-}
-
 impl<F: HasChat> ProductSession<F> {
     /// Compose a session over the clients a local root built, advertising
     /// exactly what the set serves.
@@ -464,7 +458,8 @@ impl<F: HasChat> ProductSession<F> {
                         return Some(entry.summary.clone());
                     }
                     let ranges = match_ranges(&entry.summary.title, &query);
-                    if ranges.is_empty() && !contains(&entry.summary.preview, &query) {
+                    if ranges.is_empty() && match_ranges(&entry.summary.preview, &query).is_empty()
+                    {
                         return None;
                     }
                     let mut summary = entry.summary.clone();

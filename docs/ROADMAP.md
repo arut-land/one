@@ -17,7 +17,7 @@ The implemented foundation and its remaining platform work:
 
 Exit: the existing chat behavior runs on Linux, macOS, and Android through these ports, and the web surface receives updates. Android and macOS still need on-device verification.
 
-- [x] `mise run check`: 127 nextest tests, doctests, Rust/wasm/TypeScript, protocol compatibility, localization, dependency, and layer checks pass.
+- [x] `mise run check`: 142 nextest tests, doctests, Rust/wasm/TypeScript, protocol compatibility, localization, dependency, and layer checks pass.
 - [x] `mise run build`: GTK, `arutd`, and web/Chromium/VS Code bundles build.
 - [x] GTK over child IPC verifies sending, independent drafts, and preserved widgets; generated wasm verifies draft/start/send/list, ranges, and timestamps; conformance passes.
 - [x] Kotlin: the Android surface builds in CI (BoltFFI pack for four targets, Gradle assembleDebug) as of 2026-09-13; Swift builds through `mise run check:apple` on macOS. Running the apps on devices remains manual.

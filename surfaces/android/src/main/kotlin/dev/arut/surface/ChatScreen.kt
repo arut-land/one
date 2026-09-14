@@ -398,7 +398,6 @@ private fun Composer(
             value = draft,
             onValueChange = onEdit,
             modifier = Modifier.weight(1f).semantics { contentDescription = label },
-            enabled = !isSending,
             // Placeholder only: a floating label permanently consumes one of the
             // seven lines this composer has.
             placeholder = { Text(stringResource(R.string.composer_placeholder)) },

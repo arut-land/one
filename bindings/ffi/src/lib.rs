@@ -103,15 +103,10 @@ mod tests {
         assert_eq!(chat.error_key(), None);
         assert!(chat.error_args().is_empty());
 
-        let composer = chat.composer();
-        assert_eq!(
-            ErrorArg::from(("current".to_owned(), "4".to_owned())),
-            ErrorArg {
-                name: "current".into(),
-                value: "4".into()
-            }
-        );
-        assert_eq!(composer.error_key(), None);
+        chat.inner.cancellation().cancel();
+        futures_executor::block_on(chat.send("after cancellation".into()));
+        assert_eq!(chat.error_key(), Some("chat-error-cancelled".into()));
+        assert!(chat.error_args().is_empty());
     }
 
     #[test]
