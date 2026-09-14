@@ -103,10 +103,12 @@ struct SessionTests {
         let result = try await chat.send(text: "Pick me")
         let id = try #require(result.id)
         let list = session.conversations()
-        #expect(list.selectedId() == nil)
-        list.select(id: id)
+        // The pending conversation the person typed into adopts the selection
+        // as it is established, so every surface on the session shows it.
         #expect(list.selectedId() == id)
         list.select(id: nil)
         #expect(list.selectedId() == nil)
+        list.select(id: id)
+        #expect(list.selectedId() == id)
     }
 }
