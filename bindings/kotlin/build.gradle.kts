@@ -19,11 +19,16 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
-    // The generated Kotlin and the JNI libraries compile here, once, and the app
-    // depends on this module rather than on a directory (ADR 0007).
-    sourceSets.named("main") {
-        java.srcDir(file("../generated/android/kotlin"))
-        jniLibs.srcDir(file("../generated/android/jniLibs"))
+}
+
+// The generated Kotlin and the JNI libraries compile here, once, and the app
+// depends on this module rather than on a directory (ADR 0007). The Variant
+// API is how AGP 9 takes generated sources; the source-set DSL is the legacy
+// path its new DSL no longer exposes.
+androidComponents {
+    onVariants { variant ->
+        variant.sources.kotlin?.addStaticSourceDirectory("../generated/android/kotlin")
+        variant.sources.jniLibs?.addStaticSourceDirectory("../generated/android/jniLibs")
     }
 }
 
