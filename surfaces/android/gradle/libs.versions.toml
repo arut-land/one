@@ -16,11 +16,15 @@ window = "1.5.1"
 activity = "1.13.0"
 lifecycle = "2.11.0"
 coroutines = "1.11.0"
+# The core Material icon set is a finished artifact outside the Compose BOM;
+# material3 no longer carries it, and the four glyphs the surface draws are in it.
+materialIconsCore = "1.7.8"
 
 [libraries]
 activity-compose = { module = "androidx.activity:activity-compose", version.ref = "activity" }
 compose-bom = { module = "androidx.compose:compose-bom", version.ref = "composeBom" }
 compose-foundation = { module = "androidx.compose.foundation:foundation" }
+compose-material-icons-core = { module = "androidx.compose.material:material-icons-core", version.ref = "materialIconsCore" }
 compose-material3 = { module = "androidx.compose.material3:material3" }
 compose-material3-adaptive = { module = "androidx.compose.material3.adaptive:adaptive", version.ref = "material3Adaptive" }
 compose-ui-tooling = { module = "androidx.compose.ui:ui-tooling" }

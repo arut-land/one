@@ -37,6 +37,7 @@ dependencies {
     implementation(libs.activity.compose)
     implementation(platform(libs.compose.bom))
     implementation(libs.compose.foundation)
+    implementation(libs.compose.material.icons.core)
     implementation(libs.compose.material3)
     // currentWindowAdaptiveInfo(): the window's own breakpoints, not a dp
     // measurement of ours; material3-window-size-class is deprecated in favour of it.
