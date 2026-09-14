@@ -1,16 +1,15 @@
 //! Chat commands, transcript projections, composer drafts, and services.
-//! `compose` requires the IdSource, Persist, Drafts, and Clock capability bundle.
 //!
-//! Commands format mock replies and append message and operation lifecycle facts atomically,
-//! stamped by the Clock port inside the authority transaction.
-//! UUIDv7 command IDs deduplicate retries; projections replay on restart. Clients
-//! keep immutable messages keyed by ID and expose exclusive range reads separately
-//! from watched status and error metadata.
+//! `compose` requires the IdSource, Persist, Drafts, and Clock capability
+//! bundle. One command appends its message and operation facts atomically,
+//! stamped by the Clock port inside the authority transaction. UUIDv7 command
+//! IDs deduplicate retries; projections replay on restart.
 //!
 //! Drafts stream as ephemeral snapshots per scope and recover locally through
-//! KeyValue, including the pending draft. They never become transcript facts.
-//! Projection types declare their FFI data once here. Typed errors leave sentence
-//! selection to surfaces; tracing records stream cursors without draft content.
+//! KeyValue, including the pending draft. They never become transcript facts
+//! (ADR 0018). Projection types declare their FFI data once here. Typed errors
+//! leave sentence selection to surfaces (ADR 0016); tracing records stream
+//! cursors and never draft content.
 
 mod authority;
 mod client;
@@ -29,7 +28,7 @@ pub use projection::{ChatMessage, ChatRole, ChatState, ChatStatus};
 pub(crate) use service::ChatServiceImpl;
 
 mod compose;
-pub use compose::{ChatClients, ChatFeature, ComposeError, compose};
+pub use compose::{ChatClients, ChatFeature, ChatServices, ComposeError, compose};
 pub use ports::ChatRuntime;
 #[cfg(any(test, feature = "test-support"))]
 pub mod test_support;

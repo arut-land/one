@@ -1,5 +1,4 @@
 //! Linux application and its unconditional native module tree.
-mod availability;
 mod composer;
 mod conversation_model;
 mod conversations;
@@ -8,6 +7,7 @@ mod layout;
 mod message_model;
 mod navigation;
 mod observe;
+#[cfg(feature = "review")]
 mod review;
 mod shell;
 mod strings;
@@ -16,6 +16,8 @@ mod transcript;
 
 #[cfg(test)]
 mod component_tests;
+#[cfg(any(test, feature = "review"))]
+mod testing;
 
 pub fn run() {
     use arut_product_session::{ProductSession, hosting::Host};

@@ -1,4 +1,3 @@
-use super::wire::scope_from_wire;
 use super::{ComposerScope, ComposerSnapshot, ReplaceComposer, ReplaceOutcome};
 use arut_protocol::chat::composer::v1::ComposerSnapshot as WireSnapshot;
 use arut_storage::{KeyValue, MemoryStore, StorageError};
@@ -6,11 +5,13 @@ use arut_watch::{Subscription, Watch};
 use prost::Message;
 use std::{
     collections::HashMap,
-    sync::{Arc, Mutex},
+    sync::{Arc, Mutex, MutexGuard},
 };
 
+type Scopes = HashMap<ComposerScope, ScopeState>;
+
 pub(crate) struct ComposerAuthority {
-    inner: Mutex<HashMap<ComposerScope, ScopeState>>,
+    inner: Mutex<Scopes>,
     store: Arc<dyn KeyValue>,
 }
 struct ScopeState {
@@ -30,13 +31,12 @@ pub(crate) enum PromoteError {
 fn stored(snapshot: &ComposerSnapshot) -> Vec<u8> {
     WireSnapshot::from(snapshot.clone()).encode_to_vec()
 }
-fn recovered(snapshot: WireSnapshot) -> Option<ComposerSnapshot> {
-    Some(ComposerSnapshot {
-        scope: scope_from_wire(snapshot.scope?)?,
-        authority_epoch: snapshot.authority_epoch,
-        text: snapshot.text,
-        revision: snapshot.revision,
-    })
+/// A scope's state starts from `snapshot` with no command to deduplicate against.
+fn state(snapshot: ComposerSnapshot) -> ScopeState {
+    ScopeState {
+        watch: Watch::new(snapshot),
+        last_command: None,
+    }
 }
 fn key(scope: &ComposerScope) -> String {
     match scope {
@@ -51,21 +51,22 @@ impl ComposerAuthority {
             store,
         }
     }
+    fn scopes(&self) -> Result<MutexGuard<'_, Scopes>, StorageError> {
+        self.inner.lock().map_err(|_| StorageError::Corrupt)
+    }
     fn load(&self, scope: &ComposerScope) -> Result<ScopeState, StorageError> {
         let snapshot = match self.store.get(&key(scope))? {
             None => ComposerSnapshot::empty(scope.clone()),
-            Some(bytes) => recovered(WireSnapshot::decode(&bytes[..])?)
+            Some(bytes) => ComposerSnapshot::try_from(WireSnapshot::decode(&bytes[..])?)
+                .ok()
                 .filter(|snapshot| &snapshot.scope == scope)
                 .ok_or(StorageError::Corrupt)?,
         };
-        Ok(ScopeState {
-            watch: Watch::new(snapshot),
-            last_command: None,
-        })
+        Ok(state(snapshot))
     }
     fn state<'a>(
         &self,
-        scopes: &'a mut HashMap<ComposerScope, ScopeState>,
+        scopes: &'a mut Scopes,
         scope: &ComposerScope,
     ) -> Result<&'a mut ScopeState, StorageError> {
         Ok(match scopes.entry(scope.clone()) {
@@ -74,18 +75,18 @@ impl ComposerAuthority {
         })
     }
     pub fn snapshot(&self, scope: &ComposerScope) -> Result<ComposerSnapshot, StorageError> {
-        let mut scopes = self.inner.lock().map_err(|_| StorageError::Corrupt)?;
+        let mut scopes = self.scopes()?;
         Ok(self.state(&mut scopes, scope)?.watch.get())
     }
     pub fn changes(
         &self,
         scope: &ComposerScope,
     ) -> Result<Arc<Subscription<ComposerSnapshot>>, StorageError> {
-        let mut scopes = self.inner.lock().map_err(|_| StorageError::Corrupt)?;
+        let mut scopes = self.scopes()?;
         Ok(self.state(&mut scopes, scope)?.watch.subscribe_values())
     }
     pub fn replace(&self, command: ReplaceComposer) -> Result<ReplaceOutcome, StorageError> {
-        let mut scopes = self.inner.lock().map_err(|_| StorageError::Corrupt)?;
+        let mut scopes = self.scopes()?;
         let state = self.state(&mut scopes, &command.scope)?;
         let mut snapshot = state.watch.get();
         if command.authority_epoch != snapshot.authority_epoch {
@@ -124,18 +125,12 @@ impl ComposerAuthority {
         consumed: u64,
     ) -> Result<(), StorageError> {
         let scope = ComposerScope::pending(pending_id);
-        let mut scopes = self.inner.lock().map_err(|_| StorageError::Corrupt)?;
+        let mut scopes = self.scopes()?;
         let mut snapshot = self.state(&mut scopes, &scope)?.watch.get();
         if snapshot.revision <= consumed {
             snapshot = ComposerSnapshot::empty(scope.clone());
             snapshot.revision = consumed.checked_add(1).ok_or(StorageError::Corrupt)?;
-            scopes.insert(
-                scope.clone(),
-                ScopeState {
-                    watch: Watch::new(snapshot.clone()),
-                    last_command: None,
-                },
-            );
+            scopes.insert(scope.clone(), state(snapshot.clone()));
         }
         self.store.put(&key(&scope), &stored(&snapshot))
     }
@@ -150,7 +145,7 @@ impl ComposerAuthority {
         commit: impl FnOnce() -> Result<T, E>,
     ) -> Result<Result<T, PromoteError>, E> {
         let scope = ComposerScope::pending(pending_id);
-        let mut scopes = self.inner.lock().map_err(|_| StorageError::Corrupt)?;
+        let mut scopes = self.scopes()?;
         let pending = self.state(&mut scopes, &scope)?.watch.get();
         if pending.revision != revision {
             return Ok(Err(PromoteError::RevisionConflict));
@@ -165,20 +160,10 @@ impl ComposerAuthority {
             .ok_or(StorageError::Corrupt)?;
         let result = commit()?;
         let chat_scope = ComposerScope::chat(chat_id);
-        let snapshot = ComposerSnapshot::empty(chat_scope.clone());
+        scopes.insert(scope.clone(), state(cleared.clone()));
         scopes.insert(
-            scope.clone(),
-            ScopeState {
-                watch: Watch::new(cleared.clone()),
-                last_command: None,
-            },
-        );
-        scopes.insert(
-            chat_scope,
-            ScopeState {
-                watch: Watch::new(snapshot),
-                last_command: None,
-            },
+            chat_scope.clone(),
+            state(ComposerSnapshot::empty(chat_scope)),
         );
         self.store.put(&key(&scope), &stored(&cleared))?;
         Ok(Ok(result))
@@ -194,27 +179,14 @@ mod tests {
     use arut_rpc::{Code, Request};
     use futures_executor::block_on;
 
-    struct FailedStore;
-    impl KeyValue for FailedStore {
-        fn get(&self, _: &str) -> Result<Option<Vec<u8>>, StorageError> {
-            Err(StorageError::Io(std::io::ErrorKind::PermissionDenied))
-        }
-        fn put(&self, _: &str, _: &[u8]) -> Result<(), StorageError> {
-            Err(StorageError::Corrupt)
-        }
-        fn remove(&self, _: &str) -> Result<(), StorageError> {
-            Err(StorageError::Corrupt)
-        }
-    }
-
     #[test]
     fn recovery_failures_cross_rpc_as_status_instead_of_panics() {
+        let store = Arc::new(crate::test_support::FaultyStore::default());
+        store.fail();
         let service = super::super::service::ComposerServiceImpl::new(Arc::new(
-            ComposerAuthority::with_store(Arc::new(FailedStore)),
+            ComposerAuthority::with_store(store),
         ));
-        let scope = Some(super::super::wire::scope_to_wire(&ComposerScope::pending(
-            "pending",
-        )));
+        let scope = Some((&ComposerScope::pending("pending")).into());
         assert_eq!(
             block_on(service.get_composer(Request::new(GetComposerRequest {
                 scope: scope.clone()

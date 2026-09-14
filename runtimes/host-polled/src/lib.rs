@@ -33,10 +33,6 @@ impl HostPolledSpawner {
         }
     }
 
-    pub fn budget(&self) -> usize {
-        self.budget
-    }
-
     /// True while no spawned task is outstanding.
     pub fn is_idle(&self) -> bool {
         self.executor.is_empty()
@@ -84,17 +80,29 @@ mod tests {
     use std::cell::Cell;
     use std::rc::Rc;
 
+    /// Spawns one task that counts its own polls, yielding between each, and
+    /// hands back the counter.
+    fn counting(spawner: &HostPolledSpawner, steps: usize) -> Rc<Cell<usize>> {
+        let polls = Rc::new(Cell::new(0usize));
+        let counter = polls.clone();
+        spawner.spawn_local(Box::pin(async move {
+            for _ in 0..steps {
+                counter.set(counter.get() + 1);
+                futures_lite::future::yield_now().await;
+            }
+        }));
+        polls
+    }
+
     #[test]
     fn a_tick_runs_spawned_work_and_reports_an_idle_executor() {
         let spawner = HostPolledSpawner::new();
         assert!(spawner.is_idle());
-        let ran = Rc::new(Cell::new(false));
-        let flag = ran.clone();
-        spawner.spawn_local(Box::pin(async move { flag.set(true) }));
+        let polls = counting(&spawner, 1);
 
         assert!(!spawner.is_idle());
         assert!(spawner.tick() > 0);
-        assert!(ran.get());
+        assert_eq!(polls.get(), 1);
         assert_eq!(spawner.tick(), 0);
         assert!(spawner.is_idle());
     }
@@ -102,14 +110,7 @@ mod tests {
     #[test]
     fn one_task_cannot_take_more_than_the_budget() {
         let spawner = HostPolledSpawner::with_budget(4);
-        let polls = Rc::new(Cell::new(0usize));
-        let counter = polls.clone();
-        spawner.spawn_local(Box::pin(async move {
-            for _ in 0..32 {
-                counter.set(counter.get() + 1);
-                futures_lite::future::yield_now().await;
-            }
-        }));
+        let polls = counting(&spawner, 32);
 
         assert_eq!(spawner.tick(), 4);
         assert_eq!(polls.get(), 4);
@@ -122,27 +123,20 @@ mod tests {
     #[test]
     fn a_thread_owning_host_drives_the_same_executor_to_completion() {
         let spawner = HostPolledSpawner::new();
-        let done = Rc::new(Cell::new(false));
-        let flag = done.clone();
-        spawner.spawn_local(Box::pin(async move {
-            futures_lite::future::yield_now().await;
-            flag.set(true);
-        }));
+        let polls = counting(&spawner, 1);
 
         spawner.block_on(async {
-            while !done.get() {
+            while polls.get() == 0 {
                 futures_lite::future::yield_now().await;
             }
         });
-        assert!(done.get());
+        assert_eq!(polls.get(), 1);
     }
 }
 
 #[cfg(not(target_arch = "wasm32"))]
 mod ids;
-mod observation;
 mod session;
 #[cfg(not(target_arch = "wasm32"))]
 pub use ids::{NativeClock, NativeIds};
-pub use observation::observe;
 pub use session::MemoryRuntime;

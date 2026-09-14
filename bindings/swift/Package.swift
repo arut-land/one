@@ -3,7 +3,7 @@ import PackageDescription
 
 let package = Package(
     name: "ArutBindings",
-    platforms: [.iOS(.v16), .macOS(.v13)],
+    platforms: [.iOS(.v17), .macOS(.v14)],
     products: [
         .library(name: "ArutBindings", targets: ["ArutBindings"]),
     ],

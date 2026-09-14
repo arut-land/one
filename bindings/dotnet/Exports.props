@@ -1,6 +1,8 @@
 <Project>
-  <!-- C# aliases are source-scoped, so consumers compile this generated facade. -->
+  <!-- Every generated FFI type reaches a consumer through the namespace itself,
+       with no rename layer of our own to keep in sync (ADR 0007). -->
   <ItemGroup>
-    <Compile Include="$(MSBuildThisFileDirectory)Exports.cs" Link="Bindings/Exports.cs" />
+    <Using Include="Arut.Ffi" />
+    <Using Include="Arut.Ffi.Arut_ffi" Static="true" />
   </ItemGroup>
 </Project>

@@ -3,15 +3,15 @@
 //! The composition root composes features over redb storage. A node
 //! lease remains held by the runtime and every active RPC dispatch. Blocking
 //! storage dispatch runs on Tokio's blocking pool, including router future polling.
-//! ChildHost supervises arutd; ScheduledChannel supports foreign pollers.
+//! ChildHost supervises arutd; the `Scheduled` layer supports foreign pollers.
 
 mod blocking;
 #[cfg(unix)]
 pub mod child;
-pub mod failure;
 pub mod hosting;
+pub mod readiness;
 use arut_feature_chat::ports::{Clock, Drafts, IdSource, Persist};
-use arut_rpc::{RpcRegistry, RpcService, Status};
+use arut_rpc::{RpcRegistry, RpcService, ServiceSet, Status};
 pub use arut_runtime_host_polled::{NativeClock, NativeIds};
 use arut_storage::{Fact, FactLog, KeyValue, Redb, StorageError};
 use axum::Router;
@@ -86,8 +86,12 @@ impl<F: Fact> Persist<F> for LocalRuntime {
 
 pub struct Node;
 impl Node {
-    /// Roots flatten their feature routers here. Duplicate routes are errors.
-    pub fn serve<R: Send + Sync + 'static>(
+    /// Roots flatten their feature routers here and name the same services as
+    /// `S`, which is what the manifest advertises. Duplicate routes are errors.
+    ///
+    /// # Errors
+    /// Returns `AlreadyExists` if two routers claim the same procedure.
+    pub fn serve<R: Send + Sync + 'static, S: ServiceSet>(
         runtime: Arc<R>,
         features: impl IntoIterator<Item = Arc<dyn RpcService>>,
     ) -> Result<Router, Status> {
@@ -96,14 +100,15 @@ impl Node {
             registry =
                 registry.register(Arc::new(blocking::Blocking::new(router, runtime.clone())))?;
         }
-        let registry = arut_protocol::capability_manifest::with_capabilities(registry)?;
-        Ok(arut_transport_connect_http::router(Arc::new(registry)))
+        let registry = arut_protocol::capability_manifest::with_capabilities::<S>(registry)?;
+        Ok(arut_transport::router(Arc::new(registry)))
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use arut_feature_chat::ChatServices;
     use arut_feature_chat::composer::ComposerScope;
     use arut_protocol::capability::v1::{CapabilityServiceClient, GetCapabilitiesRequest};
     use arut_protocol::chat::composer::v1::{
@@ -111,13 +116,13 @@ mod tests {
     };
     use arut_protocol::chat::v1::{ChatServiceClient, StartChatRequest};
     use arut_rpc::{Request, RpcChannel};
-    use arut_transport_connect_http::HttpRpcChannel;
+    use arut_transport::HttpRpcChannel;
     use futures_util::StreamExt;
 
     fn app(data: PathBuf) -> Result<Router, StorageError> {
         let runtime = Arc::new(LocalRuntime::open(data, "chat")?);
         let feature = arut_feature_chat::compose(runtime.clone())?;
-        Ok(Node::serve(runtime, feature.routers()).unwrap())
+        Ok(Node::serve::<_, ChatServices>(runtime, feature.routers()).unwrap())
     }
 
     fn wire_scope(scope: &ComposerScope) -> arut_protocol::chat::composer::v1::ComposerScope {
@@ -150,43 +155,6 @@ mod tests {
         drop(composer);
         drop(LocalRuntime::open(path.clone(), "chat").unwrap());
         std::fs::remove_dir_all(path).unwrap();
-    }
-
-    #[tokio::test]
-    async fn redb_serves_the_node() {
-        {
-            let path = std::env::temp_dir().join(format!("arut-storage-{}", std::process::id()));
-            let _ = std::fs::remove_dir_all(&path);
-            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-            let address = listener.local_addr().unwrap();
-            let server = tokio::spawn(async move {
-                axum::serve(listener, app(path).unwrap()).await.unwrap();
-            });
-            let channel: Arc<dyn RpcChannel> =
-                Arc::new(HttpRpcChannel::new(format!("http://{address}")));
-            let chat = ChatServiceClient::remote(channel);
-            let request = StartChatRequest {
-                pending_scope_id: "account".into(),
-                command_id: "01900000-0000-7000-8000-000000000001".into(),
-                expected_revision: 0,
-                text: String::new(),
-            };
-
-            let first = chat
-                .start_chat(Request::new(request.clone()))
-                .await
-                .unwrap()
-                .message;
-            let retry = chat
-                .start_chat(Request::new(request))
-                .await
-                .unwrap()
-                .message;
-
-            assert_eq!(retry.chat_id, first.chat_id);
-            assert_eq!(first.messages.len(), 2);
-            server.abort();
-        }
     }
 
     #[tokio::test]

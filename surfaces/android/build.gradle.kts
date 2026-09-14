@@ -1,7 +1,7 @@
 plugins {
-    id("com.android.application") version "8.7.3"
-    id("org.jetbrains.kotlin.android") version "2.1.0"
-    id("org.jetbrains.kotlin.plugin.compose") version "2.1.0"
+    alias(libs.plugins.android.application)
+    alias(libs.plugins.kotlin.android)
+    alias(libs.plugins.kotlin.compose)
 }
 
 android {
@@ -25,6 +25,13 @@ android {
     buildFeatures {
         compose = true
     }
+
+    // The generated Kotlin and the JNI libraries compile into this module;
+    // there is no wrapper subproject between them and the app (ADR 0007).
+    sourceSets.named("main") {
+        java.srcDir(rootProject.file("../../bindings/generated/android/kotlin"))
+        jniLibs.srcDir(rootProject.file("../../bindings/generated/android/jniLibs"))
+    }
 }
 
 kotlin {
@@ -34,12 +41,17 @@ kotlin {
 }
 
 dependencies {
-    implementation(project(":bindings"))
-    implementation("androidx.activity:activity-compose:1.10.0")
-    implementation(platform("androidx.compose:compose-bom:2025.01.01"))
-    implementation("androidx.compose.foundation:foundation")
-    implementation("androidx.compose.material:material-icons-extended")
-    implementation("androidx.compose.material3:material3")
+    implementation(libs.activity.compose)
+    implementation(platform(libs.compose.bom))
+    implementation(libs.compose.foundation)
+    implementation(libs.compose.material.icons)
+    implementation(libs.compose.material3)
+    implementation(libs.compose.ui.tooling.preview)
+    debugImplementation(libs.compose.ui.tooling)
     // ADR 0011: the session lives in a ViewModel so it survives configuration changes.
-    implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.7")
+    implementation(libs.lifecycle.viewmodel.compose)
+    // collectAsStateWithLifecycle: stop collecting Rust revisions in the background.
+    implementation(libs.lifecycle.runtime.compose)
+    // Supplies Dispatchers.Main for the generated callbackFlow streams.
+    implementation(libs.coroutines.android)
 }

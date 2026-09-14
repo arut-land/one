@@ -1,0 +1,72 @@
+name: Android
+
+# GitHub does the path filtering that a `changes` job used to do in shell. The
+# two lists are identical on purpose: the workflow parser resolves no anchors.
+on:
+  push:
+    branches: ["**"]
+    tags: ["v*"]
+    paths:
+      - "surfaces/android/**"
+      - "bindings/ffi/**"
+      - "features/**"
+      - "product/**"
+      - "substrates/**"
+      - "protocols/**"
+      - "runtimes/**"
+      - "transports/**"
+      - "tools/dev/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "mise.toml"
+      - "mise.lock"
+      - ".github/workflows/android.yml"
+  pull_request:
+    paths:
+      - "surfaces/android/**"
+      - "bindings/ffi/**"
+      - "features/**"
+      - "product/**"
+      - "substrates/**"
+      - "protocols/**"
+      - "runtimes/**"
+      - "transports/**"
+      - "tools/dev/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "mise.toml"
+      - "mise.lock"
+      - ".github/workflows/android.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: ${{ github.event_name != 'workflow_dispatch' }}
+
+env:
+  ANDROID_NDK_VERSION: 26.1.10909125
+
+jobs:
+  android:
+    name: Android
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: jdx/mise-action@v2
+
+      - uses: Swatinem/rust-cache@v2
+
+      # The hosted runner's default JDK runs sdkmanager. The build and test JDK
+      # is pinned by the mise tasks rather than installed a second time here.
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: "platform-tools platforms;android-35 build-tools;35.0.0 ndk;${{ env.ANDROID_NDK_VERSION }}"
+
+      # This machine has no Android emulator or device, so only the build itself
+      # is verified here, not the app running.
+      - name: Build Android surface
+        env:
+          ANDROID_NDK_HOME: ${{ env.ANDROID_HOME }}/ndk/${{ env.ANDROID_NDK_VERSION }}
+          ANDROID_NDK_ROOT: ${{ env.ANDROID_HOME }}/ndk/${{ env.ANDROID_NDK_VERSION }}
+        run: mise run surface:android

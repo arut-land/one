@@ -3,26 +3,23 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "license": "SEE LICENSE IN ../../LICENSE-FSL",
   "scripts": {
     "build": "vite build",
-    "check": "tsc --noEmit",
     "dev": "vite"
   },
   "dependencies": {
     "@arut/bindings-typescript": "workspace:*",
+    "@arut/chat-ui": "workspace:*",
+    "@arut/runtime-browser": "workspace:*",
     "react": "catalog:",
-    "react-dom": "catalog:",
-    "@arut/runtime-browser": "workspace:*"
+    "react-dom": "catalog:"
   },
   "devDependencies": {
     "@types/react": "catalog:",
     "@types/react-dom": "catalog:",
     "@vitejs/plugin-react": "catalog:",
     "oxc-transform-react": "catalog:",
-    "typescript": "catalog:",
     "vite": "catalog:"
-  },
-  "exports": {
-    "./main": "./src/main.tsx"
   }
 }

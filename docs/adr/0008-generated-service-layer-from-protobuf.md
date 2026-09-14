@@ -1,5 +1,6 @@
 ---
 status: accepted
+amended-by: 0025 (service descriptors reach the manifest as typed marker types; per-service availability generation still waits for its second consumer)
 ---
 
 # The service layer is generated from Protobuf descriptors by a project-owned generator

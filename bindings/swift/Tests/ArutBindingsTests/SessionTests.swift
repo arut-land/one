@@ -3,7 +3,7 @@ import Testing
 
 @MainActor
 struct SessionTests {
-    @Test
+    @Test(.timeLimit(.minutes(1)))
     func sendUpdatesObservedTranscriptAndConversationList() async throws {
         let session = createProductSession(pendingScopeId: "swift-test")
         let initialized = try await session.initialize()
@@ -11,28 +11,26 @@ struct SessionTests {
         let chat = session.chat()
         let composer = chat.composer()
         let list = session.conversations()
-        let transcript = ObservableState(read: { chat.messagesAfter(afterId: 0) }, subscribe: { callback in
-            let subscription = chat.chatChanges(callback: callback)
-            return { subscription.cancel() }
-        })
-        defer { transcript.stopObserving() }
+        // Subscribing before the send is what makes the revision observable;
+        // the generated stream buffers, so consuming it afterwards is enough.
+        let changes = chat.chatChanges()
 
         _ = try await composer.replace(text: "Hello from Swift")
         #expect(composer.state().text == "Hello from Swift")
         let result = try await chat.send(text: composer.state().text)
         #expect(result.error == nil)
-        // Observation deliberately coalesces onto the main actor. Wait for the
-        // published value with a deadline so a broken subscription fails.
-        let clock = ContinuousClock()
-        let deadline = clock.now.advanced(by: .seconds(5))
-        while transcript.state.count < 2, clock.now < deadline {
-            try await Task.sleep(for: .milliseconds(10))
+
+        var transcript: [ChatMessage] = []
+        for await _ in changes {
+            transcript = chat.messagesAfter(afterId: 0)
+            if transcript.count >= 2 { break }
         }
-        #expect(transcript.state.count == 2)
-        #expect(transcript.state.first?.text == "Hello from Swift")
+        #expect(transcript.count == 2)
+        #expect(transcript.first?.text == "Hello from Swift")
         #expect(list.state().count == 1)
         #expect(composer.state().text == "")
         let id = try #require(result.id)
+        #expect(list.selectedId() == nil || list.selectedId() == id)
         #expect(session.selectChat(id: id)?.messagesAfter(afterId: 0).count == 2)
     }
 
@@ -64,4 +62,17 @@ struct SessionTests {
         #expect(composer.state().text.isEmpty)
     }
 
+    @Test
+    func selectionIsSharedThroughTheConversationsScope() async throws {
+        let session = createProductSession(pendingScopeId: "swift-selection")
+        let chat = session.chat()
+        let result = try await chat.send(text: "Pick me")
+        let id = try #require(result.id)
+        let list = session.conversations()
+        #expect(list.selectedId() == nil)
+        list.select(id: id)
+        #expect(list.selectedId() == id)
+        list.select(id: nil)
+        #expect(list.selectedId() == nil)
+    }
 }

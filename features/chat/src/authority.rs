@@ -1,5 +1,5 @@
 //! Serializes chat acceptance, retry identity, and durable draft promotion.
-use crate::command::{ChatCommand, PendingDraft, Rejection};
+use crate::command::{ChatCommand, CommandId, PendingDraft, Rejection};
 use crate::composer::{ComposerAuthority, ComposerScope, PromoteError};
 #[cfg(test)]
 use crate::facts::ChatProjection;
@@ -8,6 +8,27 @@ use arut_authority::{Authority, Outcome};
 use arut_protocol::chat::v1::ChatFact;
 use arut_storage::{FactLog, StorageError};
 use std::sync::{Arc, Mutex};
+
+/// Why an accepted command could not become a fact, before any surface wording.
+#[derive(Debug)]
+pub(crate) enum CommitError {
+    Storage(StorageError),
+    RevisionConflict,
+    AuthorityChanged,
+    Superseded,
+    Rejected(Rejection),
+}
+impl From<StorageError> for CommitError {
+    fn from(error: StorageError) -> Self {
+        Self::Storage(error)
+    }
+}
+impl From<Rejection> for CommitError {
+    fn from(rejection: Rejection) -> Self {
+        Self::Rejected(rejection)
+    }
+}
+
 pub(crate) struct ChatAuthority {
     composer: Arc<ComposerAuthority>,
     authority: Authority<ChatCommand>,
@@ -55,43 +76,22 @@ impl ChatAuthority {
                     && (record.fact.chat_id != chat_id || !record.fact.pending_scope_id.is_empty()))
                     || pending_scope.is_some_and(|scope| record.fact.pending_scope_id != scope)
                 {
-                    return Err(CommitError::CommandConflict);
+                    return Err(Rejection::CommandConflict.into());
                 }
                 Ok(record.fact)
             }
             Outcome::RevisionConflict { .. } => Err(CommitError::RevisionConflict),
-            Outcome::AuthorityMismatch { .. } => Err(CommitError::AuthorityMismatch),
+            Outcome::AuthorityMismatch { .. } => Err(CommitError::AuthorityChanged),
             Outcome::Superseded => Err(CommitError::Superseded),
             Outcome::Rejected(rejection) => Err(CommitError::Rejected(rejection)),
         }
     }
-}
-
-/// Why an accepted command could not become a fact, before any surface wording.
-#[derive(Debug)]
-pub(crate) enum CommitError {
-    Storage(StorageError),
-    Rejected(Rejection),
-    RevisionConflict,
-    AuthorityMismatch,
-    Superseded,
-    CommandConflict,
-    PendingRevisionConflict,
-    PendingTextMismatch,
-}
-impl From<StorageError> for CommitError {
-    fn from(error: StorageError) -> Self {
-        Self::Storage(error)
-    }
-}
-
-impl ChatAuthority {
     pub(crate) fn conversations(&self) -> Vec<arut_protocol::chat::v1::Conversation> {
         self.authority.read_projection(|p| p.conversations.clone())
     }
     pub(crate) fn send(
         &self,
-        command_id: String,
+        command_id: CommandId,
         chat_id: String,
         text: String,
     ) -> Result<ChatFact, CommitError> {
@@ -104,15 +104,15 @@ impl ChatAuthority {
     }
     pub(crate) fn start(
         &self,
-        command_id: String,
+        command_id: CommandId,
         pending_scope_id: String,
         revision: u64,
         text: String,
     ) -> Result<(ChatFact, crate::composer::ComposerSnapshot), CommitError> {
         let _start = self.start_gate.lock().map_err(|_| StorageError::Corrupt)?;
-        let fact = if let Some(record) = self.authority.outcome_of(&command_id)? {
+        let fact = if let Some(record) = self.authority.outcome_of(command_id.as_str())? {
             if record.fact.pending_scope_id != pending_scope_id {
-                return Err(CommitError::CommandConflict);
+                return Err(Rejection::CommandConflict.into());
             }
             if let Some(revision) = record.fact.pending_revision {
                 self.composer.recover_pending(&pending_scope_id, revision)?;
@@ -138,9 +138,11 @@ impl ChatAuthority {
             )? {
                 Ok(fact) => fact,
                 Err(PromoteError::RevisionConflict) => {
-                    return Err(CommitError::PendingRevisionConflict);
+                    return Err(Rejection::PendingRevisionConflict.into());
                 }
-                Err(PromoteError::TextMismatch) => return Err(CommitError::PendingTextMismatch),
+                Err(PromoteError::TextMismatch) => {
+                    return Err(Rejection::PendingTextMismatch.into());
+                }
             }
         };
         let snapshot = self

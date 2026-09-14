@@ -1,0 +1,14 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "types": ["node", "vscode"]
+  },
+  "include": [
+    "surfaces/chat-ui/vite.ts",
+    "surfaces/chromium/vite.config.ts",
+    "surfaces/vscode/src/extension.ts",
+    "surfaces/vscode/src/host.ts",
+    "surfaces/vscode/vite.config.ts",
+    "surfaces/web/vite.config.ts"
+  ]
+}

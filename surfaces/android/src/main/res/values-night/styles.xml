@@ -1,0 +1,3 @@
+<resources>
+    <style name="Theme.Arut" parent="android:style/Theme.Material.NoActionBar" />
+</resources>

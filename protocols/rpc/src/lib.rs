@@ -23,7 +23,6 @@ use prost::Message;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::sync::Arc;
-use std::sync::RwLock;
 pub use tokio_util::sync::CancellationToken;
 use tokio_util::sync::DropGuard;
 use tracing::Instrument;
@@ -163,6 +162,55 @@ impl core::fmt::Display for Status {
 
 impl std::error::Error for Status {}
 
+/// An I/O failure is a transport that stopped answering, which is what
+/// `Unavailable` names. `tokio_util::codec::Decoder` requires this conversion
+/// of every decoder error type, and transports want it for their own reads.
+impl From<std::io::Error> for Status {
+    fn from(error: std::io::Error) -> Self {
+        Self::new(Code::Unavailable, error.to_string())
+    }
+}
+
+/// A typed reason carried in [`Status::details`] as a single tag byte.
+///
+/// The tag is the variant's index in `ALL`, so one const drives the wire byte,
+/// `Display`, and the locale test. Both ends of a `Status` carrying one come
+/// from the same build, so the index is stable where it is read; a tag this
+/// binary does not know about reads back as `None` and the caller falls back to
+/// [`Self::CODE`] and the message.
+pub trait StatusDetail: Copy + PartialEq + Sized + 'static {
+    /// The coarse code a caller that does not know this type still handles.
+    const CODE: Code;
+    /// Every variant, in tag order.
+    const ALL: &'static [Self];
+
+    /// Wrap this reason in a `Status`.
+    #[must_use]
+    fn into_status(self, message: impl Into<String>) -> Status {
+        let tag = Self::ALL
+            .iter()
+            .position(|variant| *variant == self)
+            .expect("every variant of a StatusDetail is listed in ALL");
+        Status {
+            code: Self::CODE,
+            message: message.into(),
+            details: vec![u8::try_from(tag).expect("a StatusDetail has at most 256 variants")],
+        }
+    }
+
+    /// The typed reason behind `status`, if it carries one this build knows.
+    #[must_use]
+    fn from_status(status: &Status) -> Option<Self> {
+        if status.code != Self::CODE {
+            return None;
+        }
+        match status.details.as_slice() {
+            [tag] => Self::ALL.get(usize::from(*tag)).copied(),
+            _ => None,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum StreamingKind {
     Unary,
@@ -180,74 +228,75 @@ pub struct MethodDescriptor {
     pub streaming: StreamingKind,
 }
 
+/// A package version, as ADR 0015's two-minor window compares them.
+///
+/// `major` is the Protobuf package suffix (`arut.chat.v1` is major 1). There is
+/// no source of `minor` yet -- the generator emits 0 until a proto option or a
+/// generator table supplies one, which is the prerequisite for the negotiation
+/// in ROADMAP Phase 1 item 11.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Version {
+    pub major: u32,
+    pub minor: u32,
+}
+
+/// How many minor versions apart a session and a node may be (ADR 0015).
+pub const COMPATIBILITY_WINDOW: u32 = 2;
+
+/// Whether a session at `local` may talk to a node at `remote` (ADR 0015).
+#[must_use]
+pub const fn compatible(local: Version, remote: Version) -> bool {
+    local.major == remote.major && local.minor.abs_diff(remote.minor) <= COMPATIBILITY_WINDOW
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ServiceDescriptor {
     pub name: &'static str,
     pub package: &'static str,
-    pub version: &'static str,
+    pub version: Version,
     pub methods: &'static [MethodDescriptor],
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ServiceRuntimeMetadata {
-    pub available: bool,
-    pub unavailable_reason: String,
-    pub permissions: Vec<String>,
-    pub limits: BTreeMap<String, u64>,
-    pub extensions: BTreeMap<String, String>,
+/// One generated marker type per service, carrying its descriptor as a const so
+/// a lookup names the service by type rather than by a hand-written string.
+pub trait Service: 'static {
+    const DESCRIPTOR: ServiceDescriptor;
 }
 
-impl Default for ServiceRuntimeMetadata {
-    fn default() -> Self {
-        Self {
-            available: true,
-            unavailable_reason: String::new(),
-            permissions: Vec::new(),
-            limits: BTreeMap::new(),
-            extensions: BTreeMap::new(),
+/// The services a node serves, named as a tuple of [`Service`] markers.
+///
+/// A feature declares its own set beside its composition function; a manifest
+/// is then derived from the type, with no registration table to walk and no
+/// order to sort (the tuple is the order).
+pub trait ServiceSet {
+    const DESCRIPTORS: &'static [ServiceDescriptor];
+}
+
+macro_rules! service_set {
+    ($($name:ident),+) => {
+        impl<$($name: Service),+> ServiceSet for ($($name,)+) {
+            const DESCRIPTORS: &'static [ServiceDescriptor] =
+                &[$(<$name as Service>::DESCRIPTOR),+];
         }
-    }
+    };
 }
+service_set!(A);
+service_set!(A, B);
+service_set!(A, B, C);
+service_set!(A, B, C, D);
+service_set!(A, B, C, D, E);
+service_set!(A, B, C, D, E, F);
+service_set!(A, B, C, D, E, F, G);
+service_set!(A, B, C, D, E, F, G, H);
 
-#[derive(Clone, Default)]
-pub struct ServiceMetadata {
-    inner: Arc<RwLock<ServiceRuntimeMetadata>>,
-}
-
-impl ServiceMetadata {
-    pub fn new(metadata: ServiceRuntimeMetadata) -> Self {
-        Self {
-            inner: Arc::new(RwLock::new(metadata)),
-        }
-    }
-
-    pub fn get(&self) -> ServiceRuntimeMetadata {
-        self.inner
-            .read()
-            .expect("service metadata lock poisoned")
-            .clone()
-    }
-
-    pub fn set(&self, metadata: ServiceRuntimeMetadata) {
-        *self.inner.write().expect("service metadata lock poisoned") = metadata;
-    }
-}
-
-#[derive(Clone)]
-pub struct ServiceRegistration {
-    pub descriptor: &'static ServiceDescriptor,
-    pub metadata: ServiceMetadata,
-}
-
-impl ServiceRegistration {
-    pub fn new(descriptor: &'static ServiceDescriptor, metadata: ServiceMetadata) -> Self {
-        Self {
-            descriptor,
-            metadata,
-        }
-    }
-}
-
+/// All four Protobuf streaming shapes (ADR 0008), of which a channel implements
+/// the ones its wire can carry.
+///
+/// The two request-streaming shapes default to `Unimplemented` because no
+/// transport in the tree carries them: Connect over HTTP cannot, and the
+/// registry only fans out to services that also cannot. The iroh
+/// bi-directional stream of ADR 0019 arrives as one `bidirectional` override,
+/// not as a change here.
 pub trait RpcChannel: Send + Sync + 'static {
     fn unary(&self, procedure: &str, request: Request<Vec<u8>>) -> RpcFuture<Response<Vec<u8>>>;
 
@@ -260,14 +309,62 @@ pub trait RpcChannel: Send + Sync + 'static {
     fn client_stream(
         &self,
         procedure: &str,
-        request: Request<RpcStream<Vec<u8>>>,
-    ) -> RpcFuture<Response<Vec<u8>>>;
+        _request: Request<RpcStream<Vec<u8>>>,
+    ) -> RpcFuture<Response<Vec<u8>>> {
+        let status = Status::unimplemented(procedure);
+        Box::pin(async move { Err(status) })
+    }
 
     fn bidirectional(
         &self,
         procedure: &str,
-        request: Request<RpcStream<Vec<u8>>>,
-    ) -> RpcFuture<Response<RpcStream<Vec<u8>>>>;
+        _request: Request<RpcStream<Vec<u8>>>,
+    ) -> RpcFuture<Response<RpcStream<Vec<u8>>>> {
+        let status = Status::unimplemented(procedure);
+        Box::pin(async move { Err(status) })
+    }
+}
+
+/// What a layer does around a call: schedule it, offload it, or attach the
+/// metadata ADR 0009 keeps out of feature code.
+///
+/// `Wrapped<W>` is monomorphised over the impl, so a generic method is fine
+/// here and `Wrapped<W>: RpcChannel` is still object-safe.
+pub trait Wrap: Send + Sync + 'static {
+    fn wrap<T: Send + 'static>(
+        &self,
+        call: Box<dyn FnOnce() -> RpcFuture<T> + Send>,
+    ) -> RpcFuture<T>;
+}
+
+/// One channel behind one [`Wrap`].
+pub struct Wrapped<W> {
+    inner: Arc<dyn RpcChannel>,
+    wrap: W,
+}
+
+impl<W> Wrapped<W> {
+    pub fn new(inner: Arc<dyn RpcChannel>, wrap: W) -> Self {
+        Self { inner, wrap }
+    }
+}
+
+impl<W: Wrap> RpcChannel for Wrapped<W> {
+    fn unary(&self, procedure: &str, request: Request<Vec<u8>>) -> RpcFuture<Response<Vec<u8>>> {
+        let (inner, procedure) = (self.inner.clone(), procedure.to_owned());
+        self.wrap
+            .wrap(Box::new(move || inner.unary(&procedure, request)))
+    }
+
+    fn server_stream(
+        &self,
+        procedure: &str,
+        request: Request<Vec<u8>>,
+    ) -> RpcFuture<Response<RpcStream<Vec<u8>>>> {
+        let (inner, procedure) = (self.inner.clone(), procedure.to_owned());
+        self.wrap
+            .wrap(Box::new(move || inner.server_stream(&procedure, request)))
+    }
 }
 
 pub trait RpcService: RpcChannel {
@@ -277,19 +374,12 @@ pub trait RpcService: RpcChannel {
 #[derive(Default)]
 pub struct RpcRegistry {
     routes: HashMap<&'static str, Arc<dyn RpcService>>,
-    services: Vec<(Arc<dyn RpcService>, ServiceMetadata)>,
 }
 
 impl RpcRegistry {
-    pub fn register(self, service: Arc<dyn RpcService>) -> Result<Self, Status> {
-        self.register_with_metadata(service, ServiceMetadata::default())
-    }
-
-    pub fn register_with_metadata(
-        mut self,
-        service: Arc<dyn RpcService>,
-        metadata: ServiceMetadata,
-    ) -> Result<Self, Status> {
+    /// # Errors
+    /// Returns `AlreadyExists` if another service already claims a procedure.
+    pub fn register(mut self, service: Arc<dyn RpcService>) -> Result<Self, Status> {
         for method in service.descriptor().methods {
             if self
                 .routes
@@ -302,17 +392,7 @@ impl RpcRegistry {
                 ));
             }
         }
-        self.services.push((service, metadata));
         Ok(self)
-    }
-
-    pub fn registrations(&self) -> impl ExactSizeIterator<Item = ServiceRegistration> + '_ {
-        self.services
-            .iter()
-            .map(|(service, metadata)| ServiceRegistration {
-                descriptor: service.descriptor(),
-                metadata: metadata.clone(),
-            })
     }
 
     fn route(&self, procedure: &str) -> Result<&Arc<dyn RpcService>, Status> {
@@ -350,30 +430,6 @@ impl RpcChannel for RpcRegistry {
         let span = dispatch("server_stream", procedure);
         match self.route(procedure) {
             Ok(service) => Box::pin(service.server_stream(procedure, request).instrument(span)),
-            Err(error) => unroutable(&span, error),
-        }
-    }
-
-    fn client_stream(
-        &self,
-        procedure: &str,
-        request: Request<RpcStream<Vec<u8>>>,
-    ) -> RpcFuture<Response<Vec<u8>>> {
-        let span = dispatch("client_stream", procedure);
-        match self.route(procedure) {
-            Ok(service) => Box::pin(service.client_stream(procedure, request).instrument(span)),
-            Err(error) => unroutable(&span, error),
-        }
-    }
-
-    fn bidirectional(
-        &self,
-        procedure: &str,
-        request: Request<RpcStream<Vec<u8>>>,
-    ) -> RpcFuture<Response<RpcStream<Vec<u8>>>> {
-        let span = dispatch("bidirectional", procedure);
-        match self.route(procedure) {
-            Ok(service) => Box::pin(service.bidirectional(procedure, request).instrument(span)),
             Err(error) => unroutable(&span, error),
         }
     }
@@ -495,24 +551,6 @@ mod tests {
             let error = Status::unimplemented(procedure);
             Box::pin(async move { Err(error) })
         }
-
-        fn client_stream(
-            &self,
-            procedure: &str,
-            _request: Request<RpcStream<Vec<u8>>>,
-        ) -> RpcFuture<Response<Vec<u8>>> {
-            let error = Status::unimplemented(procedure);
-            Box::pin(async move { Err(error) })
-        }
-
-        fn bidirectional(
-            &self,
-            procedure: &str,
-            _request: Request<RpcStream<Vec<u8>>>,
-        ) -> RpcFuture<Response<RpcStream<Vec<u8>>>> {
-            let error = Status::unimplemented(procedure);
-            Box::pin(async move { Err(error) })
-        }
     }
 
     static METHODS: &[MethodDescriptor] = &[MethodDescriptor {
@@ -524,8 +562,8 @@ mod tests {
     }];
     static DESCRIPTOR: ServiceDescriptor = ServiceDescriptor {
         name: "Service",
-        package: "test",
-        version: "test",
+        package: "test.v1",
+        version: Version { major: 1, minor: 0 },
         methods: METHODS,
     };
 
@@ -535,26 +573,70 @@ mod tests {
         }
     }
 
+    struct ServiceId;
+    impl Service for ServiceId {
+        const DESCRIPTOR: ServiceDescriptor = DESCRIPTOR;
+    }
+
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    enum Reason {
+        First,
+        Second,
+    }
+    impl StatusDetail for Reason {
+        const CODE: Code = Code::Unavailable;
+        const ALL: &'static [Self] = &[Self::First, Self::Second];
+    }
+
     #[test]
     fn rejects_duplicate_procedure_registration() {
-        let metadata = ServiceMetadata::default();
         let registry = RpcRegistry::default()
-            .register_with_metadata(Arc::new(EmptyService), metadata.clone())
+            .register(Arc::new(EmptyService))
             .unwrap();
-        metadata.set(ServiceRuntimeMetadata {
-            available: false,
-            unavailable_reason: "offline".into(),
-            ..ServiceRuntimeMetadata::default()
-        });
-        assert_eq!(
-            registry.registrations().next().unwrap().metadata.get(),
-            ServiceRuntimeMetadata {
-                available: false,
-                unavailable_reason: "offline".into(),
-                ..ServiceRuntimeMetadata::default()
-            }
-        );
         let error = registry.register(Arc::new(EmptyService)).err().unwrap();
         assert_eq!(error.code, Code::AlreadyExists);
+    }
+
+    #[test]
+    fn a_request_streaming_call_is_unimplemented_unless_a_channel_carries_it() {
+        let empty: RpcStream<Vec<u8>> = Box::pin(futures_util::stream::empty());
+        let error = futures_executor::block_on(
+            EmptyService.client_stream("/test.Service/Call", Request::new(empty)),
+        )
+        .unwrap_err();
+        assert_eq!(error.code, Code::Unimplemented);
+    }
+
+    #[test]
+    fn a_service_set_lists_its_members_descriptors_in_source_order() {
+        assert_eq!(
+            <(ServiceId, ServiceId) as ServiceSet>::DESCRIPTORS,
+            &[DESCRIPTOR, DESCRIPTOR]
+        );
+    }
+
+    #[test]
+    fn a_version_is_compatible_within_the_recorded_window() {
+        let local = Version { major: 1, minor: 4 };
+        assert!(compatible(local, Version { major: 1, minor: 2 }));
+        assert!(!compatible(local, Version { major: 1, minor: 1 }));
+        assert!(!compatible(local, Version { major: 2, minor: 4 }));
+    }
+
+    #[test]
+    fn every_status_detail_variant_round_trips_through_its_tag() {
+        for &reason in Reason::ALL {
+            let status = reason.into_status("test");
+            assert_eq!(status.code, Code::Unavailable);
+            assert_eq!(Reason::from_status(&status), Some(reason));
+        }
+        assert_eq!(
+            Reason::from_status(&Status::new(Code::Unavailable, "plain")),
+            None
+        );
+        assert_eq!(
+            Reason::from_status(&Status::new(Code::Internal, "other")),
+            None
+        );
     }
 }

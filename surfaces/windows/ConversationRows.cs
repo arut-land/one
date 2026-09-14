@@ -1,60 +1,60 @@
-using System.ComponentModel;
-using Arut.Bindings;
+using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Controls;
 
 namespace Arut.Surface.Windows;
 
-public sealed class MessageRow
+/// <summary>
+/// One transcript row. Rust decides the grouping (`StartsTimeGroup`,
+/// `StartsSpeakerGroup`); Windows decides how a date reads here.
+/// </summary>
+public sealed record MessageRow(
+    ulong Id,
+    string Text,
+    bool IsOutgoing,
+    bool StartsGroup,
+    string Time,
+    string FullTime,
+    string TimeGroup
+)
 {
-    internal bool RevealOnLoad { get; set; }
-
-    public MessageRow(ChatMessage message)
+    public static MessageRow From(ChatMessage message)
     {
-        Id = message.Id;
-        Text = message.Text;
-        IsOutgoing = message.Role == ChatRole.User;
         var acceptedAtMs = message.AcceptedAtMs;
         var timestamp =
             acceptedAtMs > 0 && acceptedAtMs <= 253402300799999UL
                 ? DateTimeOffset.FromUnixTimeMilliseconds((long)acceptedAtMs).ToLocalTime()
                 : (DateTimeOffset?)null;
-        StartsGroup = message.StartsSpeakerGroup;
-        Time = timestamp?.ToString("t") ?? "";
-        FullTime = timestamp?.ToString("f") ?? "";
-        TimeGroup = message.StartsTimeGroup ? FullTime : "";
+        return new MessageRow(
+            message.Id,
+            message.Text,
+            message.Role == ChatRole.User,
+            message.StartsSpeakerGroup,
+            timestamp?.ToString("t") ?? "",
+            timestamp?.ToString("f") ?? "",
+            message.StartsTimeGroup ? timestamp?.ToString("f") ?? "" : ""
+        );
     }
 
-    public ulong Id { get; }
-    public string Text { get; }
-    public bool IsOutgoing { get; }
-    public bool StartsGroup { get; }
-    public string Time { get; }
-    public string FullTime { get; }
-    public string TimeGroup { get; }
-    public string Author => IsOutgoing ? L10n.ChatRoleYou() : L10n.ChatRoleAssistant();
+    public string Author =>
+        IsOutgoing ? L10n.Get(L10n.ChatRoleYou) : L10n.Get(L10n.ChatRoleAssistant);
+    // x:Bind converts bool to Visibility itself, so no converter is needed.
+    public bool HasTime => Time.Length > 0;
+    public bool HasTimeGroup => TimeGroup.Length > 0;
+    public Thickness Spacing => new(0, StartsGroup ? 10 : 2, 0, 0);
 
     public override string ToString() => $"{Author}: {Text}. {FullTime}";
 }
 
-// WinUI's XAML compiler generates setters for record structs. Expose read-only
-// presentation properties without changing the generated Rust value types.
-public sealed class ConversationRow(ChatSummary summary) : INotifyPropertyChanged
+/// <summary>Outgoing and incoming bubbles are two templates, not one template
+/// plus visual states, so each keeps its own theme brushes in XAML.</summary>
+public sealed class MessageTemplateSelector : DataTemplateSelector
 {
-    public string Id => summary.Id;
-    public string Title => summary.Title;
-    public string Preview => summary.Preview;
-    public event PropertyChangedEventHandler? PropertyChanged;
+    public DataTemplate? Incoming { get; set; }
+    public DataTemplate? Outgoing { get; set; }
 
-    // Keep the native item container and its focus when a title or preview changes.
-    internal void Update(ChatSummary next)
-    {
-        var titleChanged = summary.Title != next.Title;
-        var previewChanged = summary.Preview != next.Preview;
-        summary = next;
-        if (titleChanged)
-            PropertyChanged?.Invoke(this, new(nameof(Title)));
-        if (previewChanged)
-            PropertyChanged?.Invoke(this, new(nameof(Preview)));
-    }
+    protected override DataTemplate? SelectTemplateCore(object item) =>
+        item is MessageRow { IsOutgoing: true } ? Outgoing : Incoming;
 
-    public override string ToString() => Title;
+    protected override DataTemplate? SelectTemplateCore(object item, DependencyObject container) =>
+        SelectTemplateCore(item);
 }

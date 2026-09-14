@@ -38,8 +38,7 @@ version = "0.1.0"
 dependencies = [
  "arut-rpc",
  "arut-storage",
- "arut-transport-connect-http",
- "arut-transport-ipc",
+ "arut-transport",
  "axum",
  "futures-util",
  "tokio",
@@ -50,10 +49,8 @@ name = "arut-dev"
 version = "0.1.0"
 dependencies = [
  "arut-i18n",
- "fluent-syntax",
- "quote",
+ "arut-i18n-catalog",
  "serde_json",
- "syn 2.0.119",
  "toml",
 ]
 
@@ -69,6 +66,7 @@ dependencies = [
  "arut-watch",
  "boltffi",
  "futures-executor",
+ "futures-lite",
  "futures-util",
  "prost",
  "thiserror",
@@ -81,17 +79,24 @@ name = "arut-i18n"
 version = "0.1.0"
 dependencies = [
  "arut-feature-chat",
+ "arut-i18n-catalog",
  "fluent-bundle",
  "fluent-langneg",
- "fluent-syntax",
  "unic-langid",
+]
+
+[[package]]
+name = "arut-i18n-catalog"
+version = "0.1.0"
+dependencies = [
+ "fluent-syntax",
 ]
 
 [[package]]
 name = "arut-i18n-macros"
 version = "0.1.0"
 dependencies = [
- "fluent-syntax",
+ "arut-i18n-catalog",
  "proc-macro2",
  "quote",
  "syn 2.0.119",
@@ -105,7 +110,7 @@ dependencies = [
  "arut-product-session",
  "arut-runtime-local",
  "ashpd",
- "futures-util",
+ "futures-lite",
  "gtk4",
  "relm4",
 ]
@@ -145,6 +150,7 @@ name = "arut-rpc"
 version = "0.1.0"
 dependencies = [
  "futures-core",
+ "futures-executor",
  "futures-util",
  "prost",
  "tokio-util",
@@ -158,10 +164,8 @@ dependencies = [
  "arut-feature-chat",
  "arut-rpc",
  "arut-storage",
- "arut-watch",
  "async-executor",
  "futures-lite",
- "futures-util",
  "uuid",
 ]
 
@@ -176,8 +180,7 @@ dependencies = [
  "arut-rpc",
  "arut-runtime-host-polled",
  "arut-storage",
- "arut-transport-connect-http",
- "arut-transport-ipc",
+ "arut-transport",
  "axum",
  "futures-util",
  "rustix",
@@ -192,27 +195,23 @@ dependencies = [
  "blake3",
  "prost",
  "redb",
+ "thiserror",
  "tracing",
 ]
 
 [[package]]
-name = "arut-transport-connect-http"
+name = "arut-transport"
 version = "0.1.0"
 dependencies = [
  "arut-rpc",
  "axum",
  "base64 0.22.1",
+ "bytes",
  "futures-util",
+ "http-body-util",
  "reqwest",
  "serde_json",
-]
-
-[[package]]
-name = "arut-transport-ipc"
-version = "0.1.0"
-dependencies = [
- "arut-transport-connect-http",
- "reqwest",
+ "tokio-util",
 ]
 
 [[package]]
@@ -2754,6 +2753,7 @@ dependencies = [
  "bytes",
  "futures-core",
  "futures-sink",
+ "libc",
  "pin-project-lite",
  "tokio",
 ]

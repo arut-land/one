@@ -12,6 +12,10 @@
 //! `Node(NodeFailure)` and `Draft(ComposerError)` shapes -- delegates to that
 //! value, because a node failure reads the same whichever scope met it.
 //!
+//! The source is read through `arut-i18n-catalog`, the same parser
+//! `product/i18n/build.rs` and `arut-dev generate` use, so this derive cannot
+//! accept a message the generator would later refuse.
+//!
 //! This is a proc macro, so a crate that derives it takes a build-time
 //! dependency and no runtime one: the expansion names nothing from `arut-i18n`,
 //! only `&'static str`. That is what lets a `features/` crate use it without
@@ -31,8 +35,8 @@ use syn::{Data, DeriveInput, Fields, parse_macro_input};
 /// deriving, so any crate in the workspace expands against the same files.
 const LOCALES: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../locales/en");
 
-/// Derive `message_key` from the enum and variant names, checked against the
-/// Fluent source.
+/// Derive `message_key` and `MESSAGE_KEYS` from the enum and variant names,
+/// checked against the Fluent source.
 #[proc_macro_derive(Localized)]
 pub fn localized(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
@@ -55,6 +59,7 @@ fn expand(input: &DeriveInput) -> syn::Result<TokenStream2> {
     let prefix = kebab(&name.to_string());
 
     let mut arms = Vec::new();
+    let mut keys = Vec::new();
     for variant in &data.variants {
         let variant_name = &variant.ident;
         let key = format!("{prefix}-{}", kebab(&variant_name.to_string()));
@@ -66,9 +71,12 @@ fn expand(input: &DeriveInput) -> syn::Result<TokenStream2> {
                 Fields::Unnamed(_) => quote!(Self::#variant_name(..)),
             };
             arms.push(quote!(#pattern => #key));
+            keys.push(key);
             continue;
         }
-        // No message of its own: the wrapping shape delegates to what it wraps.
+        // No message of its own: the wrapping shape delegates to what it wraps,
+        // and the wrapped enum's own `MESSAGE_KEYS` covers the keys it can
+        // produce.
         match &variant.fields {
             Fields::Unnamed(fields) if fields.unnamed.len() == 1 => {
                 let inner = format_ident!("inner");
@@ -87,8 +95,8 @@ fn expand(input: &DeriveInput) -> syn::Result<TokenStream2> {
         }
     }
 
-    // Naming the source files makes cargo rebuild this crate when a message
-    // changes, which is what keeps the check above honest.
+    // Naming the source files makes cargo rebuild the deriving crate when a
+    // message changes, which is what keeps the check above honest.
     let tracked = files.iter().map(|file| {
         let path = file.to_string_lossy().into_owned();
         quote!(
@@ -100,6 +108,12 @@ fn expand(input: &DeriveInput) -> syn::Result<TokenStream2> {
         #(#tracked)*
 
         impl #name {
+            /// Every Fluent message id this enum names itself, in variant order.
+            ///
+            /// A variant that delegates to what it wraps contributes nothing
+            /// here; the wrapped enum lists its own keys.
+            pub const MESSAGE_KEYS: &'static [&'static str] = &[#(#keys),*];
+
             /// The Fluent message id for this variant (ADR 0022).
             ///
             /// Derived from the enum and variant names and checked against the
@@ -156,57 +170,43 @@ fn read_source() -> Result<Source, String> {
         .filter(|path| path.extension().is_some_and(|extension| extension == "ftl"))
         .collect();
     files.sort();
-    let mut messages = BTreeMap::new();
-    for file in &files {
-        let source = fs::read_to_string(file).map_err(|error| error.to_string())?;
-        let (Ok(resource) | Err((resource, _))) = fluent_syntax::parser::parse(source.as_str());
-        for entry in resource.body {
-            if let fluent_syntax::ast::Entry::Message(message) = entry {
-                let mut arguments = BTreeSet::new();
-                if let Some(pattern) = &message.value {
-                    collect_variables(pattern, &mut arguments);
-                }
-                messages.insert(message.id.name.to_owned(), arguments);
-            }
-        }
-    }
+    let sources: Vec<(String, String)> = files
+        .iter()
+        .map(|file| {
+            let name = file
+                .file_name()
+                .and_then(|name| name.to_str())
+                .unwrap_or_default()
+                .to_owned();
+            fs::read_to_string(file)
+                .map(|text| (name, text))
+                .map_err(|error| error.to_string())
+        })
+        .collect::<Result<_, _>>()?;
+    let borrowed: Vec<(&str, &str)> = sources
+        .iter()
+        .map(|(name, text)| (name.as_str(), text.as_str()))
+        .collect();
+    let locale = arut_i18n_catalog::parse("en", &borrowed).map_err(|refusals| {
+        refusals
+            .iter()
+            .map(ToString::to_string)
+            .collect::<Vec<_>>()
+            .join("\n")
+    })?;
+    let messages = locale
+        .messages
+        .into_iter()
+        .map(|(id, message)| {
+            let arguments = message
+                .arguments()
+                .into_iter()
+                .map(|argument| argument.name)
+                .collect();
+            (id, arguments)
+        })
+        .collect();
     Ok((files, messages))
-}
-
-fn collect_variables(pattern: &fluent_syntax::ast::Pattern<&str>, into: &mut BTreeSet<String>) {
-    use fluent_syntax::ast::{Expression, PatternElement};
-    for element in &pattern.elements {
-        let PatternElement::Placeable { expression } = element else {
-            continue;
-        };
-        match expression {
-            Expression::Inline(inline) => collect_inline(inline, into),
-            Expression::Select { selector, variants } => {
-                collect_inline(selector, into);
-                for variant in variants {
-                    collect_variables(&variant.value, into);
-                }
-            }
-        }
-    }
-}
-
-fn collect_inline(
-    inline: &fluent_syntax::ast::InlineExpression<&str>,
-    into: &mut BTreeSet<String>,
-) {
-    use fluent_syntax::ast::InlineExpression;
-    match inline {
-        InlineExpression::VariableReference { id } => {
-            into.insert((*id.name).to_owned());
-        }
-        InlineExpression::FunctionReference { arguments, .. } => {
-            for argument in &arguments.positional {
-                collect_inline(argument, into);
-            }
-        }
-        _ => {}
-    }
 }
 
 /// `ComposerError` -> `composer-error`, `TimedOut` -> `timed-out`.
@@ -256,7 +256,7 @@ mod tests {
     fn the_string_source_is_where_this_crate_says_it_is() {
         let (files, messages) = read_source().expect("the default locale is readable");
         assert!(!files.is_empty());
-        assert!(messages.contains_key("chat-error-no-conversation"));
+        assert!(messages.contains_key("chat-error-cancelled"));
         assert!(
             messages["composer-error-revision-conflict"].contains("current"),
             "the argument of a message is read off its pattern"

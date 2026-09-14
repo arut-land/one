@@ -19,7 +19,7 @@ The current directories and the two Phase 1 additions are:
 
 ```text
 surfaces/              views and deployment composition roots
-bindings/              FFI exports and per-language observation adapters
+bindings/              FFI exports and the per-ecosystem package roots
 product/               sessions, node/workspace scopes, localization
 features/chat/         chat acceptance, clients, projections, composer, ports
 substrates/authority/  generic command acceptance and projection reduction
@@ -27,7 +27,7 @@ substrates/storage/    FactLog, BlobStore, KeyValue; memory and native redb
 substrates/watch/      revisioned watch values and subscriptions
 substrates/identity/   Phase 1: iroh identity and pairing integration
 protocols/             Protobuf contracts, Rust generator, RPC vocabulary
-transports/            Connect HTTP and Unix IPC channels
+transports/            arut-transport: Connect HTTP framing, Unix IPC behind cfg(unix)
 transports/iroh/       Phase 1: RpcChannel over iroh streams
 runtimes/              local native drivers, host-polled memory ports, browser callbacks
 tools/                 development commands and shared conformance suites
@@ -35,9 +35,9 @@ tools/                 development commands and shared conformance suites
 
 Substrates depend only on substrates and protocols. Runtimes compose features, product, substrates, protocols, transports, and other runtimes. Features depend on substrates and protocols. Product depends on features, substrates, protocols, and other product crates. Rust surfaces consume product clients directly; foreign surfaces import their binding package. Composition roots select runtimes. Transport implementations depend on RPC contracts, not product behavior. A binding does not select a host mode on behalf of a view.
 
-`arut-dev layers --check` reads Cargo metadata, including optional, target-specific, build, and development edges. It rejects forbidden dependencies, Tokio executor features and wasm-bindgen in isolated core graphs, and weakened `unsafe_code` lints. Parsed Rust source also rejects feature `ServiceImpl` names in product and runtimes and `Authority` names in runtimes, including aliases and macro bodies. Tests are checked too.
+`arut-dev check` reads Cargo metadata, including optional, target-specific, build, and development edges, and rejects a dependency the table above forbids. It also rejects a crate that weakens the workspace `unsafe_code` deny, any `bindings/ffi` dependency other than BoltFFI, a relative TypeScript import that escapes its surface or runtime package, generated localization resources that differ from `product/i18n/locales`, and an `x:Uid` in the WinUI XAML that the generated `.resw` does not define. The source scans for feature `ServiceImpl` and `Authority` names are gone: a feature's service implementations are `pub(crate)`, so Rust privacy already stops a crate above them from naming one.
 
-Four exceptions are recorded in the tool: the chat feature's i18n derive macro, IPC's reuse of Connect framing, the FFI factory's host-polled runtime dependency, and the FFI crate's test-only `futures-executor`. `arut-dev bindings --check` verifies native export facades, rejects direct generated FFI imports outside bindings, and rejects relative TypeScript source paths that escape a surface or runtime package.
+Three exceptions are recorded in the tool: the chat feature's i18n derive macro, which is a build-time proc-macro edge; the FFI factory's host-polled runtime dependency; and the FFI crate's test-only `futures-executor`. The remaining core-graph rules are the `check:core-graph` mise task, five lines of shell: `cargo tree` proves that `arut_ffi` built for wasm reaches neither wasm-bindgen nor a Tokio executor, and a grep proves that no crate under `features/`, `product/`, `substrates/` or `bindings/` opts out of the unsafe-code deny.
 
 ## Scopes
 
@@ -69,7 +69,7 @@ The chat feature requires four ports in `features/chat/src/ports.rs`:
 - `Drafts::drafts()` supplies local key-value recovery storage.
 - `Clock::now() -> u64` supplies Unix milliseconds.
 
-`ChatRuntime` combines these ports with `Send + Sync + 'static`. `compose(Arc<R>)` constructs private chat and composer authorities and services. `ChatFeature` exposes generated clients, erased routers, and registrations derived from those routers' descriptors. A runtime without the required ports cannot compose chat.
+`ChatRuntime` combines these ports with `Send + Sync + 'static`. `compose(Arc<R>)` constructs private chat and composer authorities and services. `ChatFeature` exposes generated clients and erased routers; its services are named by the type `ChatServices`, a tuple of the two generated service markers, rather than by a registration list. A runtime without the required ports cannot compose chat.
 
 `LocalRuntime` supplies native UUIDv7 IDs, wall time, redb logs, draft storage, and the node lease. `arutd` composes chat and passes its routers to `Node::serve`. This runtime assembly type is distinct from the product's ownership scope `Node<R>`. `Node::serve` registers routers and the derived capability service. Its small `Blocking` adapter runs dispatch construction and future polling through `spawn_blocking`, retaining the runtime during active calls. Redb's synchronous transactions still need that executor isolation.
 
@@ -79,7 +79,9 @@ The chat feature requires four ports in `features/chat/src/ports.rs`:
 
 ## Acceptance, facts, and recovery
 
-`Command` declares its scope, fact, projection, rejection, epoch, precondition, optional expiry, and pure `apply(current, now)` function. `Authority<C>` serializes acceptance through `FactLog::commit`. The transaction refreshes the projection, checks the retry outcome, validates the command, and optionally appends one record. Outcomes distinguish applied, duplicate, revision conflict, authority mismatch, superseded, and rejected commands.
+`Command` declares its fact, projection, rejection, epoch, optional expiry, a pure `apply(current, now)` function, and `precondition(&self, &Self::Projection) -> Result<(), Conflict>`. The precondition is a method rather than a declared enum, so each command answers its own staleness question against the projection it reduces; `Conflict` names the two answers every command can give, a revision that moved and a superseded pending value.
+
+`Authority<C>` serializes acceptance through `FactLog::commit`, which is now the log's only mutating entry point: `FactLog::append` is deleted, and the conformance suite carries its own compare-and-append. Inside `arut-storage`, one `commit_policy` function over an internal `LogStore` trait holds fencing, deduplication, cursor validation, and append ordering. Memory and redb each implement `LogStore` and inherit that policy instead of restating it. The transaction refreshes the projection, checks the retry outcome, validates the command, and optionally appends one record. Outcomes distinguish applied, duplicate, revision conflict, authority mismatch, superseded, and rejected commands.
 
 Chat invokes `execute_with_clock`. The authority reads the supplied clock inside the transaction after deduplication. The accepted `ChatFact` batch and its transcript messages carry `accepted_at_ms`. `ChatMessage` in the projection and generated FFI bindings preserves that timestamp. The Protobuf additions are field 6 on `ChatFact` and field 4 on `ChatMessage`; older rows decode with zero. A retry returns the original timestamp.
 
@@ -101,25 +103,29 @@ Memory implements all three ports for tests and wasm. Redb is an opt-in Cargo fe
 
 `Watch<T>` wraps `tokio::sync::watch` with Tokio's `sync` feature only. Updates compare a detached candidate and increment the revision only when the value changes. New subscribers receive an initial invalidation; intervening updates may coalesce. Dropping the writer closes subscriptions.
 
-Product sessions expose conversation summaries and composer availability. Chat and composer handles expose separate watches. Transcript metadata contains `last_message_id`; `messages_after(id)` returns immutable keyed rows strictly after that cursor. Surfaces cache rows and fetch only additions. Connectivity and operation handles are targets, not current exports.
+Product sessions expose conversation summaries and composer availability. The conversations watch also holds the selection: `select(id)` and `selected_id()` move it through the invalidation every surface already observes, so no surface keeps its own copy. Chat and composer handles expose separate watches. Transcript metadata contains `last_message_id`; `messages_after(id)` returns immutable keyed rows strictly after that cursor. Surfaces cache rows and fetch only additions. Connectivity and operation handles are targets, not current exports.
 
-Projection types declare `#[boltffi::data]` in their owning crate and are re-exported by `bindings/ffi`. Explicit `#[export]` blocks expose handles and callback streams. BoltFFI's source scanner does not expand export macros, so these blocks remain explicit. `arut-dev bindings` generates Swift/Kotlin aliases and factory forwarding, plus C# source aliases. Observation adapters remain hand-written per ADR 0021. GTK consumes product types directly through its local observation module. A keyed `gio::ListModel` appends transcript rows with `items_changed(position, 0, 1)`, and `GtkListView` recycles their widgets. Composer and status GObject properties bind to widgets; one waker-driven GLib task per watch refreshes them without an intermediate component message. The native gtk-rs scheduler internally pairs its task source with a child waker source. No timer, extra thread, or per-invalidation task is added.
+`ChatState` carries `can_send`, `is_sending`, and `is_empty` as fields, recomputed by `ChatState::derive` on every write to the projection. They are pure functions of the other fields, so five surfaces do not restate the same rule. `can_send` deliberately excludes "the draft is non-empty": the draft is `ComposerState.text`, which a surface observes separately, and merging the two would need the single merged view ADR 0007 rejects. Chat and composer handles expose `error_key()` and `error_args()`, the Fluent id and arguments of the current typed error, so a surface selects a sentence without one crossing FFI (ADR 0016, ADR 0022).
 
-The Linux shell uses a searchable list model, desktop-configured decorations and toolbar, and a split view that collapses below 720 logical pixels. Transcript and composer share an 880-pixel reading column. Visited composer controllers retain buffers and ordered edit queues; transcript reading positions are retained per conversation. Actions use `gio::SimpleAction` and `GtkShortcutController`. GTK theme colors, portal accent and reduced motion, and `gtk-enable-animations` control appearance and transitions. `decorations.rs` preserves GTK’s native server-decoration preference, follows explicit portal button layouts for client frames, and uses a genuine buttonless toolbar on tilers. `mise run review:linux` exercises real IPC fixtures through opt-in actions on an isolated Hyprland output, captures three sizes plus the narrow breakpoint, and removes its window and output.
+`ComposerClient::replace(text)` writes `text` into `ComposerState.text` at call time, before its future is polled, and resolves when a flush carrying that text or a later one is acknowledged. Edits coalesce behind one in-flight request: 100 rapid calls issue two `replace_composer` requests and the last text wins. `ChatClient::send` flushes the composer before it takes the operation lock, so a send after unflushed keystrokes commits what the person typed. A surface binds a text field straight to `ComposerState.text` and keeps no queue of its own (ADR 0024).
 
-FFI observation uses a host-polled callback driver. The standalone `HostPolledSpawner` implements `LocalSpawner` through `async_executor::LocalExecutor` and bounded ticks; platform callbacks do not yet drive it. Idle unsubscribed FFI observers may remain retained until the next source change, an open roadmap decision.
+Projection types declare `#[boltffi::data]` in their owning crate and are re-exported by `bindings/ffi`. Explicit `#[export]` blocks expose handles and revision streams. BoltFFI's source scanner does not expand export macros, so these blocks remain explicit. The four streams declare `mode = "async"`, so each ecosystem receives its own idiom: a Swift `AsyncStream`, a Kotlin `Flow`, a C# `IAsyncEnumerable`, and a TypeScript async iterable. Nothing renames the generated types: Swift re-exports `ArutFfi`, the .NET props file carries `<Using Include="Arut.Ffi" />`, and Kotlin surfaces import `dev.arut.ffi` directly. What each platform keeps is one generic subscribe-and-read helper over those streams, not an observation class per handle (ADR 0021). GTK consumes product types directly through its local observation module. A keyed `gio::ListModel` appends transcript rows with one `items_changed(position, 0, count)` per batch, and `GtkListView` recycles their widgets. Composer and status GObject properties bind to widgets; one waker-driven GLib task per watch refreshes them without an intermediate component message. The native gtk-rs scheduler internally pairs its task source with a child waker source. No timer, extra thread, or per-invalidation task is added.
+
+The Linux shell uses a searchable list model, desktop-configured decorations and toolbar, and a split view that collapses below 720 logical pixels. Transcript and composer share an 880-pixel reading column. Visited composer controllers retain their buffers; the draft itself echoes locally and flushes last-writer-wins, so the surface holds no edit queue. Transcript reading positions are retained per conversation. Actions use `gio::SimpleAction` and `GtkShortcutController`. One `style.css` provider at application priority refers to GTK's own named theme colors, so the running theme resolves them; the appearance portal supplies the two settings GTK 4.20 does not, accent and reduced motion, and `gtk-enable-animations` gates transitions. `decorations.rs` probes an unmapped window for GTK's server-decoration preference and reads `gtk-decoration-layout`, into which GTK already folds the portal's button layout. Server frames win; Hyprland, Sway, river, niri, and empty layouts get a real toolbar with no window controls; KDE uses compositor frames when offered and never an invented GNOME or Breeze layout; only GNOME falls back to GNOME buttons. Only navigation is persisted, under `XDG_STATE_HOME/arut/linux-ui`; the node owns conversations and drafts. `mise run review:linux` runs `tools/review-linux.sh`, which builds with `--features review`, exercises real IPC fixtures on an isolated Hyprland output, captures three sizes plus the narrow breakpoint, and removes its window and output.
+
+FFI observation lives in `bindings/ffi/src/observation.rs`, which bridges a `Subscription<u64>` onto a capacity-one BoltFFI `EventSubscription` through `std::task::Wake`, so the crate depends on no external crate but BoltFFI. The standalone `HostPolledSpawner` in `runtimes/host-polled` implements `LocalSpawner` through `async_executor::LocalExecutor` and bounded ticks; platform callbacks do not yet drive it. Idle unsubscribed FFI observers may remain retained until the next source change, an open roadmap decision.
 
 ## Protocols and transport
 
-`protocols/proto/arut` contains capability, chat, and nested composer packages. `protox` compiles descriptors; `arut-protocol-build` generates Rust service traits, direct and remote clients, routers, procedure names, and descriptors. Direct calls pass typed values. Remote calls encode at `RpcChannel`. The generator supports all four streaming shapes.
+`protocols/proto/arut` contains capability, chat, and nested composer packages. `protox` compiles descriptors; `arut-protocol-build` generates Rust service traits, direct and remote clients, routers, procedure names, descriptors, and one `Service` marker type per service. Direct calls pass typed values. Remote calls encode at `RpcChannel`. All four streaming shapes stay declared on `RpcChannel`, but `client_stream` and `bidirectional` carry default bodies that return `Unimplemented`, so a transport implements only the shapes it can carry and the generator emits a router arm for a shape only when a service has a method of it.
 
-The registry supplies an in-process channel. Connect HTTP and Unix IPC support unary calls and server streams; request-streaming calls return `Unimplemented`. Connect framing bounds messages to 8 MiB and preserves typed status codes and details. IPC reuses the HTTP framing with a Unix-socket connector. No WebSocket or iroh channel exists yet.
+The registry supplies an in-process channel. One crate, `arut-transport`, holds Connect HTTP and, behind `#[cfg(unix)] pub mod ipc`, the Unix-socket connector over the same framing; both support unary calls and server streams. Connect framing bounds messages to 8 MiB through `http_body_util::Limited` and preserves typed status codes and details, and a `tokio_util::codec::Decoder` reads envelopes for the server and the streaming client alike. `StatusDetail` maps a typed enum onto one status code and a tag byte in the status detail, which is how a daemon's startup result reaches its parent as a value rather than a parsed line. No WebSocket or iroh channel exists yet.
 
-The capability service derives its manifest from registrations. Product maps composer presence, current availability, and manifest failures into `FeatureAvailability`. Per-service availability types are not generated, and capabilities do not yet stream. ADR 0015's two-minor compatibility window remains Phase 1 work. `buf breaking` checks additive schema evolution against local `master`, not negotiated runtime compatibility.
+The capability service derives its manifest from typed service markers (ADR 0025). Each generated service has a marker carrying its `ServiceDescriptor` as an associated constant, tuples of markers implement `ServiceSet`, and `manifest::<S>()` builds the manifest from the set. `Node::serve` takes that set as a type parameter, so no package or service name is written by hand in the product. `CapabilityManifest::availability::<S>()` answers `Available`, `ReportedUnavailable`, or `NotAdvertised`, and product maps those plus manifest failures into `FeatureAvailability`. Per-service availability types are still not generated, and capabilities do not yet stream. `ServiceDescriptor::version` is a `Version { major, minor }` and `compatible()` states ADR 0015's two-minor window, but nothing produces a minor other than zero yet, so the comparison is inert until a second minor exists. `buf breaking` checks additive schema evolution against local `master`, not negotiated runtime compatibility.
 
 ## Hosting and browser composition
 
-`Host` and `HostMode` describe in-process, child-process, system-service, and remote hosting. `ChildHost` starts `arutd`, waits for `READY`, and retains the child with its channel. `ScheduledChannel` dispatches through a supplied spawner. Executor creation lives in the local runtime and the daemon root; GTK dispatches UI work on GLib when its futures are woken.
+`Host` and `HostMode` describe in-process, child-process, system-service, and remote hosting. `ChildHost` starts `arutd` and waits up to 10 seconds for its handshake line, a bound `ARUT_READY_TIMEOUT_MS` overrides. One `Readiness` enum owns both sides of that handshake: the daemon prints `Readiness::line()`, the parent parses it back, and `LeaseHeld`, `SocketUnreachable`, `SpawnFailed`, or `TimedOut` reaches the caller as a typed `Unavailable` status through `StatusDetail`. Channel layers are one type as well: `Wrapped<W>` forwards unary and server-stream calls through a `Wrap`, which is how spawner scheduling, redb's `spawn_blocking` isolation, and the child process's lifetime are each expressed. Executor creation lives in the local runtime and the daemon root; GTK dispatches UI work on GLib when its futures are woken.
 
 | Surface | Current composition | Remaining target |
 | --- | --- | --- |
@@ -127,18 +133,20 @@ The capability service derives its manifest from registrations. Product maps com
 | Apple | SwiftUI, in-process memory FFI session | macOS child hosting; iOS lifecycle support |
 | Android | Compose, ViewModel-owned memory FFI session | foreground service and persistent node |
 | Windows | WinUI, in-process memory FFI session | child hosting and persistent node |
-| Web, Chromium | wasm memory session in the page | worker/lifecycle integration and remote routes |
-| VS Code | wasm session in the extension host, webview messages | native extension-host composition or daemon route |
+| Web, Chromium | wasm memory session in the page, rendering `@arut/chat-ui` | worker/lifecycle integration and remote routes |
+| VS Code | wasm session in the extension host; the webview renders `@arut/chat-ui` over a `postMessage` port and receives whole projections | native extension-host composition or daemon route |
 
-`runtimes/browser` is the pnpm package `@arut/runtime-browser`. Web and VS Code import its UUIDv7 callback through the package export and supply wall time to the binding. Chromium imports the web composition entry through `@arut/surface-web/main`. This keeps runtime selection in composition roots while making package dependencies explicit. Relative TypeScript paths cannot escape surface or runtime packages.
+`runtimes/browser` is the pnpm package `@arut/runtime-browser`. Web, Chromium, and VS Code import its UUIDv7 callback through the package export and supply wall time to the binding. `surfaces/chat-ui` is `@arut/chat-ui`: the React chat view, the `ChatPort` interface shaped like the generated session handle, `wasmPort` (the session itself) and `bridgePort` (a webview over posted projections), and `mountChat`. Each browser root is a few lines that pick a port and mount the view. Relative TypeScript paths cannot escape surface or runtime packages; `pnpm check` runs one browser `tsc` project, one Node project for the extension host, and the store tests.
 
 Terminal, JetBrains, watch, and messaging surfaces have no directories yet.
 
 ## Localization
 
-`product/i18n/locales/en` is the current Fluent source. `arut-dev i18n` generates native resources, typed accessors, and Fluent copies for web/editor surfaces. GTK uses Rust `Localizer`; TypeScript uses Fluent bundles; Apple, Android, and Windows use native resources. Surface error mappings select typed accessors; product transitions return typed errors rather than sentences.
+`product/i18n/locales/en` is the current Fluent source, and one crate parses it: `arut-i18n-catalog` is shared by `product/i18n`'s build script, the `Localized` derive, and `arut-dev`, so a message the generator would refuse can no longer compile through the derive. The build script writes the `Message` enum and `Message::KEYS` into `OUT_DIR`; no generated Rust is checked in.
 
-`Localized` derives message keys and validates them against the English source at compile time. Locale completeness tests and generator checks detect missing or stale output. Adding a locale requires its files and registration in `product/i18n/src/lib.rs`. Locale choice stays outside the feature core.
+`mise run generate` writes the native resources: `Localizable.xcstrings` for Apple, `values/strings.xml` for Android, `Resources.resw` for Windows, and one `bindings/typescript/src/generated/catalog.ts` carrying the Fluent text the browser and editor surfaces used to fetch as copied files. Typed accessors are generated only where a platform has no checked accessor of its own. Android uses `R.string` and `R.plurals` and has no generated Kotlin. Swift and C# get key constants over `String(localized:)` and `ResourceLoader`, with a generated `Quantity()` on the C# side because `.resw` has no plural form. TypeScript gets a `MessageKey` union, an `Args` map, and one `t()`. GTK uses the Rust `Localizer`; surface error mappings select keys from typed values, and product transitions return typed errors rather than sentences.
+
+`Localized` derives message keys, validates them against the English source at compile time, and emits `MESSAGE_KEYS`, so the completeness test reads the required key list from the types instead of parsing the source itself. `arut-dev check` regenerates every resource and fails when the checked-in output differs, and fails on an `x:Uid` in the WinUI XAML that the generated `.resw` does not define. Adding a locale requires its files and registration in `product/i18n/src/lib.rs`. Locale choice stays outside the feature core.
 
 ## Accepted targets beyond the current slice
 
@@ -154,13 +162,13 @@ The workspace contains 18 Rust crates. The inventory below lists every crate and
 
 ```text
 /
-|-- .github/workflows/ci.yml
+|-- .github/workflows/{ci,android}.yml
 |-- CONTEXT.md, ARCHITECTURE.md
 |-- Cargo.toml, Cargo.lock, deny.toml
 |-- mise.toml, mise.lock, buf.yaml
 |-- package.json, pnpm-workspace.yaml, pnpm-lock.yaml, tsconfig.json
 |-- .gitignore, LICENSE-APACHE, LICENSE-MIT, LICENSE-FSL
-|-- docs/{PRD,ROADMAP,GLOSSARY,ECOSYSTEM}.md
+|-- docs/                          PRD, ROADMAP, GLOSSARY, ECOSYSTEM, OBSERVATION, BUILDING, platform notes
 |   `-- adr/                       numbered decisions and index.md
 |-- protocols/                     arut-protocol
 |   |-- proto/arut/capability/v1/
@@ -176,10 +184,9 @@ The workspace contains 18 Rust crates. The inventory below lists every crate and
 |-- product/
 |   |-- session/                    arut-product-session
 |   `-- i18n/                       arut-i18n
+|       |-- catalog/                arut-i18n-catalog: the one Fluent parser
 |       `-- macros/                 arut-i18n-macros
-|-- transports/
-|   |-- connect-http/               arut-transport-connect-http
-|   `-- ipc/                        arut-transport-ipc
+|-- transports/                     arut-transport: Connect HTTP, Unix IPC
 |-- runtimes/
 |   |-- local/                      arut-runtime-local, arutd
 |   |-- host-polled/                arut-runtime-host-polled
@@ -192,9 +199,10 @@ The workspace contains 18 Rust crates. The inventory below lists every crate and
 |   |-- linux/                      arut-linux
 |   |-- apple/shared/               Swift package and app sources
 |   |-- android/, windows/
+|   |-- chat-ui/                    @arut/chat-ui, the shared React chat view and ChatPort
 |   `-- web/, chromium/, vscode/
 `-- tools/
-    |-- dev/                        arut-dev: i18n, layers, bindings
+    |-- dev/                        arut-dev: generate, check
     `-- conformance/                arut-conformance: shared port tests
 ```
 
@@ -202,12 +210,12 @@ Foreign generated packages live under ignored `bindings/generated`. No README fi
 
 ## Tooling and verification
 
-Mise owns the pinned toolchains and task graph. Cargo builds Rust, pnpm builds and checks the TypeScript workspace, buf checks Protobuf, and BoltFFI packages foreign bindings. Gradle and XcodeGen are scoped to platform tasks. Machine-specific tuning belongs in ignored `mise.local.toml`.
+Mise owns the pinned toolchains and task graph. Cargo builds Rust, pnpm builds and checks the TypeScript workspace, buf checks Protobuf, and BoltFFI packages foreign bindings. The JVM tasks share one JDK 21 and one Gradle 8.12.1; Gradle, XcodeGen, and the .NET SDK are scoped to the platform tasks that need them, so a Windows build never installs Node. Machine-specific tuning belongs in ignored `mise.local.toml`.
 
-`tools/dev` is one binary crate, `arut-dev`, with `i18n`, `layers`, and `bindings` subcommands. Each accepts `--check`; layers always checks without writing. Mise calls these commands, and CI calls the same mise tasks. Platform tasks own Android target installation and Apple binding generation. Localization resource emitters and typed accessors share platform key naming. `tools/conformance` remains a test crate.
+`tools/dev` is one binary crate, `arut-dev`, with two subcommands: `generate` writes the localization resources, and `check` runs the repository rules listed above. Mise calls both, and CI calls the same mise tasks. Platform tasks own Android target installation and Apple binding generation. Localization resource emitters and typed accessors share platform key naming. `tools/conformance` remains a test crate.
 
-`mise run check` runs formatting, Clippy, nextest, doctests, cargo-machete, cargo-deny, isolated wasm builds, buf lint/breaking, localization and binding generation checks, layer checks, and TypeScript checks. `mise run build` builds GTK, `arutd`, and web/Chromium/VS Code bundles. Both gates run before every commit with `CARGO_BUILD_JOBS=4 NEXTEST_TEST_THREADS=4`.
+`mise run check` depends on five tasks. `check:rust` carries every cargo step in one task so they do not fight the build lock: formatting, Clippy, nextest, doctests, cargo-machete, the wasm build of the seven isolated core crates, and `arut-dev check`. `check:core-graph` is the `cargo tree` assertion and the unsafe-code grep. `check:proto` runs buf lint and buf breaking, `check:deps` runs cargo-deny, and `check:ts` type-checks the pnpm workspace. `mise run fmt:dotnet` formats C# with `dotnet format`, which the .NET SDK already carries, and `--verify-no-changes` checks instead of writing. `mise run build` builds GTK, `arutd`, and web/Chromium/VS Code bundles. Both gates run before every commit with `CARGO_BUILD_JOBS=4 NEXTEST_TEST_THREADS=4`.
 
-CI cancels superseded runs per branch. Linux runs on every push and pull request; Android runs only when `surfaces/android`, `bindings/kotlin`, `bindings/ffi`, `features`, `product`, `substrates`, `protocols`, `runtimes`, or `Cargo.lock` changes. macOS builds and runs Swift binding tests on pull requests and version tags. Native Android and Windows compilation remains unverified on this Linux machine. Apple build and validation details are recorded in `docs/APPLE.md`.
+CI cancels superseded runs per branch, and a manual dispatch keeps its own concurrency group. The Linux job runs `mise run check` and then `mise run build` inside a Fedora container, because the GitHub Ubuntu image ships GTK 4.14 and the surface needs 4.20. Dependency policy is a separate job, so an advisory-database fetch failure neither masks a compile failure nor blocks the build. Windows runs `mise run check:windows`. macOS builds and runs Swift binding tests on pull requests and version tags. Android has its own workflow, filtered by GitHub's `paths:` rather than by a job that computes changed files. Native Android and Windows compilation remains unverified on this Linux machine. Apple build and validation details are recorded in `docs/APPLE.md`.
 
-The simplification pass verified 115 nextest tests, all doctests, both gates, and the separately invoked display-backed GTK chat test. Conformance covers registry/HTTP/IPC RPC, memory/redb logs and key-value storage, and memory blobs. The generated wasm package passes a Node smoke test for draft/start/send/list, transcript ranges, and timestamps; TypeScript checks pass. No Swift, Kotlin, or C# source changed in this pass. Native regeneration and compilation must still verify the additive transcript timestamp in those bindings.
+`mise run check` and `mise run build` pass on this machine: 127 nextest tests, all doctests, `arut-dev check`, the core-graph assertions, buf lint and breaking, cargo-deny, the TypeScript projects and store tests, and the web, Chromium, and VS Code bundles. The 11 display-backed GTK tests are ignored by default and pass under `tools/review-linux.sh`, which also produced the review captures. Conformance covers registry/HTTP/IPC RPC, memory/redb logs and key-value storage, and memory blobs. Swift, Kotlin, and C# were rewritten without a compiler on this machine and must be built on their own platforms before release.

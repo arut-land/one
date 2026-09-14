@@ -11,11 +11,10 @@
 //! rather than in the core, which never learns the locale.
 
 use arut_i18n::{Localizer, Message};
-use arut_product_session::FeatureAvailability;
-use arut_product_session::SessionError;
 use arut_product_session::chat::{
     ChatError, ChatRole, ChatStatus, ComposerError, ComposerStatus, NodeFailure,
 };
+use arut_product_session::{FeatureAvailability, SessionError};
 use gtk::glib;
 use std::sync::OnceLock;
 
@@ -119,26 +118,13 @@ pub fn chat_error(error: ChatError) -> String {
     match error {
         ChatError::Node(failure) => node_failure(failure),
         ChatError::Draft(error) => composer_error(error),
-        ChatError::NoConversation => show(&Message::ChatErrorNoConversation),
         ChatError::Cancelled => show(&Message::ChatErrorCancelled),
         ChatError::ChatIdMissing => show(&Message::ChatErrorChatIdMissing),
     }
 }
 
-/// The connect-time transport statuses, which happen before any scope exists to
-/// carry a typed failure.
+/// The connect-time failure, which happens before any scope exists to carry
+/// one of its own. It is the same node answering, so it reads the same.
 pub fn rpc(error: &SessionError) -> String {
-    show(&match error {
-        SessionError::Unavailable => Message::RpcErrorUnavailable,
-        SessionError::Cancelled => Message::RpcErrorCancelled,
-        SessionError::Rejected => Message::RpcErrorRejected,
-        SessionError::TimedOut => Message::RpcErrorTimedOut,
-        SessionError::NotFound => Message::RpcErrorNotFound,
-        SessionError::AlreadyExists => Message::RpcErrorAlreadyExists,
-        SessionError::Denied => Message::RpcErrorDenied,
-        SessionError::Exhausted => Message::RpcErrorExhausted,
-        SessionError::Changed => Message::RpcErrorChanged,
-        SessionError::Unsupported => Message::RpcErrorUnsupported,
-        SessionError::Internal => Message::RpcErrorInternal,
-    })
+    node_failure(*error)
 }

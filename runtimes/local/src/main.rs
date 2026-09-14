@@ -11,7 +11,14 @@
 //! macOS has no equivalent for. Either path removes the socket before
 //! exiting; the node lease needs no code of its own; closing every file
 //! descriptor, which is how a process ends whichever way it ends, releases it.
+use arut_runtime_local::readiness::Readiness;
 use std::{env, path::PathBuf};
+
+/// The handshake `ChildHost` reads on this process's stdout; one table names
+/// both ends (`arut_runtime_local::readiness`).
+fn report(state: Readiness) {
+    println!("{}", state.line());
+}
 
 /// Best-effort: ask Linux to send `SIGTERM` when our parent dies, so an
 /// abrupt parent kill does not leave this process behind as an orphan. A
@@ -82,18 +89,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         // A held `try_lock` surfaces as exactly this `io::ErrorKind` (ADR
         // 0011): another node is already running against this data directory.
         Err(arut_storage::StorageError::Io(std::io::ErrorKind::WouldBlock)) => {
-            println!("NOTREADY lease");
-            return Err(Box::<dyn std::error::Error>::from(
-                "the node's lease is already held by another running node",
-            ));
+            report(Readiness::LeaseHeld);
+            return Err(Box::<dyn std::error::Error>::from(Readiness::LeaseHeld));
         }
         Err(error) => {
-            println!("NOTREADY io");
+            report(Readiness::SpawnFailed);
             return Err(Box::<dyn std::error::Error>::from(error));
         }
     };
     let chat = arut_feature_chat::compose(runtime.clone())?;
-    let app = arut_runtime_local::Node::serve(runtime, chat.routers())?;
+    let app = arut_runtime_local::Node::serve::<_, arut_feature_chat::ChatServices>(
+        runtime,
+        chat.routers(),
+    )?;
     #[cfg(unix)]
     if let Some(socket) = &socket {
         use std::os::unix::fs::PermissionsExt;
@@ -103,19 +111,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let listener = match tokio::net::UnixListener::bind(socket) {
             Ok(listener) => listener,
             Err(error) => {
-                println!("NOTREADY bind");
+                report(Readiness::SocketUnreachable);
                 return Err(Box::<dyn std::error::Error>::from(error));
             }
         };
         std::fs::set_permissions(socket, std::fs::Permissions::from_mode(0o600))?;
-        println!("READY");
+        report(Readiness::Ready);
         axum::serve(listener, app).await?;
         let _ = std::fs::remove_file(socket);
         return Ok(());
     }
     let address = env::var("ARUT_ADDRESS").unwrap_or_else(|_| "127.0.0.1:8787".into());
     let listener = tokio::net::TcpListener::bind(&address).await?;
-    println!("READY");
+    report(Readiness::Ready);
     axum::serve(listener, app).await?;
     Ok(())
 }

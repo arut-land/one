@@ -1,10 +1,10 @@
 use crate::composer::ComposerAuthority;
 use crate::composer::ComposerServiceImpl;
-use crate::test_support::TestIds;
+use crate::test_support::{Intercept, MemoryPorts, TestIds};
 use crate::{ChatClient, ChatStatus};
 use arut_protocol::chat::composer::v1::*;
 use arut_protocol::chat::v1::*;
-use arut_rpc::{Cancellation, Code, Request, Response, RpcFuture, RpcStream, Status};
+use arut_rpc::{Cancellation, Code, Request, Response, RpcFuture, Status};
 use futures_executor::block_on;
 use std::sync::{Arc, Mutex};
 
@@ -43,41 +43,28 @@ impl ChatService for AcceptThenLoseResponse {
     }
 }
 
-struct FailedClear(ComposerServiceImpl);
-impl ComposerService for FailedClear {
-    fn get_composer(
-        &self,
-        request: Request<GetComposerRequest>,
-    ) -> RpcFuture<Response<GetComposerResponse>> {
-        self.0.get_composer(request)
-    }
-    fn replace_composer(
-        &self,
-        request: Request<ReplaceComposerRequest>,
-    ) -> RpcFuture<Response<ReplaceComposerResponse>> {
-        if request.message.text.is_empty() {
-            Box::pin(async { Err(Status::new(Code::Internal, "draft disk unavailable")) })
-        } else {
-            self.0.replace_composer(request)
-        }
-    }
-    fn watch_composer(
-        &self,
-        request: Request<WatchComposerRequest>,
-    ) -> RpcFuture<Response<RpcStream<WatchComposerResponse>>> {
-        self.0.watch_composer(request)
-    }
+/// A composer whose disk refuses the empty write that clears a sent draft.
+fn failing_clear() -> ComposerServiceClient {
+    ComposerServiceClient::direct(Arc::new(
+        Intercept::new(ComposerServiceImpl::new(Arc::new(
+            ComposerAuthority::default(),
+        )))
+        .on_replace(|inner, request| {
+            if request.message.text.is_empty() {
+                Box::pin(async { Err(Status::new(Code::Internal, "draft disk unavailable")) })
+            } else {
+                inner.replace_composer(request)
+            }
+        }),
+    ))
 }
 
 #[test]
 fn retry_keeps_command_identity_and_cleanup_failure_keeps_accepted_messages() {
     let service = Arc::new(AcceptThenLoseResponse::default());
-    let composer = Arc::new(FailedClear(ComposerServiceImpl::new(Arc::new(
-        ComposerAuthority::default(),
-    ))));
     let chat = ChatClient::established(
         ChatServiceClient::direct(service.clone()),
-        ComposerServiceClient::direct(composer),
+        failing_clear(),
         "chat".into(),
         vec![],
         Arc::new(TestIds),
@@ -100,4 +87,34 @@ fn retry_keeps_command_identity_and_cleanup_failure_keeps_accepted_messages() {
     block_on(chat.send("next".into()));
     let calls = service.0.lock().unwrap();
     assert_ne!(calls[1].command_id, calls[2].command_id);
+}
+
+/// A person types faster than the node answers, then sends. The send waits for
+/// the draft it commits, so the node promotes the text they actually typed.
+#[test]
+fn a_send_after_rapid_edits_carries_the_last_text() {
+    let feature = crate::compose(Arc::new(MemoryPorts::new(Arc::new(TestIds)))).unwrap();
+    let clients = feature.clients();
+    let chat = ChatClient::pending(
+        clients.chat,
+        clients.composer,
+        "pending".into(),
+        None,
+        Arc::new(TestIds),
+        Arc::new(Cancellation::root()),
+    );
+
+    // None of these edits is awaited: the last one is still waiting to be
+    // written when the send starts.
+    let composer = chat.composer();
+    drop(
+        (1..=50)
+            .map(|n| composer.replace(format!("edit {n}")))
+            .collect::<Vec<_>>(),
+    );
+    let state = block_on(chat.send("edit 50".into()));
+
+    assert_eq!(state.error, None);
+    assert_eq!(chat.messages_after(0)[0].text, "edit 50");
+    assert_eq!(chat.composer().state().text, "");
 }

@@ -20,13 +20,17 @@ Implementation vocabulary used in code, ADRs, and `ARCHITECTURE.md`. Product lan
 
 ## Commands, facts, and the log
 
-**`Command` trait**: The typed contract a mutating command implements: scope, fact and projection types, rejection type, epoch, precondition, expiry, and `apply(current, now)`. Generic machinery acts on it without a per-command switch.
+**`Command` trait**: The typed contract a mutating command implements: fact and projection types, rejection type, epoch, expiry, `apply(current, now)`, and `precondition(&self, &Projection) -> Result<(), Conflict>`. Generic machinery acts on it without a per-command switch.
+
+**`Conflict`**: The closed enum a precondition returns when the command is stale: `Revision { current }` when the projection moved past what the command read, `Superseded` when a later pending value replaced it. Phase 2's approvals add a variant rather than a parallel type.
 
 **`Authority<C>`**: The generic authority over one command type: dedup by command ID, epoch fencing, precondition check, apply, append. Chat uses it for durable exchanges; the composer has a separate ephemeral authority.
 
+**Precondition**: The `Command` method that decides whether a command is still current, given the projection as the transaction refreshed it. It is a method rather than a declared enum so each command asks its own question and returns its own `Conflict`.
+
 **`Projection` trait**: A pure reducer from facts to state; it also reports scope revisions and whether an operation is open. Testable with no I/O.
 
-**`FactLog`**: Synchronous ordered storage with atomic `commit`, append, retry lookup, cursor reads, snapshots, and compaction. Implemented by memory and redb.
+**`FactLog`**: Synchronous ordered storage with atomic `commit`, retry lookup, cursor reads, snapshots, and compaction. `commit` is the only mutating entry point; there is no separate `append`. Implemented by memory and redb, both over the shared `commit_policy` that holds fencing, deduplication, and append ordering once.
 
 **`BlobStore`**: The BLAKE3-addressed byte-storage port. Memory implements it; persistent attachments and previews remain Phase 1 work.
 
@@ -89,9 +93,11 @@ Implementation vocabulary used in code, ADRs, and `ARCHITECTURE.md`. Product lan
 
 **Daemon** (`arutd`): The core packaged as a standalone process for child-process and system-service hosting.
 
+**`Readiness`**: The daemon's startup result, printed by the child as one handshake line and parsed back by the parent: `Ready`, `LeaseHeld`, `SocketUnreachable`, `SpawnFailed`, `TimedOut`. The parent waits 10 seconds for the line, a bound `ARUT_READY_TIMEOUT_MS` overrides, and the failure reaches the caller as a typed `Unavailable` status through `StatusDetail`.
+
 ## Bindings and surfaces
 
-**Binding**: The per-ecosystem adapter from scope handles to native observation: Swift `ObservableObject`/`@Published`, Kotlin `StateFlow`, C# callbacks, React `useSyncExternalStore`, and GTK/GLib observation. Generated where possible; owns no product transitions.
+**Binding**: The per-ecosystem path from scope handles to native observation, over the async stream BoltFFI generates: a Swift `AsyncStream`, a Kotlin `Flow`, a C# `IAsyncEnumerable`, a TypeScript async iterable feeding `useSyncExternalStore`, and GTK/GLib observation. There is no alias facade and no adapter class, only one generic subscribe-and-read helper per platform. Owns no product transitions.
 
 **FFI binding**: `bindings/ffi` exports handles and bridges watches to BoltFFI callback streams. Features and product/session also depend on BoltFFI to annotate their projection types.
 
@@ -99,7 +105,7 @@ Implementation vocabulary used in code, ADRs, and `ARCHITECTURE.md`. Product lan
 
 ## Protocol and compatibility
 
-**Descriptor**: Generated static metadata for a service and its methods, the input to the manifest.
+**Descriptor**: Generated static metadata for a service and its methods, the input to the manifest. It reaches the manifest through a generated marker type whose `Service::DESCRIPTOR` constant carries it, so a service is named by a type rather than by a string.
 
 **Compatibility window**: The range of minor versions within which a session and a node agree to talk: two minors. Outside it, a typed unsupported result.
 (target; not yet in code)

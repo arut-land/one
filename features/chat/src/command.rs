@@ -1,6 +1,36 @@
 use crate::facts::ChatProjection;
 use arut_authority::Command;
 use arut_protocol::chat::v1::{ChatFact, ChatMessage, ChatRole, OperationFact, OperationPhase};
+use arut_rpc::Status;
+
+/// A command's retry key, which ADR 0004 makes the surface's own identity for
+/// the operation. Validated here so no other signature accepts a raw string.
+#[derive(Debug, Clone)]
+pub(crate) struct CommandId(String);
+
+impl CommandId {
+    pub(crate) fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl TryFrom<String> for CommandId {
+    type Error = Status;
+    fn try_from(value: String) -> Result<Self, Status> {
+        match uuid::Uuid::parse_str(&value) {
+            Ok(id) if id.get_version_num() == 7 && id.to_string() == value => Ok(Self(value)),
+            _ => Err(Status::invalid_argument(
+                "command requires a canonical UUIDv7 ID",
+            )),
+        }
+    }
+}
+
+impl From<CommandId> for String {
+    fn from(id: CommandId) -> Self {
+        id.0
+    }
+}
 
 pub(crate) struct PendingDraft {
     pub(crate) scope_id: String,
@@ -8,26 +38,29 @@ pub(crate) struct PendingDraft {
 }
 
 pub(crate) struct ChatCommand {
-    pub(crate) command_id: String,
+    pub(crate) command_id: CommandId,
     pub(crate) chat_id: String,
     pub(crate) pending_scope: Option<PendingDraft>,
     pub(crate) text: String,
 }
+/// Why the chat authority refused a command, before any surface wording.
 #[derive(Debug)]
 pub(crate) enum Rejection {
     ConversationMissing,
     ConversationExists,
+    /// This command ID already names another conversation or another method.
+    CommandConflict,
+    /// The pending draft moved on before the start command committed.
+    PendingRevisionConflict,
+    /// The pending draft does not hold the text the start command carries.
+    PendingTextMismatch,
 }
 impl Command for ChatCommand {
-    type Scope = String;
     type Fact = ChatFact;
     type Projection = ChatProjection;
     type Rejection = Rejection;
     fn command_id(&self) -> &str {
-        &self.command_id
-    }
-    fn scope(&self) -> &String {
-        &self.chat_id
+        self.command_id.as_str()
     }
     fn epoch(&self) -> u64 {
         1
@@ -45,7 +78,7 @@ impl Command for ChatCommand {
             self.chat_id,
             self.pending_scope,
             self.text,
-            self.command_id,
+            self.command_id.into(),
             now,
         ))
     }

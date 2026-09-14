@@ -1,58 +1,50 @@
-//! # Authority
+//! Serialized command acceptance over a fact log.
 //!
-//! Command defines scope, facts, pure application, preconditions, and expiry.
-//! Authority serializes acceptance, fences epochs before deduplication,
-//! checks preconditions, appends through FactLog, and reduces the accepted fact.
-//! Outcomes distinguish application, duplicate delivery, revision conflict, stale
-//! authority, supersession, and rejection. Projection reducers have no I/O.
+//! A [`Command`] names its retry key and epoch, refuses early through
+//! [`Command::precondition`], and applies purely. [`Authority`] fences stale
+//! epochs, deduplicates retries, appends through [`FactLog`], and reduces the
+//! accepted fact into the projection, all under one lock. Draft replication
+//! stays outside this durable authority (ADR 0018).
 //!
-//! Snapshot and compaction are explicit maintenance operations. Draft replication
-//! stays outside this durable authority, as required by ADR 0018.
-//!
-//! Every acceptance runs inside one span carrying the command ID, the epoch, and
-//! the outcome it reached. The command ID is the surface's own retry key, which
-//! is what makes a duplicate legible in a trace; nothing a person wrote is ever
-//! recorded. No subscriber is installed here.
+//! Each acceptance runs in one span carrying the command ID, the epoch, and the
+//! outcome. The command ID is the surface's own retry key, which is what makes a
+//! duplicate legible in a trace; nothing a person wrote is recorded.
 
 use arut_storage::{Fact, FactLog, Record, Snapshot, StorageError};
 use prost::Message;
-use std::{
-    hash::Hash,
-    sync::{Arc, Mutex},
-};
+use std::sync::{Arc, Mutex};
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Precondition {
-    None,
-    Revision(u64),
-    Epoch(u64),
-    OperationOpen(String),
-}
 pub trait Projection: Message + Default + Clone + 'static {
     type Fact: Fact;
-    type Scope: Eq + Hash + Clone;
     fn reduce(&mut self, fact: &Self::Fact);
-    fn revision(&self, scope: &Self::Scope) -> u64;
-    fn operation_open(&self, _id: &str) -> bool {
-        false
-    }
 }
+
+/// Why a command refuses itself against the projection it would apply to.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Conflict {
+    Revision { current: u64 },
+    Superseded,
+}
+
 pub trait Command: Send + 'static {
-    type Scope: Eq + Hash + Clone;
     type Fact: Fact;
-    type Projection: Projection<Fact = Self::Fact, Scope = Self::Scope>;
+    type Projection: Projection<Fact = Self::Fact>;
     type Rejection;
     fn command_id(&self) -> &str;
-    fn scope(&self) -> &Self::Scope;
     fn epoch(&self) -> u64;
-    fn precondition(&self) -> Precondition {
-        Precondition::None
+    /// Refuses before [`Command::apply`] runs. Accepts by default.
+    ///
+    /// The projection is the one the fact would apply to, already refreshed, so
+    /// a command asks it whatever its own staleness rule needs.
+    fn precondition(&self, _current: &Self::Projection) -> Result<(), Conflict> {
+        Ok(())
     }
     fn expires_at(&self) -> Option<u64> {
         None
     }
     fn apply(self, current: &Self::Projection, now: u64) -> Result<Self::Fact, Self::Rejection>;
 }
+
 #[derive(Debug)]
 pub enum Outcome<F, E> {
     Applied(Record<F>),
@@ -62,15 +54,18 @@ pub enum Outcome<F, E> {
     Superseded,
     Rejected(E),
 }
+
 struct State<P> {
     projection: P,
     cursor: u64,
 }
+
 pub struct Authority<C: Command> {
     log: Arc<dyn FactLog<C::Fact>>,
     epoch: u64,
     state: Mutex<State<C::Projection>>,
 }
+
 impl<C: Command> Authority<C> {
     pub fn open(log: Arc<dyn FactLog<C::Fact>>, epoch: u64) -> Result<Self, StorageError> {
         let snapshot = log.snapshot()?;
@@ -107,16 +102,6 @@ impl<C: Command> Authority<C> {
     pub fn outcome_of(&self, id: &str) -> Result<Option<Record<C::Fact>>, StorageError> {
         self.log.outcome_of(id)
     }
-    pub fn execute(&self, command: C) -> Result<Outcome<C::Fact, C::Rejection>, StorageError> {
-        self.execute_at(command, 0)
-    }
-    pub fn execute_at(
-        &self,
-        command: C,
-        now: u64,
-    ) -> Result<Outcome<C::Fact, C::Rejection>, StorageError> {
-        self.execute_with_clock(command, || now)
-    }
     /// Reads time inside the transaction after deduplication, before application.
     pub fn execute_with_clock(
         &self,
@@ -152,7 +137,7 @@ impl<C: Command> Authority<C> {
                     outcome = Some(Outcome::Duplicate(record));
                     return Ok(None);
                 }
-                match self.apply(
+                match decide(
                     command.take().ok_or(StorageError::Corrupt)?,
                     now(),
                     &state.projection,
@@ -183,38 +168,6 @@ impl<C: Command> Authority<C> {
         tracing::debug!(outcome = "applied", sequence = record.sequence);
         Ok(Outcome::Applied(record))
     }
-    fn apply(
-        &self,
-        command: C,
-        now: u64,
-        projection: &C::Projection,
-    ) -> Result<C::Fact, Outcome<C::Fact, C::Rejection>> {
-        if command.expires_at().is_some_and(|expiry| now >= expiry) {
-            return Err(Outcome::Superseded);
-        }
-        match command.precondition() {
-            Precondition::Revision(expected) => {
-                let current = projection.revision(command.scope());
-                if expected != current {
-                    return Err(Outcome::RevisionConflict { current });
-                }
-            }
-            Precondition::Epoch(epoch) => {
-                if epoch != self.epoch {
-                    return Err(Outcome::AuthorityMismatch {
-                        current_epoch: self.epoch,
-                    });
-                }
-            }
-            Precondition::OperationOpen(id) => {
-                if !projection.operation_open(&id) {
-                    return Err(Outcome::Superseded);
-                }
-            }
-            Precondition::None => {}
-        }
-        command.apply(projection, now).map_err(Outcome::Rejected)
-    }
     pub fn checkpoint(&self, compact: bool) -> Result<(), StorageError> {
         let state = self.state.lock().map_err(|_| StorageError::Corrupt)?;
         tracing::debug!(
@@ -235,6 +188,22 @@ impl<C: Command> Authority<C> {
     }
 }
 
+fn decide<C: Command>(
+    command: C,
+    now: u64,
+    projection: &C::Projection,
+) -> Result<C::Fact, Outcome<C::Fact, C::Rejection>> {
+    if command.expires_at().is_some_and(|expiry| now >= expiry) {
+        return Err(Outcome::Superseded);
+    }
+    match command.precondition(projection) {
+        Ok(()) => {}
+        Err(Conflict::Revision { current }) => return Err(Outcome::RevisionConflict { current }),
+        Err(Conflict::Superseded) => return Err(Outcome::Superseded),
+    }
+    command.apply(projection, now).map_err(Outcome::Rejected)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -250,37 +219,33 @@ mod tests {
     }
     impl Projection for Counter {
         type Fact = Tick;
-        type Scope = String;
         fn reduce(&mut self, fact: &Tick) {
             self.total += fact.amount;
-        }
-        fn revision(&self, _: &String) -> u64 {
-            self.total
         }
     }
     struct Add {
         id: String,
-        scope: String,
         epoch: u64,
-        precondition: Precondition,
+        expected: Option<u64>,
         expiry: Option<u64>,
     }
     impl Command for Add {
-        type Scope = String;
         type Fact = Tick;
         type Projection = Counter;
         type Rejection = ();
         fn command_id(&self) -> &str {
             &self.id
         }
-        fn scope(&self) -> &String {
-            &self.scope
-        }
         fn epoch(&self) -> u64 {
             self.epoch
         }
-        fn precondition(&self) -> Precondition {
-            self.precondition.clone()
+        fn precondition(&self, current: &Counter) -> Result<(), Conflict> {
+            match self.expected {
+                Some(expected) if expected != current.total => Err(Conflict::Revision {
+                    current: current.total,
+                }),
+                _ => Ok(()),
+            }
         }
         fn expires_at(&self) -> Option<u64> {
             self.expiry
@@ -289,15 +254,18 @@ mod tests {
             Ok(Tick { amount: 1 })
         }
     }
-    fn add(id: &str, revision: u64) -> Add {
+    fn add(id: &str, expected: u64) -> Add {
         Add {
             id: id.into(),
-            scope: "counter".into(),
             epoch: 1,
-            precondition: Precondition::Revision(revision),
+            expected: Some(expected),
             expiry: None,
         }
     }
+    fn execute(authority: &Authority<Add>, command: Add) -> Outcome<Tick, ()> {
+        authority.execute_with_clock(command, || 0).unwrap()
+    }
+
     #[test]
     fn retries_do_not_read_the_acceptance_clock() {
         let authority =
@@ -323,43 +291,37 @@ mod tests {
         let log = Arc::new(arut_storage::MemoryLog::default());
         let authority = Authority::<Add>::open(log.clone(), 1).unwrap();
         assert!(matches!(
-            authority.execute(add("one", 0)).unwrap(),
+            execute(&authority, add("one", 0)),
             Outcome::Applied(_)
         ));
         assert!(matches!(
-            authority.execute(add("one", 0)).unwrap(),
+            execute(&authority, add("one", 0)),
             Outcome::Duplicate(_)
         ));
         assert!(matches!(
-            authority.execute(add("conflict", 0)).unwrap(),
+            execute(&authority, add("conflict", 0)),
             Outcome::RevisionConflict { current: 1 }
         ));
         let mut stale = add("one", 0);
         stale.epoch = 0;
         assert!(matches!(
-            authority.execute(stale).unwrap(),
+            execute(&authority, stale),
             Outcome::AuthorityMismatch { current_epoch: 1 }
         ));
         let mut expired = add("expired", 1);
         expired.expiry = Some(10);
         assert!(matches!(
-            authority.execute_at(expired, 10).unwrap(),
-            Outcome::Superseded
-        ));
-        let mut closed = add("closed", 1);
-        closed.precondition = Precondition::OperationOpen("done".into());
-        assert!(matches!(
-            authority.execute(closed).unwrap(),
+            authority.execute_with_clock(expired, || 10).unwrap(),
             Outcome::Superseded
         ));
         authority.checkpoint(true).unwrap();
         let restarted = Authority::<Add>::open(log, 1).unwrap();
         assert_eq!(restarted.projection().total, 1);
         assert!(matches!(
-            restarted.execute(add("one", 0)).unwrap(),
+            execute(&restarted, add("one", 0)),
             Outcome::Duplicate(_)
         ));
-        restarted.execute(add("two", 1)).unwrap();
+        execute(&restarted, add("two", 1));
         assert_eq!(restarted.projection().total, 2);
     }
 }

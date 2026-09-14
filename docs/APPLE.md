@@ -4,7 +4,7 @@ The Apple app uses SwiftUI over `ArutBindings`. The composition root creates the
 
 ## Build and run
 
-Use Xcode 26 or newer to compile the Liquid Glass APIs. The app still targets macOS 13 and iOS 16. Native Liquid Glass controls and `safeAreaBar` are enabled on macOS/iOS 26; earlier systems use bordered controls and `safeAreaInset`. Swift integration tests use the Swift Testing framework bundled with Xcode. The optional macOS UI-test target requires macOS 14 or later.
+Use Xcode 26 or newer to compile the Liquid Glass APIs. The app targets macOS 14 and iOS 17, the floor SwiftUI's Observation needs. Native Liquid Glass controls and `safeAreaBar` are enabled on macOS/iOS 26; earlier systems use bordered controls and `safeAreaInset`. Swift integration tests use the Swift Testing framework bundled with Xcode. The optional macOS UI-test target requires macOS 14 or later.
 
 ```sh
 mise run check:apple
@@ -19,22 +19,20 @@ For an incremental Swift-only build, after generating the framework and project:
 mise run --skip-deps surface:macos
 ```
 
-Regenerate `surfaces/apple/Arut.xcodeproj` with `mise run surface:apple-project` when changing `project.yml`. Generated Xcode projects, derived data, Swift build products, and FFI packages are ignored by Git. All new labels originate in `product/i18n/locales/en/ui.ftl`; `mise run i18n` regenerates the native resources and accessors for every platform.
+Regenerate `surfaces/apple/Arut.xcodeproj` with `mise run surface:apple-project` when changing `project.yml`. Generated Xcode projects, derived data, Swift build products, and FFI packages are ignored by Git. All new labels originate in `product/i18n/locales/en/ui.ftl`; `mise run generate` regenerates the native resources and accessors for every platform.
 
 ## Observation
 
-`ObservableState` uses one main-actor consumer task per subscription and an `AsyncStream` buffer containing at most one pending invalidation. A notification burst therefore does not allocate a task for every callback. The consumer reads the latest Rust projection; message retrieval still fetches every accepted message after the last key, so coalescing invalidations does not drop transcript entries or draft edits. Subscription replacement and deinitialization cancel the consumer and unsubscribe from Rust.
-
-The bridge subscribes before its final initial read, closing the gap where a state change could otherwise be missed. Tests cover a 10,000-notification burst, cancellation, subscription replacement, initial reads, and deinitialization. `ObservableObject` remains the SwiftUI adapter because the app supports macOS 13 and iOS 16. Using SwiftUI's newer Observation integration would require higher deployment targets or a second compatibility implementation.
+There is no observation adapter. `SessionState` and `ConversationState` are `@Observable @MainActor` classes; a `.task { await state.run() }` consumes the generated `AsyncStream`s with `for await` and reads the projection each revision names. SwiftUI cancels that task when the view disappears, which ends the loops and releases the Rust subscriptions. Message retrieval still fetches every accepted message after the last key, so coalesced revisions drop no transcript entries. Observation tracks only the properties a `body` reads, so a sidebar does not re-render for a draft edit.
 
 ## Interaction conventions
 
 - The sidebar uses native selection, search, resizing, and collapse behavior. Cmd-N opens the session's pending conversation. A pending draft remains shared until its first message establishes a conversation.
 - The plain text composer wraps and grows from one to seven visible lines, then scrolls within the field. Return sends; Option-Return inserts a line break through the native multiline field. On macOS 14 and later, Shift-Return invokes the native field editor’s newline command, preserving selection and undo; marked text is left to the input method. Cmd-Return also sends. Cmd-L focuses the composer. Cmd-F focuses search on macOS 15 and later. Control-Tab and Control-Shift-Tab navigate conversations.
-- Keystrokes update the visible field synchronously. Each replacement still reaches Rust in order, and sending waits for outstanding replacements. This preserves the existing per-edit acknowledgement contract.
+- Keystrokes update the visible field synchronously and reach Rust as they are typed. Rust echoes the submitted text into the composer projection and coalesces rapid edits behind one in-flight write, last one winning, and a send flushes before it commits. The surface keeps no edit queue.
 - Messages use selectable text, directional bubbles, grouped timestamps, and the native text-selection and copy context menu. Dates use the system locale. The app displays only accepted messages and actual sending state.
 - The transcript, composer, and latest-message control share a centered column capped at 880 points. Narrow windows use the available width, while ultrawide windows keep both sides of the conversation within reading distance.
-- The transcript fetches messages after its last key. New rows use a brief opacity transition; history does not replay an entrance animation when switching conversations. Reading positions are retained per conversation on macOS 14/iOS 17 and later. New activity only follows the bottom when the reader is already near it; sending explicitly returns to the latest message.
+- The transcript fetches messages after its last key. New rows use a brief opacity transition; history does not replay an entrance animation when switching conversations. Reading positions are retained per conversation. New activity only follows the bottom when the reader is already near it; sending explicitly returns to the latest message.
 - The composer keeps a padded, rounded Liquid Glass container with the send button inside. A native multiline text field and circular system button share the last text baseline; SwiftUI controls their sizing. The placeholder and entered text use the same field and insets. Earlier systems use a material background. The system bottom bar manages transcript separation. Message bubbles remain content. SwiftUI supplies the glass lighting and refraction, toolbar treatment, sidebar behavior, and scroll-edge separation. The app does not draw its own input border, position the placeholder, add a duplicate toolbar title, or overlay a custom scroll-edge fade.
 - Reduce Motion disables the transcript transition. Native controls handle Reduce Transparency and their own interaction feedback. Colors follow system appearance; incoming bubbles gain contrast when Increase Contrast is enabled.
 
@@ -42,7 +40,7 @@ The reference is Messages on macOS Tahoe, alongside Apple's [Messages keyboard s
 
 ## Validation
 
-On macOS 26.6.2 with Xcode 26.6, the macOS app builds and launches, the Swift integration tests pass, and the binding export, architecture, and localization checks pass. The full `mise run check` gate passes, including 115 Rust tests, and `mise run build` passes.
+On macOS 26.6.2 with Xcode 26.6, the macOS app builds and launches, the Swift integration tests pass, and the architecture and localization checks pass. The full `mise run check` gate passes, including 115 Rust tests, and `mise run build` passes.
 
 `ArutMacUITests` covers keyboard sending, multiline input beyond seven lines, and conversation draft restoration. Run it from the ArutMac scheme in Xcode with a signing setup allowed by the machine's security policy. On the development machine used for this change, macOS rejects both the unsigned and ad hoc signed XCTest UI runner before test execution. The UI target can be compiled with `build-for-testing`; its automated runtime result is not verified here. App interactions are checked separately through macOS accessibility automation. Direct checks verified Shift-Return, Option-Return, a 12-line draft capped at seven visible lines, Cmd-Return sending with exact line breaks, and responsive layout at 740, 1,200, and 1,800 point window widths.
 

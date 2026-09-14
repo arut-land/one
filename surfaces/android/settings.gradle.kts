@@ -15,5 +15,3 @@ dependencyResolutionManagement {
 }
 
 rootProject.name = "arut-android"
-include(":bindings")
-project(":bindings").projectDir = file("../../bindings/kotlin")

@@ -70,11 +70,43 @@ pub struct ChatState {
     pub status: ChatStatus,
     /// Set exactly when `status` is `Failed`; a surface reads the variant.
     pub error: Option<ChatError>,
+    /// A send would be attempted: nothing is in flight and the conversation
+    /// scope is live. A surface also requires composer text, which it reads
+    /// from `ComposerState`.
+    ///
+    /// Derived from the fields above rather than set on its own. It is a field
+    /// and not a method because FFI data types carry no behavior.
+    pub can_send: bool,
+    /// `status` is `Sending`. Derived; see [`ChatState::can_send`].
+    pub is_sending: bool,
+    /// No message has been accepted yet. Derived; see [`ChatState::can_send`].
+    pub is_empty: bool,
+}
+
+impl ChatState {
+    /// Recomputes the derived fields. Every write to this projection ends here,
+    /// so the three are never stale with respect to what they are derived from.
+    pub(crate) fn derive(&mut self, cancelled: bool) {
+        self.is_sending = self.status == ChatStatus::Sending;
+        self.is_empty = self.last_message_id == 0;
+        self.can_send = !self.is_sending && !cancelled;
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn row(id: u64, role: ChatRole, accepted_at_ms: u64) -> ChatMessage {
+        ChatMessage {
+            id,
+            role,
+            accepted_at_ms,
+            text: id.to_string(),
+            starts_time_group: false,
+            starts_speaker_group: false,
+        }
+    }
 
     #[test]
     fn grouping_uses_time_boundaries_roles_and_actual_cursor_predecessor() {
@@ -89,19 +121,7 @@ mod tests {
         ];
         let mut messages: BTreeMap<_, _> = rows
             .into_iter()
-            .map(|(id, role, accepted_at_ms)| {
-                (
-                    id,
-                    ChatMessage {
-                        id,
-                        role,
-                        accepted_at_ms,
-                        text: id.to_string(),
-                        starts_time_group: false,
-                        starts_speaker_group: false,
-                    },
-                )
-            })
+            .map(|(id, role, accepted_at_ms)| (id, row(id, role, accepted_at_ms)))
             .collect();
         let full = transcript_after(&messages, 0);
         assert_eq!(
@@ -127,17 +147,7 @@ mod tests {
                     .collect::<Vec<_>>()
             );
         }
-        messages.insert(
-            16,
-            ChatMessage {
-                id: 16,
-                role: ChatRole::User,
-                accepted_at_ms: u64::MAX,
-                text: "later".into(),
-                starts_time_group: false,
-                starts_speaker_group: false,
-            },
-        );
+        messages.insert(16, row(16, ChatRole::User, u64::MAX));
         assert_eq!(
             &transcript_after(&messages, 0)[..full.len()],
             full.as_slice()

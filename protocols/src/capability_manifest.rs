@@ -1,56 +1,84 @@
-//! Derives capability clients and routers from composed service registrations.
+//! Derives the capability manifest from the services a node serves.
+//!
+//! The set is a type ([`arut_rpc::ServiceSet`]), so the manifest is built from
+//! generated descriptors with no registration table to walk, no order to sort
+//! (the tuple is the order), and no package name written by hand anywhere.
 use crate::capability::v1::{
-    CapabilityManifest, CapabilityService, GetCapabilitiesRequest, GetCapabilitiesResponse,
-    MethodCapability, RpcStreamingKind, ServiceCapability,
+    CapabilityManifest, CapabilityService, CapabilityServiceClient, CapabilityServiceRouter,
+    GetCapabilitiesRequest, GetCapabilitiesResponse, MethodCapability, RpcStreamingKind,
+    ServiceCapability,
 };
-use arut_rpc::{Request, Response, RpcFuture, ServiceRegistration, StreamingKind};
+use arut_rpc::{
+    Request, Response, RpcFuture, RpcRegistry, Service, ServiceDescriptor, ServiceSet, Status,
+    StreamingKind,
+};
+use std::sync::Arc;
 
-struct CapabilityServiceImpl {
-    registrations: Vec<ServiceRegistration>,
+/// What a manifest says about one service.
+///
+/// The comparison behind it is still `==` on the strings the wire carries; what
+/// the type buys is that the product writes none of them.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ServiceAvailability {
+    Available,
+    /// Advertised, and reported as not usable right now.
+    ReportedUnavailable,
+    /// Absent from the manifest.
+    NotAdvertised,
 }
 
-impl CapabilityServiceImpl {
-    fn new(registrations: impl IntoIterator<Item = ServiceRegistration>) -> Self {
-        Self {
-            registrations: registrations.into_iter().collect(),
-        }
-    }
-
-    fn manifest(&self) -> CapabilityManifest {
-        let mut services = self
-            .registrations
+impl CapabilityManifest {
+    /// What this manifest says about the service `S` names.
+    #[must_use]
+    pub fn availability<S: Service>(&self) -> ServiceAvailability {
+        self.services
             .iter()
-            .map(|registration| {
-                let metadata = registration.metadata.get();
-                ServiceCapability {
-                    package: registration.descriptor.package.into(),
-                    service: registration.descriptor.name.into(),
-                    methods: registration
-                        .descriptor
-                        .methods
-                        .iter()
-                        .map(|method| MethodCapability {
-                            name: method.name.into(),
-                            procedure: method.procedure.into(),
-                            input: method.input.into(),
-                            output: method.output.into(),
-                            streaming: streaming_kind(method.streaming) as i32,
-                        })
-                        .collect(),
-                    available: metadata.available,
-                    unavailable_reason: metadata.unavailable_reason,
-                    permissions: metadata.permissions,
-                    limits: metadata.limits.into_iter().collect(),
-                    version: registration.descriptor.version.into(),
-                    extensions: metadata.extensions.into_iter().collect(),
+            .find(|service| {
+                service.package == S::DESCRIPTOR.package && service.service == S::DESCRIPTOR.name
+            })
+            .map_or(ServiceAvailability::NotAdvertised, |service| {
+                if service.available {
+                    ServiceAvailability::Available
+                } else {
+                    ServiceAvailability::ReportedUnavailable
                 }
             })
-            .collect::<Vec<_>>();
-        services.sort_by(|left, right| {
-            (&left.package, &left.service).cmp(&(&right.package, &right.service))
-        });
-        CapabilityManifest { services }
     }
+}
+
+/// The manifest a node serving `S` advertises.
+#[must_use]
+pub fn manifest<S: ServiceSet>() -> CapabilityManifest {
+    CapabilityManifest {
+        services: S::DESCRIPTORS.iter().map(advertise).collect(),
+    }
+}
+
+/// The wire `version` is the Protobuf package version, which is the major one;
+/// the minor of ADR 0015's window has no source yet and no field to go in.
+fn advertise(descriptor: &ServiceDescriptor) -> ServiceCapability {
+    ServiceCapability {
+        package: descriptor.package.into(),
+        service: descriptor.name.into(),
+        methods: descriptor
+            .methods
+            .iter()
+            .map(|method| MethodCapability {
+                name: method.name.into(),
+                procedure: method.procedure.into(),
+                input: method.input.into(),
+                output: method.output.into(),
+                streaming: streaming_kind(method.streaming) as i32,
+            })
+            .collect(),
+        available: true,
+        version: format!("v{}", descriptor.version.major),
+        ..ServiceCapability::default()
+    }
+}
+
+struct CapabilityServiceImpl {
+    manifest: CapabilityManifest,
 }
 
 impl CapabilityService for CapabilityServiceImpl {
@@ -58,7 +86,7 @@ impl CapabilityService for CapabilityServiceImpl {
         &self,
         _request: Request<GetCapabilitiesRequest>,
     ) -> RpcFuture<Response<GetCapabilitiesResponse>> {
-        let manifest = self.manifest();
+        let manifest = self.manifest.clone();
         Box::pin(async move {
             Ok(Response::new(GetCapabilitiesResponse {
                 manifest: Some(manifest),
@@ -76,74 +104,36 @@ fn streaming_kind(kind: StreamingKind) -> RpcStreamingKind {
     }
 }
 
-/// Direct manifest client for a root's composed feature list.
-pub fn capability_client(
-    registrations: impl IntoIterator<Item = ServiceRegistration>,
-) -> crate::capability::v1::CapabilityServiceClient {
-    crate::capability::v1::CapabilityServiceClient::direct(std::sync::Arc::new(
-        CapabilityServiceImpl::new(registrations),
-    ))
+fn service<S: ServiceSet>() -> Arc<CapabilityServiceImpl> {
+    Arc::new(CapabilityServiceImpl {
+        manifest: manifest::<S>(),
+    })
 }
 
-/// Adds the manifest service after the root's feature routers have been registered.
-pub fn with_capabilities(
-    registry: arut_rpc::RpcRegistry,
-) -> Result<arut_rpc::RpcRegistry, arut_rpc::Status> {
-    let service = std::sync::Arc::new(CapabilityServiceImpl::new(registry.registrations()));
-    registry.register(std::sync::Arc::new(
-        crate::capability::v1::CapabilityServiceRouter::new(service),
-    ))
+/// Direct manifest client for the service set a root composed.
+#[must_use]
+pub fn capability_client<S: ServiceSet>() -> CapabilityServiceClient {
+    CapabilityServiceClient::direct(service::<S>())
+}
+
+/// Adds the manifest service for `S` to a root's registry.
+///
+/// # Errors
+/// Returns `AlreadyExists` if the manifest procedure is already registered.
+pub fn with_capabilities<S: ServiceSet>(registry: RpcRegistry) -> Result<RpcRegistry, Status> {
+    registry.register(Arc::new(CapabilityServiceRouter::new(service::<S>())))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::chat::v1::{CHAT_SERVICE_DESCRIPTOR, ChatServiceRouter};
-    use arut_rpc::{RpcRegistry, ServiceMetadata, ServiceRuntimeMetadata};
-    use std::collections::BTreeMap;
-    use std::sync::Arc;
-
-    struct UnusedChat;
-
-    impl crate::chat::v1::ChatService for UnusedChat {
-        fn list_conversations(
-            &self,
-            _: Request<crate::chat::v1::ListConversationsRequest>,
-        ) -> RpcFuture<Response<crate::chat::v1::ListConversationsResponse>> {
-            unreachable!()
-        }
-
-        fn send_message(
-            &self,
-            _request: Request<crate::chat::v1::SendMessageRequest>,
-        ) -> RpcFuture<Response<crate::chat::v1::SendMessageResponse>> {
-            unreachable!()
-        }
-
-        fn start_chat(
-            &self,
-            _request: Request<crate::chat::v1::StartChatRequest>,
-        ) -> RpcFuture<Response<crate::chat::v1::StartChatResponse>> {
-            unreachable!()
-        }
-    }
+    use crate::chat::composer::v1::ComposerServiceId;
+    use crate::chat::v1::{CHAT_SERVICE_DESCRIPTOR, ChatServiceId};
 
     #[test]
-    fn derives_protocol_shape_and_reads_current_runtime_metadata() {
-        let metadata = ServiceMetadata::new(ServiceRuntimeMetadata {
-            permissions: vec!["conversation.read".into()],
-            limits: BTreeMap::from([("requests_per_minute".into(), 60)]),
-            ..ServiceRuntimeMetadata::default()
-        });
-        let registry = RpcRegistry::default()
-            .register_with_metadata(
-                Arc::new(ChatServiceRouter::new(Arc::new(UnusedChat))),
-                metadata.clone(),
-            )
-            .unwrap();
-        let service = CapabilityServiceImpl::new(registry.registrations());
+    fn a_manifest_derives_its_shape_from_the_declared_service_set() {
+        let manifest = manifest::<(ChatServiceId, ComposerServiceId)>();
 
-        let manifest = service.manifest();
         assert_eq!(
             manifest.services[0].package,
             CHAT_SERVICE_DESCRIPTOR.package
@@ -152,19 +142,18 @@ mod tests {
             manifest.services[0].methods[0].procedure,
             CHAT_SERVICE_DESCRIPTOR.methods[0].procedure
         );
-        assert_eq!(manifest.services[0].limits["requests_per_minute"], 60);
         assert_eq!(manifest.services[0].version, "v1");
-
-        metadata.set(ServiceRuntimeMetadata {
-            available: false,
-            unavailable_reason: "runtime suspended".into(),
-            ..ServiceRuntimeMetadata::default()
-        });
-        let unavailable = service.manifest();
-        assert!(!unavailable.services[0].available);
         assert_eq!(
-            unavailable.services[0].unavailable_reason,
-            "runtime suspended"
+            manifest.availability::<ChatServiceId>(),
+            ServiceAvailability::Available
+        );
+    }
+
+    #[test]
+    fn a_service_missing_from_a_manifest_is_not_advertised() {
+        assert_eq!(
+            manifest::<(ChatServiceId,)>().availability::<ComposerServiceId>(),
+            ServiceAvailability::NotAdvertised
         );
     }
 }

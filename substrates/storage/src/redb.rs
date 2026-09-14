@@ -1,10 +1,9 @@
 //! Fact logs and key-value data in one redb file with typed tables.
 //!
-//! Protobuf records have sequence and command indexes; compaction retains outcomes
-//! for deduplication. Each command decision runs inside one write transaction.
-//! The database owns its file exclusively, so other processes use the daemon's
-//! RPC channel. The schema version controls migrations when opening a file.
+//! The database owns its file exclusively, so other processes reach these facts
+//! through the daemon's RPC channel.
 
+use crate::log::{LogStore, commit_policy, compaction_allowed, snapshot_allowed};
 use crate::{Fact, FactLog, KeyValue, Record, Result, Snapshot, StorageError};
 use prost::Message;
 use redb::{
@@ -106,35 +105,6 @@ pub struct RedbLog<F> {
     fact: PhantomData<F>,
 }
 
-/// The state an append has to fence against, read inside its own transaction.
-struct Head {
-    sequence: u64,
-    epoch: u64,
-}
-
-fn head(write: &WriteTransaction) -> Result<Head> {
-    let compacted = watermark(write)?;
-    let snapshot = saved(&write.open_table(SNAPSHOT)?)?;
-    let newest = write
-        .open_table(RECORDS)?
-        .last()?
-        .map(|(_, value)| StoredRecord::decode(value.value()))
-        .transpose()?;
-    Ok(Head {
-        sequence: newest
-            .as_ref()
-            .map(|record| record.sequence)
-            .or_else(|| snapshot.as_ref().map(|s| s.sequence))
-            .unwrap_or(0)
-            .max(compacted),
-        epoch: newest
-            .as_ref()
-            .map(|record| record.epoch)
-            .or_else(|| snapshot.as_ref().map(|s| s.epoch))
-            .unwrap_or(1),
-    })
-}
-
 fn watermark(write: &WriteTransaction) -> Result<u64> {
     Ok(write
         .open_table(META)?
@@ -145,8 +115,24 @@ fn watermark(write: &WriteTransaction) -> Result<u64> {
 fn saved(table: &impl ReadableTable<&'static str, &'static [u8]>) -> Result<Option<Snapshot>> {
     table
         .get(SNAPSHOT_KEY)?
-        .map(|value| Ok(StoredSnapshot::decode(value.value())?.into()))
+        .map(|value| Ok(Snapshot::decode(value.value())?))
         .transpose()
+}
+
+/// Records strictly after `cursor`, decoded in sequence order.
+fn after<F: Fact>(
+    records: &impl ReadableTable<u64, &'static [u8]>,
+    cursor: u64,
+) -> Result<Vec<Record<F>>> {
+    let mut result = Vec::new();
+    for entry in records.range((
+        std::ops::Bound::Excluded(cursor),
+        std::ops::Bound::Unbounded,
+    ))? {
+        let (_, value) = entry?;
+        result.push(StoredRecord::decode(value.value())?.into_record()?);
+    }
+    Ok(result)
 }
 
 /// A command's record, whether it is still live or already an outcome.
@@ -167,6 +153,70 @@ fn outcome<F: Fact>(
         .transpose()
 }
 
+/// One redb write transaction, holding the log for the length of one commit.
+struct Commit<F> {
+    write: WriteTransaction,
+    fact: PhantomData<F>,
+}
+
+impl<F: Fact> LogStore<F> for Commit<F> {
+    fn head(&mut self) -> Result<(u64, u64)> {
+        let compacted = watermark(&self.write)?;
+        let snapshot = saved(&self.write.open_table(SNAPSHOT)?)?;
+        let newest = self
+            .write
+            .open_table(RECORDS)?
+            .last()?
+            .map(|(_, value)| StoredRecord::decode(value.value()))
+            .transpose()?;
+        let read = |from_record: fn(&StoredRecord) -> u64, from_snapshot: fn(&Snapshot) -> u64| {
+            newest
+                .as_ref()
+                .map(from_record)
+                .or_else(|| snapshot.as_ref().map(from_snapshot))
+        };
+        Ok((
+            read(|record| record.sequence, |snapshot| snapshot.sequence)
+                .unwrap_or(0)
+                .max(compacted),
+            read(|record| record.epoch, |snapshot| snapshot.epoch).unwrap_or(1),
+        ))
+    }
+
+    fn watermark(&mut self) -> Result<u64> {
+        watermark(&self.write)
+    }
+
+    fn duplicate(&mut self, command_id: &str) -> Result<Option<Record<F>>> {
+        outcome(
+            &self.write.open_table(RECORDS)?,
+            &self.write.open_table(COMMANDS)?,
+            &self.write.open_table(OUTCOMES)?,
+            command_id,
+        )
+    }
+
+    fn after(&mut self, cursor: u64) -> Result<Vec<Record<F>>> {
+        after(&self.write.open_table(RECORDS)?, cursor)
+    }
+
+    fn push(&mut self, record: &Record<F>) -> Result<()> {
+        self.write.open_table(RECORDS)?.insert(
+            record.sequence,
+            StoredRecord::from(record).encode_to_vec().as_slice(),
+        )?;
+        self.write
+            .open_table(COMMANDS)?
+            .insert(record.command_id.as_str(), record.sequence)?;
+        Ok(())
+    }
+
+    fn finish(self) -> Result<()> {
+        self.write.commit()?;
+        Ok(())
+    }
+}
+
 impl<F: Fact> FactLog<F> for RedbLog<F> {
     fn commit(
         &self,
@@ -175,56 +225,11 @@ impl<F: Fact> FactLog<F> for RedbLog<F> {
         id: &str,
         decide: &mut crate::CommitDecision<'_, F>,
     ) -> Result<Option<Record<F>>> {
-        let write = self.database.begin_write()?;
-        let through = watermark(&write)?;
-        if cursor.is_some_and(|cursor| cursor < through) {
-            return Err(StorageError::CursorUnavailable { through });
-        }
-        let head = head(&write)?;
-        if epoch < head.epoch {
-            return Err(StorageError::Epoch {
-                current: head.epoch,
-            });
-        }
-        if cursor.is_some_and(|cursor| cursor > head.sequence) {
-            return Err(StorageError::Conflict {
-                actual: head.sequence,
-            });
-        }
-        let duplicate = outcome(
-            &write.open_table(RECORDS)?,
-            &write.open_table(COMMANDS)?,
-            &write.open_table(OUTCOMES)?,
-            id,
-        )?;
-        let records = write.open_table(RECORDS)?;
-        let mut unseen = Vec::new();
-        if let Some(cursor) = cursor {
-            for entry in records.range((
-                std::ops::Bound::Excluded(cursor),
-                std::ops::Bound::Unbounded,
-            ))? {
-                let (_, value) = entry?;
-                unseen.push(StoredRecord::decode(value.value())?.into_record()?);
-            }
-        }
-        drop(records);
-        let Some(fact) = decide(head.sequence, &unseen, duplicate)? else {
-            return Ok(None);
+        let commit = Commit {
+            write: self.database.begin_write()?,
+            fact: PhantomData,
         };
-        let record = Record {
-            sequence: head.sequence.checked_add(1).ok_or(StorageError::Corrupt)?,
-            epoch,
-            command_id: id.into(),
-            fact,
-        };
-        write.open_table(RECORDS)?.insert(
-            record.sequence,
-            StoredRecord::from(&record).encode_to_vec().as_slice(),
-        )?;
-        write.open_table(COMMANDS)?.insert(id, record.sequence)?;
-        write.commit()?;
-        Ok(Some(record))
+        commit_policy(commit, cursor, epoch, id, decide)
     }
 
     fn outcome_of(&self, id: &str) -> Result<Option<Record<F>>> {
@@ -246,16 +251,7 @@ impl<F: Fact> FactLog<F> for RedbLog<F> {
         if cursor < through {
             return Err(StorageError::CursorUnavailable { through });
         }
-        let records = read.open_table(RECORDS)?;
-        let mut result = Vec::new();
-        for entry in records.range((
-            std::ops::Bound::Excluded(cursor),
-            std::ops::Bound::Unbounded,
-        ))? {
-            let (_, value) = entry?;
-            result.push(StoredRecord::decode(value.value())?.into_record()?);
-        }
-        Ok(result)
+        after(&read.open_table(RECORDS)?, cursor)
     }
 
     fn snapshot(&self) -> Result<Option<Snapshot>> {
@@ -270,15 +266,10 @@ impl<F: Fact> FactLog<F> for RedbLog<F> {
             .open_table(RECORDS)?
             .last()?
             .map_or(through, |(key, _)| key.value());
-        if snapshot.sequence > newest || snapshot.sequence < through {
-            return Err(StorageError::SnapshotRequired);
-        }
+        snapshot_allowed(&snapshot, newest, through)?;
         {
             let mut table = write.open_table(SNAPSHOT)?;
-            table.insert(
-                SNAPSHOT_KEY,
-                StoredSnapshot::from(&snapshot).encode_to_vec().as_slice(),
-            )?;
+            table.insert(SNAPSHOT_KEY, snapshot.encode_to_vec().as_slice())?;
         }
         write.commit()?;
         Ok(())
@@ -286,9 +277,7 @@ impl<F: Fact> FactLog<F> for RedbLog<F> {
 
     fn compact(&self, through: u64) -> Result<()> {
         let write = self.database.begin_write()?;
-        if saved(&write.open_table(SNAPSHOT)?)?.is_none_or(|snapshot| snapshot.sequence < through) {
-            return Err(StorageError::SnapshotRequired);
-        }
+        compaction_allowed(saved(&write.open_table(SNAPSHOT)?)?.as_ref(), through)?;
         let reached = watermark(&write)?.max(through);
         {
             let mut records = write.open_table(RECORDS)?;
@@ -383,15 +372,6 @@ pub(crate) struct StoredRecord {
     #[prost(bytes = "vec", tag = "4")]
     pub fact: Vec<u8>,
 }
-#[derive(Clone, PartialEq, prost::Message)]
-pub(crate) struct StoredSnapshot {
-    #[prost(uint64, tag = "1")]
-    pub sequence: u64,
-    #[prost(uint64, tag = "2")]
-    pub epoch: u64,
-    #[prost(bytes = "vec", tag = "3")]
-    pub data: Vec<u8>,
-}
 impl<F: Fact> From<&Record<F>> for StoredRecord {
     fn from(record: &Record<F>) -> Self {
         Self {
@@ -410,23 +390,5 @@ impl StoredRecord {
             command_id: self.command_id,
             fact: F::decode(&self.fact[..])?,
         })
-    }
-}
-impl From<&Snapshot> for StoredSnapshot {
-    fn from(snapshot: &Snapshot) -> Self {
-        Self {
-            sequence: snapshot.sequence,
-            epoch: snapshot.epoch,
-            data: snapshot.data.clone(),
-        }
-    }
-}
-impl From<StoredSnapshot> for Snapshot {
-    fn from(stored: StoredSnapshot) -> Self {
-        Self {
-            sequence: stored.sequence,
-            epoch: stored.epoch,
-            data: stored.data,
-        }
     }
 }

@@ -12,8 +12,7 @@ arut-product-session.workspace = true
 arut-protocol.workspace = true
 arut-rpc.workspace = true
 arut-storage = { workspace = true, features = ["redb"] }
-arut-transport-connect-http.workspace = true
-arut-transport-ipc.workspace = true
+arut-transport.workspace = true
 axum = "0.8.4"
 thiserror = "2.0.20"
 tokio = { version = "1.47.1", features = ["macros", "net", "rt-multi-thread", "signal", "process", "io-util", "io-std"] }

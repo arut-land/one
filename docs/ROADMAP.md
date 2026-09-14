@@ -9,15 +9,15 @@ The implemented foundation and its remaining platform work:
 1. **Watch substrate.** Revisioned `tokio::sync::watch`, compiled with `sync` only. Invalidations coalesce and unchanged writes do not advance the revision.
 2. **Spawner and Host ports.** Runtime-owned executors, a host-polled executor, and a child-process daemon over IPC. Linux uses the child; native Apple/Android hosting and platform callback integration remain open.
 3. **Typed scopes.** `Node<R>` and `Workspace<R>` own cancellation over supplied `ChatClients`. Conversation and operation ownership structs belong to Phase 2.
-4. **Scope handles and bindings.** Projection types declare their FFI data once. BoltFFI exports explicit handles; generated Swift, Kotlin, and C# facades sit above per-language observation adapters. GTK consumes Rust handles directly.
+4. **Scope handles and bindings.** Projection types declare their FFI data once. BoltFFI exports explicit handles and async revision streams, and every adapter sits directly on that output: Swift, Kotlin, and C# surfaces import the generated package with no alias facade, and each ecosystem keeps one generic subscribe-and-read helper instead of an observation class. GTK consumes Rust handles directly.
 5. **Connect framing and streaming.** Registry, HTTP, and IPC channels share conformance. `WatchComposer` is a server stream; request streaming is unsupported by HTTP/IPC. The WebSocket route remains Phase 5 work.
 6. **Fact log and storage ports.** `FactLog`, `BlobStore`, and `KeyValue`; redb is the native node default under ADR 0023, with memory for tests and wasm. Directory storage and its selector are removed. Persistent blobs remain Phase 1 work.
 7. **Generic authority and projections.** One transaction per decision, canonical command IDs, pure transcript reduction, and authority-clock timestamps preserved through Protobuf and FFI. Drafts recover through `KeyValue`, not transcript facts.
-8. **Tooling and conformance.** One `arut-dev` binary owns `i18n`, `layers`, and `bindings` checks; `tools/conformance` remains a test crate. Browser callbacks are a workspace package. CI cancels superseded runs and filters Android builds by their inputs. Mise owns Android Rust target installation and Apple binding generation. Localization emitters share resource-key naming.
+8. **Tooling and conformance.** One `arut-dev` binary with two subcommands, `generate` for localization resources and `check` for the repository rules the compiler cannot state; `tools/conformance` remains a test crate. Browser callbacks are a workspace package. CI cancels superseded runs and gives Android its own `paths:`-filtered workflow. Mise owns Android Rust target installation and Apple binding generation. Localization emitters share resource-key naming.
 
 Exit: the existing chat behavior runs on Linux, macOS, and Android through these ports, and the web surface receives updates. Android and macOS still need on-device verification.
 
-- [x] `mise run check`: 115 nextest tests, doctests, Rust/wasm/TypeScript, protocol compatibility, localization, binding, dependency, and layer checks pass.
+- [x] `mise run check`: 127 nextest tests, doctests, Rust/wasm/TypeScript, protocol compatibility, localization, dependency, and layer checks pass.
 - [x] `mise run build`: GTK, `arutd`, and web/Chromium/VS Code bundles build.
 - [x] GTK over child IPC verifies sending, independent drafts, and preserved widgets; generated wasm verifies draft/start/send/list, ranges, and timestamps; conformance passes.
 - [x] Kotlin: the Android surface builds in CI (BoltFFI pack for four targets, Gradle assembleDebug) as of 2026-09-13; Swift builds through `mise run check:apple` on macOS. Running the apps on devices remains manual.
@@ -28,14 +28,12 @@ Exit: the existing chat behavior runs on Linux, macOS, and Android through these
 
 Recorded here so the code they touch is not changed speculatively. Each names the ADR or phase that settles it.
 
-- **Draft write acknowledgement.** Replace futures each promise their own result, so per-keystroke writes queue behind one mutex and cannot be coalesced. Decide whether the composer offers a latest-draft setter plus a flush boundary before send, then coalesce. Settle with Phase 1 item 4 (drafts over gossip).
 - **Retry outcome retention.** ADR 0004 promises retry deduplication with no expiry window, so command outcomes are never pruned. Redb is now the default and indexes command IDs, but retained outcomes still grow without bound. Decide the retention window before pruning.
 - **Idle FFI observer release.** BoltFFI's event subscriptions expose no producer-side cancellation hook, so an unsubscribed observer is retained until its source changes. Contribute the hook upstream or adopt a generated subscription-owner API; do not add polling timers.
 - **Session factory ABI.** The native and browser session constructors look interchangeable but embed hosting behavior. Settle with the native-hosting completion in Phase 0's remaining work (ADR 0011) before changing the exported ABI.
-- **Daemon startup timeout.** `ChildHost` waits for the daemon's READY line with no bound; decide the timeout and the surface-facing failure before native hosting completes (ADR 0011).
 - **Transcript pagination.** Ranged reads exist, but nothing bounds how much of a long transcript a surface holds in memory; decide the window with the Phase 1 streaming work.
 - **Second locale.** Plural handling in the generator is only exercised by English; add one locale with real plural categories before calling ADR 0022's generator complete.
-- **Generated availability.** Per-service availability is still hand-typed in the product; generate it from descriptors when the approval feature arrives, which is the second consumer that justifies the generator (ADR 0008).
+- **Generated availability.** Half settled. Typed service markers now carry each descriptor and the product asks by type, so no service name is hand-written (ADR 0025). Emitting a per-service availability type from the descriptor set still waits for the approval feature, the second consumer that justifies the generator (ADR 0008).
 - **BoltFFI npm packaging defect.** The generated package file list omits the Node loader; harmless while the package is unpublished. Fix upstream before publishing.
 
 ## Phase 1: Daily driver (v1)
@@ -53,7 +51,7 @@ The scope in `docs/PRD.md`.
 9. Encrypted backup and restore through the relay's store, sealed under the root key.
 10. Linux relm4 composition is complete (ADR 0020). Complete native hosting for the existing SwiftUI macOS and Compose Android surfaces, including the Android foreground service.
 11. Capability manifest negotiated at session connect; two-minor-version window enforced. Config chain through `figment`.
-12. Complete: English Fluent resources and typed accessors for every surface (ADR 0022), generated by `arut-dev i18n` and verified in `mise run check`. Native platform compilation remains part of the release exit.
+12. Complete: English Fluent resources and typed accessors for every surface (ADR 0022), generated by `mise run generate` and verified in `mise run check`. Native platform compilation remains part of the release exit.
 
 Exit: every v1 scenario passes on real devices; the author uses it daily.
 

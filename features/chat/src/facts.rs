@@ -1,4 +1,3 @@
-//! Pure reduction of accepted chat facts into the durable projection.
 use arut_authority::Projection;
 use arut_protocol::chat::v1::{ChatFact, Conversation, OperationPhase};
 
@@ -48,12 +47,7 @@ impl ChatProjection {
 
 impl Projection for ChatProjection {
     type Fact = ChatFact;
-    type Scope = String;
     fn reduce(&mut self, fact: &ChatFact) {
         self.apply(fact);
-    }
-    fn revision(&self, scope: &String) -> u64 {
-        self.conversation(scope)
-            .map_or(0, |conversation| conversation.messages.len() as u64 / 2)
     }
 }

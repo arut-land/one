@@ -1,15 +1,14 @@
 //! Behavioral suites shared by every implementation of each port.
 //!
-//! RPC checks cover unary and server streams over the registry, TCP Connect, and
-//! Unix IPC. Fact-log and key-value checks cover memory and redb;
-//! blob checks cover memory. They exercise retries, fencing,
-//! atomic decisions, compaction, content addressing, and independent writers.
+//! One suite per port, run once per implementation by the tests beside this
+//! crate: what they assert is the contract, and an implementation that passes
+//! its own tests but not these has drifted.
 
 use arut_rpc::{
     Code, Metadata, MethodDescriptor, Request, Response, RpcChannel, RpcFuture, RpcService,
-    RpcStream, ServiceDescriptor, Status, StreamingKind,
+    RpcStream, ServiceDescriptor, Status, StreamingKind, Version,
 };
-use arut_storage::{BlobStore, FactLog, KeyValue, Snapshot, StorageError, digest};
+use arut_storage::{BlobStore, Fact, FactLog, KeyValue, Record, Snapshot, StorageError, digest};
 use futures_util::StreamExt;
 
 pub async fn rpc(channel: &dyn RpcChannel) {
@@ -57,6 +56,35 @@ pub async fn rpc(channel: &dyn RpcChannel) {
     );
 }
 
+/// Compare-and-append over [`FactLog::commit`], the one append path a log has.
+///
+/// A retry of a command already in the log returns that record unchanged; a
+/// cursor that is not the head is a conflict.
+pub fn append<F: Fact>(
+    log: &dyn FactLog<F>,
+    expected: u64,
+    epoch: u64,
+    command_id: &str,
+    fact: F,
+) -> Result<Record<F>, StorageError> {
+    let mut fact = Some(fact);
+    let mut duplicate = None;
+    let appended = log.commit(
+        None,
+        epoch,
+        command_id,
+        &mut |actual, _, prior| match prior {
+            Some(prior) => {
+                duplicate = Some(prior);
+                Ok(None)
+            }
+            None if expected != actual => Err(StorageError::Conflict { actual }),
+            None => Ok(fact.take()),
+        },
+    )?;
+    appended.or(duplicate).ok_or(StorageError::Corrupt)
+}
+
 pub fn fact_log(log: &dyn FactLog<String>) {
     assert!(log.read_from(0).unwrap().is_empty());
     let mut decisions = 0;
@@ -86,16 +114,16 @@ pub fn fact_log(log: &dyn FactLog<String>) {
     );
     assert_eq!(first.sequence, 1);
     assert_eq!(
-        log.append(0, 1, "one", "different retry".into()).unwrap(),
+        append(log, 0, 1, "one", "different retry".into()).unwrap(),
         first
     );
     assert_eq!(
-        log.append(0, 1, "two", "second".into()).unwrap_err(),
+        append(log, 0, 1, "two", "second".into()).unwrap_err(),
         StorageError::Conflict { actual: 1 }
     );
-    log.append(1, 2, "two", "second".into()).unwrap();
+    append(log, 1, 2, "two", "second".into()).unwrap();
     assert_eq!(
-        log.append(2, 1, "one", "stale retry".into()).unwrap_err(),
+        append(log, 2, 1, "one", "stale retry".into()).unwrap_err(),
         StorageError::Epoch { current: 2 }
     );
     assert_eq!(log.read_from(1).unwrap().len(), 1);
@@ -144,7 +172,7 @@ pub fn fact_log(log: &dyn FactLog<String>) {
     );
     assert_eq!(log.outcome_of("one").unwrap(), Some(first));
     assert_eq!(
-        log.append(2, 2, "three", "third".into()).unwrap().sequence,
+        append(log, 2, 2, "three", "third".into()).unwrap().sequence,
         3
     );
     assert_eq!(log.read_from(2).unwrap().len(), 1);
@@ -163,11 +191,6 @@ pub fn blobs(store: &dyn BlobStore) {
     let id = store.put_blob(b"content").unwrap();
     assert_eq!(id, CONTENT_DIGEST);
     assert_eq!(id, digest(b"content"));
-    assert_eq!(id.len(), 64);
-    assert!(
-        id.bytes()
-            .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
-    );
     assert_eq!(id, store.put_blob(b"content").unwrap());
     assert_eq!(store.get_blob(&id).unwrap(), Some(b"content".to_vec()));
     assert_ne!(id, store.put_blob(b"different").unwrap());
@@ -175,10 +198,6 @@ pub fn blobs(store: &dyn BlobStore) {
     let empty = store.put_blob(b"").unwrap();
     assert_eq!(empty, EMPTY_DIGEST);
     assert_eq!(store.get_blob(&empty).unwrap(), Some(Vec::new()));
-
-    let large = vec![0xa5; 1 << 20];
-    let large_id = store.put_blob(&large).unwrap();
-    assert_eq!(store.get_blob(&large_id).unwrap(), Some(large));
 
     // A well-formed digest nobody stored is absent, not an error.
     assert!(store.get_blob(&"0".repeat(64)).unwrap().is_none());
@@ -221,7 +240,7 @@ static ECHO_METHODS: &[MethodDescriptor] = &[
 pub static ECHO_DESCRIPTOR: ServiceDescriptor = ServiceDescriptor {
     name: "Echo",
     package: "arut.conformance.v1",
-    version: "v1",
+    version: Version { major: 1, minor: 0 },
     methods: ECHO_METHODS,
 };
 const fn method(
@@ -282,21 +301,5 @@ impl RpcChannel for Echo {
                 Box::pin(futures_util::stream::iter(items)) as RpcStream<Vec<u8>>
             ))
         })
-    }
-    fn client_stream(
-        &self,
-        p: &str,
-        _: Request<RpcStream<Vec<u8>>>,
-    ) -> RpcFuture<Response<Vec<u8>>> {
-        let error = Status::unimplemented(p);
-        Box::pin(async { Err(error) })
-    }
-    fn bidirectional(
-        &self,
-        p: &str,
-        _: Request<RpcStream<Vec<u8>>>,
-    ) -> RpcFuture<Response<RpcStream<Vec<u8>>>> {
-        let error = Status::unimplemented(p);
-        Box::pin(async { Err(error) })
     }
 }

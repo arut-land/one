@@ -17,15 +17,16 @@ struct TranscriptView: View {
         ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(spacing: 0) {
-                    ForEach(messages.indices, id: \.self) { index in
-                        let message = messages[index]
+                    ForEach(Array(messages.enumerated()), id: \.element.id) { index, message in
                         VStack {
                             if message.startsTimeGroup, message.acceptedAtMs > 0 {
-                                Text(Date(timeIntervalSince1970: Double(message.acceptedAtMs) / 1_000),
-                                     format: .dateTime.month(.abbreviated).day().hour().minute())
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                                    .padding(.vertical)
+                                Text(
+                                    Date(timeIntervalSince1970: Double(message.acceptedAtMs) / 1_000),
+                                    format: .dateTime.month(.abbreviated).day().hour().minute()
+                                )
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .padding(.vertical)
                             }
                             MessageRow(message: message)
                         }
@@ -33,27 +34,34 @@ struct TranscriptView: View {
                         .id(message.id)
                         .transition(.opacity)
                     }
-                    Color.clear.frame(height: 1)
-                        .id(UInt64(0))
-                        .modifier(TranscriptBottomVisibility(isVisible: $nearBottom))
+                    bottomSentinel
                 }
-                .modifier(TranscriptTargets())
+                .scrollTargetLayout()
                 .frame(maxWidth: ConversationLayout.maximumWidth)
                 .padding()
                 .frame(maxWidth: .infinity)
                 .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: messages.count)
             }
-            .modifier(TranscriptPosition(position: $readingPosition))
+            .scrollPosition(id: $readingPosition, anchor: .top)
             .accessibilityLabel(L10n.labelTranscript())
             .accessibilityIdentifier("conversation-transcript")
             .overlay {
-                if messages.isEmpty { emptyConversation.allowsHitTesting(false) }
+                if messages.isEmpty {
+                    ContentUnavailableView(
+                        L10n.chatEmptyTitle(),
+                        systemImage: "bubble.left.and.bubble.right",
+                        description: Text(L10n.chatEmptyHint())
+                    )
+                    .allowsHitTesting(false)
+                }
             }
-            .onAppear { proxy.scrollTo(readingPosition ?? 0, anchor: readingPosition == nil ? .bottom : .top) }
-            .onChange(of: messages.last?.id) { _ in
+            .onAppear {
+                proxy.scrollTo(readingPosition ?? 0, anchor: readingPosition == nil ? .bottom : .top)
+            }
+            .onChange(of: messages.last?.id) {
                 if nearBottom { scrollToLatest(proxy) }
             }
-            .onChange(of: scrollRequest) { _ in scrollToLatest(proxy) }
+            .onChange(of: scrollRequest) { scrollToLatest(proxy) }
             .overlay(alignment: .bottomTrailing) {
                 if !nearBottom, !messages.isEmpty {
                     HStack {
@@ -65,6 +73,18 @@ struct TranscriptView: View {
                     .frame(maxWidth: .infinity)
                 }
             }
+        }
+    }
+
+    // Scroll visibility arrives on macOS 15/iOS 18; before that the sentinel's
+    // appearance is the only signal that the reader is at the bottom.
+    @ViewBuilder
+    private var bottomSentinel: some View {
+        let sentinel = Color.clear.frame(height: 1).id(UInt64(0))
+        if #available(macOS 15.0, iOS 18.0, *) {
+            sentinel.onScrollVisibilityChange(threshold: 0.1) { nearBottom = $0 }
+        } else {
+            sentinel.onAppear { nearBottom = true }.onDisappear { nearBottom = false }
         }
     }
 
@@ -91,47 +111,6 @@ struct TranscriptView: View {
             button.buttonStyle(.bordered)
         }
     }
-
-    @ViewBuilder
-    private var emptyConversation: some View {
-        if #available(macOS 14.0, iOS 17.0, *) {
-            ContentUnavailableView(L10n.chatEmptyTitle(), systemImage: "bubble.left.and.bubble.right",
-                                   description: Text(L10n.chatEmptyHint()))
-        } else {
-            VStack {
-                Label(L10n.chatEmptyTitle(), systemImage: "bubble.left.and.bubble.right")
-                    .font(.title2)
-                Text(L10n.chatEmptyHint()).foregroundStyle(.secondary)
-            }
-            .padding()
-        }
-    }
-}
-
-private struct TranscriptBottomVisibility: ViewModifier {
-    @Binding var isVisible: Bool
-    @ViewBuilder func body(content: Content) -> some View {
-        if #available(macOS 15.0, iOS 18.0, *) {
-            content.onScrollVisibilityChange(threshold: 0.1) { isVisible = $0 }
-        } else {
-            content.onAppear { isVisible = true }.onDisappear { isVisible = false }
-        }
-    }
-}
-
-private struct TranscriptTargets: ViewModifier {
-    @ViewBuilder func body(content: Content) -> some View {
-        if #available(macOS 14.0, iOS 17.0, *) { content.scrollTargetLayout() }
-        else { content }
-    }
-}
-
-private struct TranscriptPosition: ViewModifier {
-    @Binding var position: UInt64?
-    @ViewBuilder func body(content: Content) -> some View {
-        if #available(macOS 14.0, iOS 17.0, *) { content.scrollPosition(id: $position, anchor: .top) }
-        else { content }
-    }
 }
 
 private struct MessageRow: View {
@@ -156,7 +135,11 @@ private struct MessageRow: View {
                 .padding(.vertical, 10)
                 .background {
                     RoundedRectangle(cornerRadius: 18)
-                        .fill(isUser ? Color.blue : Color.primary.opacity(contrast == .increased ? 0.16 : 0.07))
+                        .fill(
+                            isUser
+                                ? Color.blue
+                                : Color.primary.opacity(contrast == .increased ? 0.16 : 0.07)
+                        )
                 }
                 .frame(maxWidth: 560, alignment: isUser ? .trailing : .leading)
                 .help(time)
@@ -164,7 +147,9 @@ private struct MessageRow: View {
                 .accessibilityValue(message.text)
                 .accessibilityIdentifier("message-content-\(message.id)")
                 .contextMenu {
-                    Button(action: copy) { Label(L10n.actionCopyMessage(), systemImage: "doc.on.doc") }
+                    Button(action: copy) {
+                        Label(L10n.actionCopyMessage(), systemImage: "doc.on.doc")
+                    }
                 }
             if !isUser { Spacer() }
         }

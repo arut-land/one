@@ -1,70 +1,22 @@
+/* Named GTK theme colors only: no literals, no palette resolved in Rust.
+   `arut_accent` is defined by theme.rs from the portal, or aliased to the
+   theme's own selection color when the portal has no accent. */
+
+.arut-window {
+    background-color: @theme_bg_color;
+    color: @theme_fg_color;
+}
+
 .arut-sidebar {
-    padding: 20px 12px 12px;
+    background-color: @theme_unfocused_bg_color;
+    border-right: 1px solid @borders;
+    padding: 16px 8px 8px;
 }
 
-.arut-conversations,
-.arut-conversations listview,
-.arut-transcript,
-.arut-transcript > row {
-    background-color: transparent;
-}
-
-.arut-conversation-row {
-    padding: 10px 8px;
-}
-
-.arut-conversations row {
-    border-radius: 8px;
-    margin-bottom: 4px;
-}
-
-.arut-transcript > row {
-    padding: 0;
-}
-
-.arut-message {
-    padding: 12px 16px;
-    border-radius: 16px;
-}
-
-.arut-composer {
-    border-radius: 16px;
-}
-
-.arut-composer textview,
-.arut-composer textview text {
-    background-color: transparent;
-}
-
-.arut-empty-title {
-    font-size: 1.5em;
-    font-weight: 700;
-}
-
-.arut-latest {
-    min-width: 32px;
-    min-height: 32px;
-}
-
-.arut-error {
-    padding: 12px;
-    border-radius: 8px;
-}
-
-.arut-conversations row {
-    transition: background-color 160ms ease, color 160ms ease;
-}
-
-.arut-conversations row:selected {
-    font-weight: 500;
-}
-
-.arut-conversation-row .heading {
-    font-weight: 500;
-}
-
-.arut-conversations row:selected .heading {
-    font-weight: 700;
+.arut-chat-surface {
+    background-color: @theme_base_color;
+    color: @theme_fg_color;
+    border-radius: 16px 0 0 0;
 }
 
 .arut-toolbar {
@@ -76,11 +28,122 @@
     min-height: 24px;
 }
 
-.arut-chat-surface {
-    border-radius: 12px 0 0 0;
+.arut-availability {
+    color: @theme_unfocused_fg_color;
+    font-size: smaller;
+    padding: 4px;
+}
+
+.arut-conversations,
+.arut-conversations listview,
+.arut-transcript,
+.arut-transcript > row {
+    background-color: transparent;
+}
+
+.arut-transcript > row {
+    padding: 0;
+}
+
+.arut-conversations row {
+    border-radius: 8px;
+    margin-bottom: 4px;
+    transition: background-color 160ms ease, color 160ms ease;
+}
+
+.arut-conversations row:hover {
+    background-color: alpha(@theme_fg_color, 0.08);
+}
+
+.arut-conversations row:selected {
+    background-color: @theme_selected_bg_color;
+    color: @theme_selected_fg_color;
+    font-weight: 500;
+}
+
+.arut-conversations row:selected .dim-label {
+    opacity: 0.85;
+}
+
+.arut-conversations row:selected .heading {
+    font-weight: 700;
+}
+
+.arut-conversations row:focus-visible {
+    outline: 2px solid @arut_accent;
+    outline-offset: -2px;
+}
+
+.arut-conversation-row {
+    padding: 8px;
+}
+
+.arut-conversation-row .heading {
+    font-weight: 500;
+}
+
+.arut-message {
+    padding: 8px 16px;
+    border-radius: 16px;
+}
+
+.arut-message.arut-outgoing {
+    background-color: @theme_selected_bg_color;
+    color: @theme_selected_fg_color;
+    border: 1px solid @borders;
+}
+
+.arut-empty-title {
+    font-size: 1.5em;
+    font-weight: 700;
+}
+
+.arut-latest {
+    min-width: 32px;
+    min-height: 32px;
+    /* It floats over the transcript, so it carries its own surface. */
+    background-color: @theme_bg_color;
+    border: 1px solid @borders;
+}
+
+.arut-composer {
+    background-color: @theme_base_color;
+    color: @theme_fg_color;
+    border-radius: 16px;
+    box-shadow: 0 2px 6px alpha(@borders, 0.35);
+}
+
+.arut-composer:focus-within {
+    outline: 2px solid @arut_accent;
+    outline-offset: -2px;
+}
+
+.arut-composer textview,
+.arut-composer textview text {
+    background-color: transparent;
 }
 
 .arut-toolbar image,
 .arut-composer button image {
     -gtk-icon-size: 20px;
+}
+
+.arut-error {
+    border: 1px solid @borders;
+    border-radius: 8px;
+    padding: 16px;
+}
+
+@media (prefers-contrast: more) {
+    .arut-message,
+    .arut-message.arut-outgoing,
+    .arut-composer,
+    .arut-error {
+        border: 2px solid currentColor;
+    }
+
+    .arut-conversations row:selected {
+        outline: 2px solid currentColor;
+        outline-offset: -2px;
+    }
 }

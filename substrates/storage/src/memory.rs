@@ -1,8 +1,12 @@
+use crate::log::{LogStore, commit_policy, compaction_allowed, snapshot_allowed};
 use crate::{
     BlobStore, Fact, FactLog, KeyValue, Record, Result, Snapshot, StorageError, checked_digest,
     digest,
 };
-use std::{collections::BTreeMap, sync::Mutex};
+use std::{
+    collections::BTreeMap,
+    sync::{Mutex, MutexGuard},
+};
 struct LogState<F> {
     records: Vec<Record<F>>,
     snapshot: Option<Snapshot>,
@@ -18,6 +22,40 @@ impl<F> Default for MemoryLog<F> {
         }))
     }
 }
+impl<F> MemoryLog<F> {
+    fn state(&self) -> Result<MutexGuard<'_, LogState<F>>> {
+        self.0.lock().map_err(|_| StorageError::Corrupt)
+    }
+}
+impl<F: Fact> LogStore<F> for MutexGuard<'_, LogState<F>> {
+    fn head(&mut self) -> Result<(u64, u64)> {
+        Ok(self
+            .records
+            .last()
+            .map_or((0, 1), |record| (record.sequence, record.epoch)))
+    }
+    fn watermark(&mut self) -> Result<u64> {
+        Ok(self.compacted)
+    }
+    fn duplicate(&mut self, command_id: &str) -> Result<Option<Record<F>>> {
+        Ok(self
+            .records
+            .iter()
+            .find(|record| record.command_id == command_id)
+            .cloned())
+    }
+    fn after(&mut self, cursor: u64) -> Result<Vec<Record<F>>> {
+        let start = self.records.partition_point(|r| r.sequence <= cursor);
+        Ok(self.records[start..].to_vec())
+    }
+    fn push(&mut self, record: &Record<F>) -> Result<()> {
+        self.records.push(record.clone());
+        Ok(())
+    }
+    fn finish(self) -> Result<()> {
+        Ok(())
+    }
+}
 impl<F: Fact> FactLog<F> for MemoryLog<F> {
     fn commit(
         &self,
@@ -26,79 +64,33 @@ impl<F: Fact> FactLog<F> for MemoryLog<F> {
         id: &str,
         decide: &mut crate::CommitDecision<'_, F>,
     ) -> Result<Option<Record<F>>> {
-        let mut state = self.0.lock().map_err(|_| StorageError::Corrupt)?;
-        if cursor.is_some_and(|cursor| cursor < state.compacted) {
-            return Err(StorageError::CursorUnavailable {
-                through: state.compacted,
-            });
-        }
-        let current = state.records.last().map_or(1, |record| record.epoch);
-        if epoch < current {
-            return Err(StorageError::Epoch { current });
-        }
-        let actual = state.records.last().map_or(0, |record| record.sequence);
-        if cursor.is_some_and(|cursor| cursor > actual) {
-            return Err(StorageError::Conflict { actual });
-        }
-        let duplicate = state.records.iter().find(|r| r.command_id == id).cloned();
-        let start = cursor.map_or(state.records.len(), |cursor| {
-            state.records.partition_point(|r| r.sequence <= cursor)
-        });
-        let Some(fact) = decide(actual, &state.records[start..], duplicate)? else {
-            return Ok(None);
-        };
-        let record = Record {
-            sequence: actual.checked_add(1).ok_or(StorageError::Corrupt)?,
-            epoch,
-            command_id: id.into(),
-            fact,
-        };
-        state.records.push(record.clone());
-        Ok(Some(record))
+        commit_policy(self.state()?, cursor, epoch, id, decide)
     }
     fn outcome_of(&self, id: &str) -> Result<Option<Record<F>>> {
-        Ok(self
-            .0
-            .lock()
-            .map_err(|_| StorageError::Corrupt)?
-            .records
-            .iter()
-            .find(|r| r.command_id == id)
-            .cloned())
+        self.state()?.duplicate(id)
     }
     fn read_from(&self, cursor: u64) -> Result<Vec<Record<F>>> {
-        let state = self.0.lock().map_err(|_| StorageError::Corrupt)?;
+        let mut state = self.state()?;
         if cursor < state.compacted {
             return Err(StorageError::CursorUnavailable {
                 through: state.compacted,
             });
         }
-        let start = state.records.partition_point(|r| r.sequence <= cursor);
-        Ok(state.records[start..].to_vec())
+        state.after(cursor)
     }
     fn snapshot(&self) -> Result<Option<Snapshot>> {
-        Ok(self
-            .0
-            .lock()
-            .map_err(|_| StorageError::Corrupt)?
-            .snapshot
-            .clone())
+        Ok(self.state()?.snapshot.clone())
     }
     fn save_snapshot(&self, snapshot: Snapshot) -> Result<()> {
-        let mut state = self.0.lock().map_err(|_| StorageError::Corrupt)?;
-        if snapshot.sequence > state.records.last().map_or(0, |r| r.sequence)
-            || snapshot.sequence < state.compacted
-        {
-            return Err(StorageError::SnapshotRequired);
-        }
+        let mut state = self.state()?;
+        let newest = state.records.last().map_or(0, |r| r.sequence);
+        snapshot_allowed(&snapshot, newest, state.compacted)?;
         state.snapshot = Some(snapshot);
         Ok(())
     }
     fn compact(&self, through: u64) -> Result<()> {
-        let mut state = self.0.lock().map_err(|_| StorageError::Corrupt)?;
-        if state.snapshot.as_ref().is_none_or(|s| s.sequence < through) {
-            return Err(StorageError::SnapshotRequired);
-        }
+        let mut state = self.state()?;
+        compaction_allowed(state.snapshot.as_ref(), through)?;
         state.compacted = state.compacted.max(through);
         Ok(())
     }
@@ -110,50 +102,31 @@ struct MemoryState {
 }
 #[derive(Default)]
 pub struct MemoryStore(Mutex<MemoryState>);
+impl MemoryStore {
+    fn state(&self) -> Result<MutexGuard<'_, MemoryState>> {
+        self.0.lock().map_err(|_| StorageError::Corrupt)
+    }
+}
 impl KeyValue for MemoryStore {
     fn get(&self, key: &str) -> Result<Option<Vec<u8>>> {
-        Ok(self
-            .0
-            .lock()
-            .map_err(|_| StorageError::Corrupt)?
-            .values
-            .get(key)
-            .cloned())
+        Ok(self.state()?.values.get(key).cloned())
     }
     fn put(&self, key: &str, value: &[u8]) -> Result<()> {
-        self.0
-            .lock()
-            .map_err(|_| StorageError::Corrupt)?
-            .values
-            .insert(key.to_owned(), value.to_vec());
+        self.state()?.values.insert(key.to_owned(), value.to_vec());
         Ok(())
     }
     fn remove(&self, key: &str) -> Result<()> {
-        self.0
-            .lock()
-            .map_err(|_| StorageError::Corrupt)?
-            .values
-            .remove(key);
+        self.state()?.values.remove(key);
         Ok(())
     }
 }
 impl BlobStore for MemoryStore {
     fn put_blob(&self, bytes: &[u8]) -> Result<String> {
         let id = digest(bytes);
-        self.0
-            .lock()
-            .map_err(|_| StorageError::Corrupt)?
-            .blobs
-            .insert(id.clone(), bytes.to_vec());
+        self.state()?.blobs.insert(id.clone(), bytes.to_vec());
         Ok(id)
     }
     fn get_blob(&self, id: &str) -> Result<Option<Vec<u8>>> {
-        Ok(self
-            .0
-            .lock()
-            .map_err(|_| StorageError::Corrupt)?
-            .blobs
-            .get(checked_digest(id)?)
-            .cloned())
+        Ok(self.state()?.blobs.get(checked_digest(id)?).cloned())
     }
 }

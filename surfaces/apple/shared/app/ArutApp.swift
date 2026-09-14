@@ -10,7 +10,7 @@ struct ArutApp: App {
 
     var body: some Scene {
         WindowGroup {
-            ContentView(session: session)
+            ChatView(session: session)
                 #if os(macOS)
                 .frame(minWidth: 740, minHeight: 520)
                 #endif

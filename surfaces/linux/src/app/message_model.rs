@@ -46,6 +46,17 @@ impl Messages {
             .last()
             .map_or(0, |row| row.borrow::<ChatMessage>().id)
     }
+    /// Drops every row, for a widget tree that is about to show another
+    /// conversation.
+    pub fn reset(&self) {
+        let removed = self.n_items();
+        if removed == 0 {
+            return;
+        }
+        self.imp().0.borrow_mut().clear();
+        self.items_changed(0, removed, 0);
+    }
+
     pub fn refresh(&self, read_after: impl FnOnce(u64) -> Vec<ChatMessage>) {
         let messages = read_after(self.last_id());
         if messages.is_empty() {

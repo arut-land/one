@@ -1,7 +1,7 @@
 //! Parent-owned node and workspace construction with supplied chat clients.
 //!
-//! Cancellation follows the ownership tree. Workspaces create child cancellation
-//! scopes for conversations; cancelling a parent cancels its descendants.
+//! Cancellation follows the ownership tree: workspaces create child scopes for
+//! conversations, and cancelling a parent cancels its descendants.
 
 use arut_protocol::chat::{composer::v1::ComposerServiceClient, v1::ChatServiceClient};
 use arut_rpc::Cancellation;
@@ -80,7 +80,7 @@ mod tests {
     }
 
     #[test]
-    fn dropping_a_workspace_cancels_only_what_it_owns() {
+    fn cancellation_follows_ownership_down_and_never_sideways() {
         let node = Node::new("one".into(), Arc::new(()));
         let workspace = node.workspace("default".into());
         let sibling = node.workspace("other".into());
@@ -97,17 +97,10 @@ mod tests {
         assert!(conversation_token.is_cancelled());
         assert!(!sibling_token.is_cancelled());
         assert!(!node.cancellation().is_cancelled());
-    }
-
-    #[test]
-    fn cancelling_a_node_reaches_every_scope_beneath_it() {
-        let node = Node::new("one".into(), Arc::new(()));
-        let workspace = node.workspace("default".into());
-        let conversation = workspace.conversation_cancellation();
 
         node.cancellation().cancel();
 
-        assert!(workspace.cancellation().is_cancelled());
-        assert!(conversation.is_cancelled());
+        assert!(sibling.cancellation().is_cancelled());
+        assert!(sibling_token.is_cancelled());
     }
 }

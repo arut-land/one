@@ -11,3 +11,7 @@ The first slice implemented the chat view-model five times in five languages, ea
 - **One snapshot struct per screen.** Rejected: it recreates the monolithic state one level down and forces a collapsed sidebar to observe conversations it does not show.
 - **UniFFI.** Rejected: no wasm target.
 - **Hand-mirrored FFI types.** Rejected: three definitions of every type with `From` impls, verified in the crate sources to be unnecessary.
+
+## Amendment (2026-09-14)
+
+The generated alias facades are deleted, along with the generator that wrote them. Swift re-exports `ArutFfi`, the .NET props file carries `<Using Include="Arut.Ffi" />`, and Kotlin surfaces import `dev.arut.ffi`, so each generated type reaches a surface under its own name with no rename layer to keep in sync. The decision is unchanged: hand-written binding code is still a regression, and `arut-dev check` still refuses a surface that reaches around its binding package.

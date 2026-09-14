@@ -1,7 +1,6 @@
-use arut_protocol::capability::v1::{
-    CapabilityServiceClient, GetCapabilitiesRequest, ServiceCapability,
-};
-use arut_protocol::chat::composer::v1::COMPOSER_SERVICE_DESCRIPTOR;
+use arut_protocol::capability::v1::{CapabilityServiceClient, GetCapabilitiesRequest};
+use arut_protocol::capability_manifest::ServiceAvailability;
+use arut_protocol::chat::composer::v1::ComposerServiceId;
 use arut_rpc::Request;
 
 #[boltffi::data]
@@ -25,6 +24,16 @@ pub enum FeatureAvailability {
     ManifestUnreachable,
 }
 
+impl From<ServiceAvailability> for FeatureAvailability {
+    fn from(availability: ServiceAvailability) -> Self {
+        match availability {
+            ServiceAvailability::Available => Self::Available,
+            ServiceAvailability::ReportedUnavailable => Self::ReportedUnavailable,
+            ServiceAvailability::NotAdvertised => Self::NotAdvertised,
+        }
+    }
+}
+
 pub(super) async fn read(service: &CapabilityServiceClient) -> SessionAvailability {
     let composer = match service
         .get_capabilities(Request::new(GetCapabilitiesRequest {}))
@@ -33,32 +42,21 @@ pub(super) async fn read(service: &CapabilityServiceClient) -> SessionAvailabili
         Ok(response) => response
             .message
             .manifest
-            .and_then(|manifest| manifest.services.into_iter().find(is_composer_service))
-            .map_or(FeatureAvailability::NotAdvertised, feature_availability),
+            .map_or(FeatureAvailability::NotAdvertised, |manifest| {
+                manifest.availability::<ComposerServiceId>().into()
+            }),
         Err(_) => FeatureAvailability::ManifestUnreachable,
     };
     SessionAvailability { composer }
-}
-
-fn is_composer_service(service: &ServiceCapability) -> bool {
-    service.package == COMPOSER_SERVICE_DESCRIPTOR.package
-        && service.service == COMPOSER_SERVICE_DESCRIPTOR.name
-}
-
-fn feature_availability(service: ServiceCapability) -> FeatureAvailability {
-    if service.available {
-        FeatureAvailability::Available
-    } else {
-        FeatureAvailability::ReportedUnavailable
-    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use arut_protocol::capability::v1::{
-        CapabilityManifest, CapabilityService, GetCapabilitiesResponse,
+        CapabilityManifest, CapabilityService, GetCapabilitiesResponse, ServiceCapability,
     };
+    use arut_protocol::chat::composer::v1::COMPOSER_SERVICE_DESCRIPTOR;
     use arut_rpc::{Response, RpcFuture, Status};
     use futures_executor::block_on;
     use std::sync::Arc;

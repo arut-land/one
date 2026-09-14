@@ -1,69 +1,29 @@
-//! Composer domain values and public scope contracts.
+//! Ephemeral per-scope drafts: last-writer-wins on revision, never facts (ADR 0018).
 mod authority;
 mod client;
-mod projection;
+mod scope;
 mod service;
-mod wire;
-pub(crate) use authority::ComposerAuthority;
-pub(crate) use authority::PromoteError;
+use crate::errors::ComposerError;
+pub(crate) use authority::{ComposerAuthority, PromoteError};
 pub use client::ComposerClient;
-pub use projection::{ComposerState, ComposerStatus};
+pub use scope::ComposerScope;
+pub(crate) use scope::{ComposerSnapshot, ReplaceComposer, ReplaceOutcome};
 pub(crate) use service::ComposerServiceImpl;
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum ComposerScope {
-    Pending(String),
-    Chat(String),
+#[boltffi::data]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ComposerStatus {
+    Connecting,
+    Synced,
+    Failed,
 }
 
-impl ComposerScope {
-    pub fn pending(id: impl Into<String>) -> Self {
-        Self::Pending(id.into())
-    }
-
-    pub fn chat(id: impl Into<String>) -> Self {
-        Self::Chat(id.into())
-    }
-}
-
+#[boltffi::data]
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct ComposerSnapshot {
-    pub scope: ComposerScope,
-    pub authority_epoch: u64,
+pub struct ComposerState {
     pub text: String,
     pub revision: u64,
-}
-
-impl ComposerSnapshot {
-    pub(crate) fn empty(scope: ComposerScope) -> Self {
-        Self {
-            scope,
-            authority_epoch: 1,
-            text: String::new(),
-            revision: 0,
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct ReplaceComposer {
-    pub scope: ComposerScope,
-    pub command_id: String,
-    pub authority_epoch: u64,
-    pub base_revision: u64,
-    pub text: String,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum ReplaceOutcome {
-    Applied {
-        snapshot: ComposerSnapshot,
-        duplicate: bool,
-    },
-    RevisionConflict {
-        snapshot: ComposerSnapshot,
-    },
-    AuthorityMismatch {
-        current_epoch: u64,
-    },
+    pub status: ComposerStatus,
+    /// Set exactly when `status` is `Failed`; a surface reads the variant.
+    pub error: Option<ComposerError>,
 }

@@ -1,0 +1,21 @@
+[package]
+name = "arut-transport"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+arut-rpc.workspace = true
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+axum = "0.8.4"
+base64 = "0.22"
+bytes = "1.12.1"
+futures-util = "0.3.31"
+http-body-util = "0.1.5"
+reqwest = { version = "0.13.2", default-features = false, features = ["rustls", "stream", "json"] }
+serde_json = "1"
+tokio-util = { version = "0.7.19", default-features = false, features = ["codec"] }
+
+[lints]
+workspace = true

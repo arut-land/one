@@ -77,10 +77,10 @@ fn redb_writers_compare_and_append_atomically() {
     let other = barrier.clone();
     let thread = std::thread::spawn(move || {
         other.wait();
-        one.append(0, 1, "one", "one".into())
+        append(&one, 0, 1, "one", "one".into())
     });
     barrier.wait();
-    let result = two.append(0, 1, "two", "two".into());
+    let result = append(&two, 0, 1, "two", "two".into());
     assert_ne!(thread.join().unwrap().is_ok(), result.is_ok());
     assert_eq!(two.read_from(0).unwrap().len(), 1);
     drop(two);
@@ -100,14 +100,11 @@ async fn connect_http_rpc() {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let address = listener.local_addr().unwrap();
     let server = tokio::spawn(async move {
-        axum::serve(
-            listener,
-            arut_transport_connect_http::router(Arc::new(Echo)),
-        )
-        .await
-        .unwrap();
+        axum::serve(listener, arut_transport::router(Arc::new(Echo)))
+            .await
+            .unwrap();
     });
-    rpc(&arut_transport_connect_http::HttpRpcChannel::new(format!(
+    rpc(&arut_transport::HttpRpcChannel::new(format!(
         "http://{address}"
     )))
     .await;
@@ -121,21 +118,18 @@ async fn unix_socket_rpc() {
     let socket = path.join("node.sock");
     let listener = tokio::net::UnixListener::bind(&socket).unwrap();
     let server = tokio::spawn(async move {
-        axum::serve(
-            listener,
-            arut_transport_connect_http::router(Arc::new(Echo)),
-        )
-        .await
-        .unwrap();
+        axum::serve(listener, arut_transport::router(Arc::new(Echo)))
+            .await
+            .unwrap();
     });
-    rpc(&arut_transport_ipc::unix_socket(&socket).unwrap()).await;
+    rpc(&arut_transport::ipc::unix_socket(&socket).unwrap()).await;
     server.abort();
     std::fs::remove_dir_all(path).unwrap();
 }
 #[tokio::test]
 async fn http_bounds_chunked_unary_and_error_bodies_and_outbound_requests() {
     use arut_rpc::{Code, Request, RpcChannel};
-    use arut_transport_connect_http::{HttpRpcChannel, MAX_MESSAGE};
+    use arut_transport::{HttpRpcChannel, MAX_MESSAGE};
     let oversized = vec![0; MAX_MESSAGE + 1];
     let unreachable = HttpRpcChannel::new("http://127.0.0.1:1");
     assert_eq!(

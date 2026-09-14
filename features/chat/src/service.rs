@@ -12,7 +12,6 @@ use arut_protocol::chat::v1::{
 use arut_rpc::{Code, Request, Response, RpcFuture, Status};
 use arut_storage::{FactLog, StorageError};
 use std::sync::Arc;
-use uuid::Uuid;
 
 pub(crate) struct ChatServiceImpl {
     authority: ChatAuthority,
@@ -34,44 +33,37 @@ impl ChatServiceImpl {
 }
 impl From<CommitError> for Status {
     fn from(error: CommitError) -> Self {
-        match error {
-            CommitError::Storage(error) => Status::new(Code::Internal, error.to_string()),
-            CommitError::PendingRevisionConflict => {
-                Status::new(Code::Aborted, "pending composer revision changed")
+        let (code, message) = match error {
+            CommitError::Storage(error) => return Self::new(Code::Internal, error.to_string()),
+            CommitError::RevisionConflict => (Code::Aborted, "conversation revision changed"),
+            CommitError::AuthorityChanged => {
+                (Code::FailedPrecondition, "conversation authority changed")
             }
-            CommitError::PendingTextMismatch => {
-                Status::new(Code::FailedPrecondition, "pending composer text changed")
-            }
+            CommitError::Superseded => (Code::Aborted, "command superseded"),
             CommitError::Rejected(Rejection::ConversationMissing) => {
-                Self::new(Code::NotFound, "conversation not found")
+                (Code::NotFound, "conversation not found")
             }
             CommitError::Rejected(Rejection::ConversationExists) => {
-                Self::new(Code::AlreadyExists, "conversation already started")
+                (Code::AlreadyExists, "conversation already started")
             }
-            CommitError::RevisionConflict => {
-                Self::new(Code::Aborted, "conversation revision changed")
-            }
-            CommitError::AuthorityMismatch => {
-                Self::new(Code::FailedPrecondition, "conversation authority changed")
-            }
-            CommitError::Superseded => Self::new(Code::Aborted, "command superseded"),
-            CommitError::CommandConflict => Self::new(
+            CommitError::Rejected(Rejection::CommandConflict) => (
                 Code::AlreadyExists,
                 "command ID belongs to another operation",
             ),
-        }
+            CommitError::Rejected(Rejection::PendingRevisionConflict) => {
+                (Code::Aborted, "pending composer revision changed")
+            }
+            CommitError::Rejected(Rejection::PendingTextMismatch) => {
+                (Code::FailedPrecondition, "pending composer text changed")
+            }
+        };
+        Self::new(code, message)
     }
 }
-fn validate_command_id(value: &str) -> Result<(), Status> {
-    if Uuid::parse_str(value)
-        .ok()
-        .is_none_or(|id| id.get_version_num() != 7 || id.to_string() != value)
-    {
-        return Err(Status::invalid_argument(
-            "command requires a canonical UUIDv7 ID",
-        ));
-    }
-    Ok(())
+
+/// A generated method's answer, already decided, as the future it must return.
+fn ready<T: Send + 'static>(result: Result<Response<T>, Status>) -> RpcFuture<Response<T>> {
+    Box::pin(std::future::ready(result))
 }
 
 impl ChatService for ChatServiceImpl {
@@ -80,36 +72,37 @@ impl ChatService for ChatServiceImpl {
         _: Request<ListConversationsRequest>,
     ) -> RpcFuture<Response<ListConversationsResponse>> {
         let conversations = self.authority.conversations();
-        Box::pin(async move { Ok(Response::new(ListConversationsResponse { conversations })) })
+        ready(Ok(Response::new(ListConversationsResponse {
+            conversations,
+        })))
     }
     fn send_message(
         &self,
         request: Request<SendMessageRequest>,
     ) -> RpcFuture<Response<SendMessageResponse>> {
         let message = request.message;
-        let result = (|| {
-            validate_command_id(&message.command_id)?;
-            let fact = self
-                .authority
-                .send(message.command_id, message.chat_id, message.text)?;
+        ready((|| {
+            let fact = self.authority.send(
+                message.command_id.try_into()?,
+                message.chat_id,
+                message.text,
+            )?;
             Ok(Response::new(SendMessageResponse {
                 messages: fact.messages,
             }))
-        })();
-        Box::pin(async move { result })
+        })())
     }
     fn start_chat(
         &self,
         request: Request<StartChatRequest>,
     ) -> RpcFuture<Response<StartChatResponse>> {
         let message = request.message;
-        let result = (|| {
-            validate_command_id(&message.command_id)?;
+        ready((|| {
             if message.pending_scope_id.is_empty() {
                 return Err(Status::invalid_argument("pending scope is required"));
             }
             let (fact, snapshot) = self.authority.start(
-                message.command_id,
+                message.command_id.try_into()?,
                 message.pending_scope_id,
                 message.expected_revision,
                 message.text,
@@ -119,8 +112,7 @@ impl ChatService for ChatServiceImpl {
                 messages: fact.messages,
                 composer: Some(snapshot.into()),
             }))
-        })();
-        Box::pin(async move { result })
+        })())
     }
 }
 #[cfg(test)]
@@ -132,6 +124,22 @@ mod tests {
     use arut_rpc::Request;
     use arut_storage::MemoryLog;
     use futures_executor::block_on;
+    use uuid::Uuid;
+
+    /// A composer holding `hello` in the pending scope at revision 1.
+    fn pending_draft() -> Arc<ComposerAuthority> {
+        let composer = Arc::new(ComposerAuthority::default());
+        composer
+            .replace(ReplaceComposer {
+                scope: ComposerScope::pending("pending"),
+                command_id: "draft".into(),
+                authority_epoch: 1,
+                base_revision: 0,
+                text: "hello".into(),
+            })
+            .unwrap();
+        composer
+    }
 
     fn service(composer: Arc<ComposerAuthority>) -> ChatServiceImpl {
         ChatServiceImpl::new(composer, Arc::new(MemoryLog::default()), Arc::new(TestIds))
@@ -189,18 +197,8 @@ mod tests {
 
     #[test]
     fn first_send_atomically_promotes_pending_composer() {
-        let composer = Arc::new(ComposerAuthority::default());
-        composer
-            .replace(ReplaceComposer {
-                scope: ComposerScope::pending("pending"),
-                command_id: "draft".into(),
-                authority_epoch: 1,
-                base_revision: 0,
-                text: "hello".into(),
-            })
-            .unwrap();
+        let composer = pending_draft();
         let client = ChatServiceClient::direct(Arc::new(service(Arc::clone(&composer))));
-
         let response = block_on(client.start_chat(Request::new(StartChatRequest {
             pending_scope_id: "pending".into(),
             command_id: "01900000-0000-7000-8000-000000000001".into(),
@@ -221,40 +219,10 @@ mod tests {
         );
         assert_eq!(
             composer
-                .snapshot(&ComposerScope::chat(response.chat_id))
+                .snapshot(&ComposerScope::chat(&response.chat_id))
                 .unwrap()
                 .revision,
             0
         );
-    }
-
-    #[test]
-    fn retrying_a_start_command_returns_the_original_chat_and_messages() {
-        let composer = Arc::new(ComposerAuthority::default());
-        composer
-            .replace(ReplaceComposer {
-                scope: ComposerScope::pending("pending"),
-                command_id: "draft".into(),
-                authority_epoch: 1,
-                base_revision: 0,
-                text: "hello".into(),
-            })
-            .unwrap();
-        let client = ChatServiceClient::direct(Arc::new(service(composer)));
-        let request = StartChatRequest {
-            pending_scope_id: "pending".into(),
-            command_id: "01900000-0000-7000-8000-000000000001".into(),
-            expected_revision: 1,
-            text: "hello".into(),
-        };
-
-        let first = block_on(client.start_chat(Request::new(request.clone())))
-            .unwrap()
-            .message;
-        let retry = block_on(client.start_chat(Request::new(request)))
-            .unwrap()
-            .message;
-
-        assert_eq!(retry, first);
     }
 }

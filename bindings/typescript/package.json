@@ -5,10 +5,9 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
-    "./react": "./src/react.ts"
-  },
-  "scripts": {
-    "check": "tsc --noEmit && node --test tests/*.test.mjs"
+    "./observable": "./src/observable.ts",
+    "./react": "./src/react.ts",
+    "./strings": "./src/strings.ts"
   },
   "dependencies": {
     "@arut/ffi": "workspace:*",
@@ -20,11 +19,12 @@
     "react": "catalog:"
   },
   "peerDependenciesMeta": {
-    "react": { "optional": true }
+    "react": {
+      "optional": true
+    }
   },
   "devDependencies": {
     "@types/react": "catalog:",
-    "react": "catalog:",
-    "typescript": "catalog:"
+    "react": "catalog:"
   }
 }

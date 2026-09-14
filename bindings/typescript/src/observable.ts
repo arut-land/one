@@ -1,104 +1,95 @@
-import type { ChatHandle, ChatMessage, ComposerHandle } from "@arut/ffi";
-import type { StreamCancellable } from "@boltffi/runtime";
+import type { ChatMessage, ChatState } from "@arut/ffi";
 
+/** A projection read now, and re-read when its handle reports a change. */
 export interface ObservableStore<T> {
   getSnapshot(): T;
   subscribe(listener: () => void): () => void;
   dispose(): void;
 }
 
-export class ObservableState<T> implements ObservableStore<T> {
-  private readonly listeners = new Set<() => void>();
-  private read: () => T;
-  private stream: StreamCancellable<bigint>;
-  private disposed = false;
-  private refreshPending = false;
-  private generation = 0;
-  private dirty = false;
-  private value: T;
+/** A revision stream: the generated `*Changes()` sessions, or a stand-in. */
+export type Changes = AsyncIterable<bigint> & { dispose?(): void };
 
-  constructor(
-    read: () => T,
-    subscribe: (invalidate: () => void) => StreamCancellable<bigint>,
-  ) {
-    this.read = read;
-    this.stream = subscribe(this.invalidator());
-    this.value = read();
-  }
-
-  observe(
-    read: () => T,
-    subscribe: (invalidate: () => void) => StreamCancellable<bigint>,
-  ): void {
-    if (this.disposed) throw new Error("observable state is disposed");
-    this.generation++;
-    this.dirty = false;
-    this.stream.cancel();
-    this.read = read;
-    this.stream = subscribe(this.invalidator());
-    this.value = read();
-    [...this.listeners].forEach((listener) => listener());
-  }
-
-  getSnapshot = (): T => this.value;
-
-  subscribe = (listener: () => void): (() => void) => {
-    this.listeners.add(listener);
-    return () => this.listeners.delete(listener);
-  };
-
-  dispose(): void {
-    if (this.disposed) return;
-    this.disposed = true;
-    this.listeners.clear();
-    this.stream.cancel();
-  }
-
-  private invalidator(): () => void {
-    const generation = this.generation;
-    return () => {
-      if (generation === this.generation) this.invalidate();
-    };
-  }
-
-  private invalidate = (): void => {
-    if (this.disposed) return;
-    this.dirty = true;
-    if (this.refreshPending) return;
-    this.refreshPending = true;
+/**
+ * A `useSyncExternalStore` source over one handle.
+ *
+ * The core reports a revision per fact, so a burst of them is coalesced into
+ * one read on the next microtask: ten thousand revisions cost one read and one
+ * render. Disposal stops the stream rather than waiting for the next revision.
+ */
+export function observe<T>(read: () => T, changes: () => Changes): ObservableStore<T> {
+  const listeners = new Set<() => void>();
+  const source = changes();
+  const revisions = source[Symbol.asyncIterator]();
+  let value = read();
+  let disposed = false;
+  let queued = false;
+  const refresh = (): void => {
+    if (disposed || queued) return;
+    queued = true;
     queueMicrotask(() => {
-      this.refreshPending = false;
-      if (this.disposed || !this.dirty) return;
-      this.dirty = false;
-      this.value = this.read();
-      [...this.listeners].forEach((listener) => listener());
+      queued = false;
+      if (disposed) return;
+      value = read();
+      for (const listener of [...listeners]) listener();
     });
   };
+  void (async () => {
+    while (!disposed) {
+      const revision = await revisions.next();
+      if (revision.done === true) return;
+      refresh();
+    }
+  })().catch((error: unknown) => {
+    if (!disposed) console.error(error);
+  });
+  return {
+    getSnapshot: () => value,
+    subscribe(listener: () => void) {
+      listeners.add(listener);
+      return () => {
+        listeners.delete(listener);
+      };
+    },
+    dispose() {
+      if (disposed) return;
+      disposed = true;
+      listeners.clear();
+      source.dispose?.();
+      void revisions.return?.();
+    },
+  };
 }
 
-export function observeScope<T>(handle: {
-  state(): T;
-  changes(listener: () => void): StreamCancellable<bigint>;
-}): ObservableState<T> {
-  return new ObservableState(() => handle.state(), listener => handle.changes(listener));
-}
-
-/** Cache immutable keyed rows while reading chat metadata on each invalidation. */
-export function chatReader(chat: ChatHandle) {
+/** Cache immutable keyed rows while reading chat metadata on each revision. */
+export function chatReader(chat: {
+  state(): ChatState;
+  messagesAfter(afterId: bigint): ChatMessage[];
+}) {
   let messages: ChatMessage[] = [];
-  return () => {
+  return (): ChatState & { messages: ChatMessage[] } => {
+    const state = chat.state();
+    // A transcript that moved backwards is a different conversation: a handle
+    // that rebound underneath us (the editor bridge does) has nothing to add to.
+    if (state.lastMessageId < (messages.at(-1)?.id ?? 0n)) messages = [];
     const added = chat.messagesAfter(messages.at(-1)?.id ?? 0n);
     if (added.length) messages = messages.concat(added);
-    return { ...chat.state(), messages };
+    return { ...state, messages };
   };
 }
 
 /** The native AbortSignal cancels both initialization and the stream follower. */
-export function followComposer(composer: ComposerHandle): () => void {
+export function followComposer(composer: {
+  initialize(options?: { signal?: AbortSignal }): Promise<unknown>;
+  follow(options?: { signal?: AbortSignal }): Promise<unknown>;
+}): () => void {
   const lifetime = new AbortController();
   const options = { signal: lifetime.signal };
-  void composer.initialize(options).then(() => composer.follow(options)).catch(error => {
-    if (!lifetime.signal.aborted) console.error(error);
-  });
+  void composer
+    .initialize(options)
+    .then(() => composer.follow(options))
+    .catch((error: unknown) => {
+      if (!lifetime.signal.aborted) console.error(error);
+    });
   return () => lifetime.abort();
 }

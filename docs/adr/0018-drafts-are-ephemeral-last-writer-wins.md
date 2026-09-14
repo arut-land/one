@@ -1,5 +1,6 @@
 ---
 status: accepted
+amended-by: 0024 (a local draft write echoes synchronously and flushes last-writer-wins; drafts stay ephemeral and outside the fact log)
 ---
 
 # Drafts replicate as ephemeral state with last-writer-wins and are not facts
@@ -10,3 +11,7 @@ Drafts must follow a person between devices, but the first slice made them the o
 
 - **Character-level merge.** Rejected: the only case for a CRDT here, and messaging products do fine without it.
 - **Durable draft facts.** Rejected: a draft is not a milestone and its history has no audit value.
+
+## Amendment (2026-09-14)
+
+ADR 0024 settles how a draft write is acknowledged. `ComposerClient::replace` echoes the text into `ComposerState.text` before its future is polled, coalesces pending writes behind one in-flight request with the latest winning, and `ChatClient::send` flushes before it commits. Last-writer-wins now describes the local write path as well as replication between devices.

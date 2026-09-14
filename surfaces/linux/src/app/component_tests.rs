@@ -1,105 +1,51 @@
 //! Display-backed checks of the watch/component boundary. No screenshots.
+//!
+//! Each test runs in its own child process so GTK's process-wide policy and the
+//! isolated `XDG_*` directories are set before GTK loads. Run them with
+//! `cargo test -p arut-linux -- --ignored --test-threads=1`.
 use crate::app::{
-    availability::Availability,
     composer::{Composer, Msg as ComposerMsg},
-    conversations::{Conversations, Msg as ConversationsMsg},
-    transcript::Transcript,
+    conversation_model::ConversationItem,
+    observe::Tasks,
+    shell::Shell,
+    testing::{descendant, find},
+    transcript::{Msg as TranscriptMsg, Transcript},
+};
+use arut_product_session::{ProductSession, SessionScope, chat::ChatClient, hosting::Host};
+use arut_runtime_local::{
+    child::ChildHost,
+    hosting::{TokioSpawner, desktop_executor},
 };
 use gtk::{glib, prelude::*};
 use relm4::{Component, ComponentController};
-use std::{rc::Rc, sync::Arc};
+use std::{cell::Cell, path::PathBuf, rc::Rc, sync::Arc};
 
-fn drain(context: &glib::MainContext) {
-    let mut iterations = 0;
-    while context.pending() {
-        context.iteration(false);
-        iterations += 1;
-        assert!(iterations < 10_000, "UI did not become idle");
+struct Fixture {
+    context: glib::MainContext,
+    session: Rc<ProductSession>,
+    directory: PathBuf,
+    _app: relm4::RelmApp<()>,
+}
+
+impl Drop for Fixture {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.directory);
     }
 }
 
-fn wait_until(context: &glib::MainContext, ready: impl Fn() -> bool) {
-    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
-    loop {
-        drain(context);
-        if ready() {
-            return;
-        }
-        assert!(
-            std::time::Instant::now() < deadline,
-            "UI did not receive the node response"
-        );
-        std::thread::sleep(std::time::Duration::from_millis(1));
-    }
-}
-
-fn descendant<T: IsA<gtk::Widget> + StaticType + Clone>(widget: &impl IsA<gtk::Widget>) -> T {
-    fn find<T: IsA<gtk::Widget> + StaticType + Clone>(widget: &gtk::Widget) -> Option<T> {
-        if let Ok(found) = widget.clone().downcast::<T>() {
-            return Some(found);
-        }
-        let mut child = widget.first_child();
-        while let Some(current) = child {
-            if let Some(found) = find(&current) {
-                return Some(found);
-            }
-            child = current.next_sibling();
-        }
-        None
-    }
-    find(widget.as_ref()).expect("widget type in component")
-}
-
-#[test]
-#[ignore = "requires a GTK display; run with --ignored --test-threads=1"]
-fn recycled_models_search_and_ordered_drafts_work_over_ipc() {
-    use arut_product_session::{ProductSession, SessionScope, hosting::Host};
-    use arut_runtime_local::{
-        child::ChildHost,
-        hosting::{TokioSpawner, desktop_executor},
-    };
-    // Set GTK's process-wide policy before loading GTK, and keep navigation
-    // preferences out of the user's state directory even for a manual test run.
+/// `None` means this process was the parent: it has already run `name` in an
+/// isolated child and asserted that it passed, so the caller returns.
+fn fixture(name: &str) -> Option<Fixture> {
     if std::env::var_os("ARUT_GTK_TEST_CHILD").is_none() {
-        let directory =
-            std::env::temp_dir().join(format!("arut-gtk-display-{}", std::process::id()));
-        std::fs::create_dir(&directory).unwrap();
-        let name = format!(
-            "{}::recycled_models_search_and_ordered_drafts_work_over_ipc",
-            module_path!().split_once("::").unwrap().1
-        );
-        let result = std::process::Command::new(std::env::current_exe().unwrap())
-            .args(["--exact", &name, "--ignored", "--test-threads=1"])
-            .env("ARUT_GTK_TEST_CHILD", "1")
-            .env("G_DEBUG", "fatal-criticals")
-            .env("XDG_STATE_HOME", directory.join("state"))
-            .env("XDG_DATA_HOME", directory.join("data"))
-            .env("TMPDIR", &directory)
-            .status();
-        std::fs::remove_dir_all(&directory).unwrap();
-        assert!(result.unwrap().success(), "GTK component child failed");
-        return;
+        run_isolated(name);
+        return None;
     }
     glib::log_set_always_fatal(glib::LogLevels::LEVEL_ERROR | glib::LogLevels::LEVEL_CRITICAL);
-    let _app = relm4::RelmApp::<()>::new("dev.arut.ComponentTest");
-    let wrapped = gtk::Label::new(Some(
-        &"A paragraph that must wrap when the sidebar opens. ".repeat(20),
-    ));
-    wrapped.set_wrap(true);
-    let column = crate::app::layout::Column::new(&wrapped, 880);
-    assert_eq!(column.request_mode(), gtk::SizeRequestMode::HeightForWidth);
-    assert!(
-        column.measure(gtk::Orientation::Vertical, 320).1
-            > column.measure(gtk::Orientation::Vertical, 880).1
-    );
-    assert_eq!(
-        column.measure(gtk::Orientation::Vertical, 1920).1,
-        column.measure(gtk::Orientation::Vertical, 880).1
-    );
+    let app = relm4::RelmApp::<()>::new("dev.arut.ComponentTest");
     let context = glib::MainContext::default();
-    let _guard = context.acquire().unwrap();
-    let executor = desktop_executor().unwrap();
-    let _entered = executor.enter();
+    std::mem::forget(context.acquire().unwrap());
+    let executor: &'static _ = Box::leak(Box::new(desktop_executor().unwrap()));
+    std::mem::forget(executor.enter());
     let directory = std::env::temp_dir().join(format!("arut-gtk-test-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&directory);
     std::fs::create_dir_all(&directory).unwrap();
@@ -126,112 +72,328 @@ fn recycled_models_search_and_ordered_drafts_work_over_ipc() {
         Arc::new(arut_runtime_local::NativeIds),
     ));
     context.block_on(session.refresh_capabilities());
-    let chat = session.chat();
-    let transcript = Transcript::builder().launch(chat.clone()).detach();
-    let composer = Composer::builder().launch(chat.clone()).detach();
-    let conversations = Conversations::builder().launch(session.clone()).detach();
+    Some(Fixture {
+        context,
+        session,
+        directory,
+        _app: app,
+    })
+}
+
+fn run_isolated(name: &str) {
+    // Short: the node's Unix socket path is built under this directory and the
+    // platform caps it at 108 bytes.
+    let directory = std::env::temp_dir().join(format!("arut-gtk-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&directory);
+    std::fs::create_dir(&directory).unwrap();
+    let path = format!("{}::{name}", module_path!().split_once("::").unwrap().1);
+    let result = std::process::Command::new(std::env::current_exe().unwrap())
+        .args([
+            "--exact",
+            &path,
+            "--ignored",
+            "--test-threads=1",
+            "--nocapture",
+        ])
+        .env("ARUT_GTK_TEST_CHILD", "1")
+        .env("G_DEBUG", "fatal-criticals")
+        .env("XDG_STATE_HOME", directory.join("state"))
+        .env("XDG_DATA_HOME", directory.join("data"))
+        .env("TMPDIR", &directory)
+        .status();
+    let _ = std::fs::remove_dir_all(&directory);
+    assert!(result.unwrap().success(), "GTK component child failed");
+}
+
+impl Fixture {
+    fn drain(&self) {
+        let mut iterations = 0;
+        while self.context.pending() {
+            self.context.iteration(false);
+            iterations += 1;
+            assert!(iterations < 10_000, "UI did not become idle");
+        }
+    }
+
+    fn wait_until(&self, ready: impl Fn() -> bool) {
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        loop {
+            self.drain();
+            if ready() {
+                return;
+            }
+            assert!(
+                std::time::Instant::now() < deadline,
+                "UI did not receive the node response"
+            );
+            std::thread::sleep(std::time::Duration::from_millis(1));
+        }
+    }
+
+    fn send(&self, chat: &ChatClient, text: &str) {
+        self.context.block_on(chat.send(text.to_owned()));
+        self.drain();
+    }
+}
+
+/// Realizes and allocates without mapping: tests must not take desktop focus.
+fn mount(children: &[&gtk::Widget]) -> gtk::Window {
     let window = gtk::Window::new();
     let content = gtk::Box::new(gtk::Orientation::Vertical, 8);
-    content.append(transcript.widget());
-    content.append(composer.widget());
+    for child in children {
+        content.append(*child);
+    }
     window.set_child(Some(&content));
-    // Realize and allocate without mapping: tests must not take desktop focus.
     WidgetExt::realize(&window);
     content.allocate(800, 600, -1, None);
-    let transcript_scroll: gtk::ScrolledWindow = descendant(transcript.widget());
-    let latest: gtk::Revealer = descendant(transcript.widget());
-    let viewport = transcript_scroll.height();
-    latest.set_reveal_child(true);
-    content.allocate(800, 600, -1, None);
+    window
+}
+
+fn text_of(buffer: &gtk::TextBuffer) -> String {
+    buffer
+        .text(&buffer.start_iter(), &buffer.end_iter(), true)
+        .to_string()
+}
+
+#[test]
+#[ignore = "requires a GTK display; run with --ignored --test-threads=1"]
+fn watch_observers_coalesce_and_stop_on_drop() {
+    let Some(fixture) = fixture("watch_observers_coalesce_and_stop_on_drop") else {
+        return;
+    };
+    let composer = fixture.session.chat().composer();
+    let reads = Rc::new(Cell::new(0_usize));
+    let mut tasks = Tasks::default();
+    tasks.observe(composer.changes(), {
+        let reads = reads.clone();
+        move || reads.set(reads.get() + 1)
+    });
+    fixture.drain();
+    let initial = reads.get();
+    // `replace` writes the draft as it is called; the returned flush is not
+    // driven here, so this is a burst of revisions with no main-loop turn.
+    for index in 0..1_000 {
+        drop(composer.replace(format!("draft {index}")));
+    }
+    fixture.drain();
+    assert_eq!(reads.get(), initial + 1, "a burst of revisions reads once");
+    assert_eq!(composer.state().text, "draft 999");
+    drop(tasks);
+    drop(composer.replace("after cancellation".into()));
+    fixture.drain();
     assert_eq!(
-        transcript_scroll.height(),
-        viewport,
-        "latest-message overlay must not resize the transcript"
+        reads.get(),
+        initial + 1,
+        "dropping the observer rejects queued updates"
     );
-    latest.set_reveal_child(false);
-    let availability = Availability::builder().launch(session.clone()).detach();
-    drain(&context);
-    assert_eq!(availability.widget().label(), "Ready");
+}
+
+#[test]
+#[ignore = "requires a GTK display; run with --ignored --test-threads=1"]
+fn column_caps_reading_width() {
+    let Some(_fixture) = fixture("column_caps_reading_width") else {
+        return;
+    };
+    let wrapped = gtk::Label::new(Some(
+        &"A paragraph that must wrap when the sidebar opens. ".repeat(20),
+    ));
+    wrapped.set_wrap(true);
+    let column = crate::app::layout::Column::new(&wrapped, 880);
+    assert_eq!(column.request_mode(), gtk::SizeRequestMode::HeightForWidth);
+    assert!(
+        column.measure(gtk::Orientation::Vertical, 320).1
+            > column.measure(gtk::Orientation::Vertical, 880).1,
+        "a narrower column wraps to a taller one"
+    );
+    assert_eq!(
+        column.measure(gtk::Orientation::Vertical, 1920).1,
+        column.measure(gtk::Orientation::Vertical, 880).1,
+        "past the cap the height stops changing"
+    );
+}
+
+#[test]
+#[ignore = "requires a GTK display; run with --ignored --test-threads=1"]
+fn transcript_appends_without_rebuilding_rows() {
+    let Some(fixture) = fixture("transcript_appends_without_rebuilding_rows") else {
+        return;
+    };
+    let chat = fixture.session.chat();
+    let transcript = Transcript::builder().launch(chat.clone()).detach();
+    let window = mount(&[transcript.widget().clone().upcast_ref()]);
+    let scroll: gtk::ScrolledWindow = descendant(transcript.widget()).unwrap();
+    let latest: gtk::Revealer = descendant(transcript.widget()).unwrap();
+    let viewport = scroll.height();
+    latest.set_reveal_child(true);
+    window.child().unwrap().allocate(800, 600, -1, None);
+    assert_eq!(
+        scroll.height(),
+        viewport,
+        "the latest-message overlay must not resize the transcript"
+    );
+    fixture.send(&chat, "first message");
+    let rows: gtk::ListView = descendant(transcript.widget()).unwrap();
+    let messages = rows.model().unwrap();
+    assert_eq!(messages.n_items(), 2, "the echo node answers");
+    let original = messages.item(0).unwrap();
+    fixture.send(&chat, "second message");
+    assert_eq!(messages.n_items(), 4);
+    assert_eq!(
+        messages.item(0).unwrap(),
+        original,
+        "rows are keyed, not rebuilt"
+    );
+}
+
+#[test]
+#[ignore = "requires a GTK display; run with --ignored --test-threads=1"]
+fn transcript_swaps_conversations_without_a_new_component() {
+    let Some(fixture) = fixture("transcript_swaps_conversations_without_a_new_component") else {
+        return;
+    };
+    let first = fixture.session.new_chat();
+    fixture.send(&first, "first conversation");
+    let second = fixture.session.new_chat();
+    fixture.send(&second, "second conversation");
+    let transcript = Transcript::builder().launch(first.clone()).detach();
+    mount(&[transcript.widget().clone().upcast_ref()]);
+    let rows: gtk::ListView = descendant(transcript.widget()).unwrap();
+    let messages = rows.model().unwrap();
+    fixture.wait_until(|| messages.n_items() == 2);
+    transcript.emit(TranscriptMsg::Chat(Box::new(second.clone())));
+    fixture.drain();
+    assert_eq!(messages.n_items(), 2, "the model is reset, not appended to");
+    let shown = messages
+        .item(0)
+        .unwrap()
+        .downcast::<glib::BoxedAnyObject>()
+        .unwrap();
+    assert_eq!(
+        shown
+            .borrow::<arut_product_session::chat::ChatMessage>()
+            .text,
+        "second conversation"
+    );
+}
+
+#[test]
+#[ignore = "requires a GTK display; run with --ignored --test-threads=1"]
+fn composer_coalesces_edits_and_sends() {
+    let Some(fixture) = fixture("composer_coalesces_edits_and_sends") else {
+        return;
+    };
+    let chat = fixture.session.chat();
+    let composer = Composer::builder().launch(chat.clone()).detach();
+    mount(&[composer.widget().clone().upcast_ref()]);
     composer.emit(ComposerMsg::Enabled(true));
-    drain(&context);
-    let editor: gtk::TextView = descendant(composer.widget());
-    editor.buffer().set_text("first message");
-    wait_until(&context, || chat.composer().state().text == "first message");
-    assert_eq!(chat.composer().state().text, "first message");
-    let controllers = editor.observe_controllers();
-    let shortcuts = (0..controllers.n_items())
-        .filter_map(|p| controllers.item(p))
-        .filter_map(|o| o.downcast::<gtk::ShortcutController>().ok())
-        .find(|c| c.n_items() == 4)
+    fixture.drain();
+    let editor: gtk::TextView = descendant(composer.widget()).unwrap();
+    // Every keystroke stays visible while the node sees only the latest draft.
+    for index in 0..100 {
+        editor.buffer().set_text(&format!("edit {index}"));
+    }
+    assert_eq!(text_of(&editor.buffer()), "edit 99");
+    fixture.wait_until(|| chat.composer().state().text == "edit 99");
+    editor.activate_action("composer.send", None).unwrap();
+    fixture.wait_until(|| chat.messages_after(0).len() == 2 && editor.buffer().char_count() == 0);
+    assert_eq!(chat.messages_after(0)[0].text, "edit 99");
+}
+
+#[test]
+#[ignore = "requires a GTK display; run with --ignored --test-threads=1"]
+fn composer_sends_on_return_and_offers_no_send_for_a_blank_draft() {
+    let Some(fixture) = fixture("composer_sends_on_return_and_offers_no_send_for_a_blank_draft")
+    else {
+        return;
+    };
+    let chat = fixture.session.chat();
+    let composer = Composer::builder().launch(chat.clone()).detach();
+    mount(&[composer.widget().clone().upcast_ref()]);
+    composer.emit(ComposerMsg::Enabled(true));
+    fixture.drain();
+    let editor: gtk::TextView = descendant(composer.widget()).unwrap();
+    let send: gtk::Button = descendant(composer.widget()).unwrap();
+    editor.buffer().set_text("   \n  ");
+    fixture.drain();
+    assert!(!send.is_sensitive(), "whitespace is not a message");
+    editor.buffer().set_text("typed with the keyboard");
+    fixture.drain();
+    assert!(send.is_sensitive());
+    let shortcuts = descendant::<gtk::TextView>(composer.widget())
+        .unwrap()
+        .observe_controllers();
+    let shortcuts = (0..shortcuts.n_items())
+        .filter_map(|position| shortcuts.item(position))
+        .filter_map(|object| object.downcast::<gtk::ShortcutController>().ok())
+        .find(|controller| controller.n_items() == 4)
         .expect("composer shortcuts");
     let shortcut = shortcuts
         .item(0)
         .unwrap()
         .downcast::<gtk::Shortcut>()
         .unwrap();
-    let trigger = shortcut
-        .trigger()
-        .unwrap()
-        .downcast::<gtk::KeyvalTrigger>()
-        .unwrap();
-    assert_eq!(trigger.keyval(), gtk::gdk::Key::Return);
-    assert!(
-        trigger.modifiers().is_empty(),
-        "Shift+Return stays with TextView"
-    );
     assert!(
         shortcut
             .action()
             .unwrap()
             .activate(gtk::ShortcutActionFlags::empty(), &editor, None)
     );
-    wait_until(&context, || {
-        chat.messages_after(0).len() == 2 && editor.buffer().char_count() == 0
-    });
-    assert_eq!(chat.messages_after(0).len(), 2);
-    assert_eq!(editor.buffer().char_count(), 0);
-    let rows: gtk::ListView = descendant(transcript.widget());
-    let messages = rows.model().unwrap();
-    let original = messages.item(0).unwrap();
-    context.block_on(chat.send("second message".into()));
-    drain(&context);
-    assert_eq!(messages.n_items(), 4);
-    assert_eq!(messages.item(0).unwrap(), original);
-    let history: gtk::ListView = descendant(conversations.widget());
-    let history_model = history.model().unwrap();
-    let original_conversation = history_model.item(0).unwrap();
-    conversations.emit(ConversationsMsg::Selected(chat.id()));
-    drain(&context);
-    let second = session.new_chat();
-    context.block_on(second.send("another conversation".into()));
-    drain(&context);
-    assert_eq!(history_model.item(1).unwrap(), original_conversation);
-    let search: gtk::SearchEntry = descendant(conversations.widget());
-    search.set_text("another");
-    search.emit_by_name::<()>("search-changed", &[]);
-    drain(&context);
-    assert_eq!(history_model.n_items(), 1);
-    search.set_text("");
-    search.emit_by_name::<()>("search-changed", &[]);
-    drain(&context);
-    let selection = history_model.downcast::<gtk::SingleSelection>().unwrap();
+    fixture.wait_until(|| chat.messages_after(0).len() == 2 && editor.buffer().char_count() == 0);
+    assert_eq!(chat.messages_after(0)[0].text, "typed with the keyboard");
+}
+
+#[test]
+#[ignore = "requires a GTK display; run with --ignored --test-threads=1"]
+fn composer_stops_observing_when_unmounted() {
+    let Some(fixture) = fixture("composer_stops_observing_when_unmounted") else {
+        return;
+    };
+    let chat = fixture.session.chat();
+    let composer = Composer::builder().launch(chat.clone()).detach();
+    let window = mount(&[composer.widget().clone().upcast_ref()]);
+    let editor: gtk::TextView = descendant(composer.widget()).unwrap();
+    let buffer = editor.buffer();
+    fixture
+        .context
+        .block_on(chat.composer().replace("updated draft".into()));
+    fixture.drain();
+    assert_eq!(text_of(&buffer), "updated draft");
+    window
+        .child()
+        .unwrap()
+        .downcast::<gtk::Box>()
+        .unwrap()
+        .remove(composer.widget());
+    drop(composer);
+    fixture.drain();
+    fixture
+        .context
+        .block_on(chat.composer().replace("after unmount".into()));
+    fixture.drain();
     assert_eq!(
-        selection.selected_item().unwrap(),
-        original_conversation,
-        "clearing search restores the selected conversation"
+        text_of(&buffer),
+        "updated draft",
+        "an unmounted composer must stop watching"
     );
-    let preview = original_conversation
-        .downcast::<crate::app::conversation_model::ConversationItem>()
-        .unwrap();
-    assert!(!preview.preview().is_empty());
-    let scroll: gtk::ScrolledWindow = descendant(composer.widget());
+}
+
+#[test]
+#[ignore = "requires a GTK display; run with --ignored --test-threads=1"]
+fn composer_sizes_to_seven_lines() {
+    let Some(fixture) = fixture("composer_sizes_to_seven_lines") else {
+        return;
+    };
+    let composer = Composer::builder().launch(fixture.session.chat()).detach();
+    mount(&[composer.widget().clone().upcast_ref()]);
+    let editor: gtk::TextView = descendant(composer.widget()).unwrap();
+    let scroll: gtk::ScrolledWindow = descendant(composer.widget()).unwrap();
     editor.buffer().set_text(
         &(0..12)
-            .map(|n| format!("line {n}"))
+            .map(|line| format!("line {line}"))
             .collect::<Vec<_>>()
             .join("\n"),
     );
-    drain(&context);
+    fixture.drain();
     // Seven complete lines must fit, including descent at fractional font sizes.
     let first = editor.iter_location(&editor.buffer().iter_at_line(0).unwrap());
     let seventh = editor.iter_location(&editor.buffer().iter_at_line(6).unwrap());
@@ -239,137 +401,124 @@ fn recycled_models_search_and_ordered_drafts_work_over_ipc() {
     assert!(scroll.max_content_height() >= seventh.y() + seventh.height() - first.y() + inset);
     let eighth = editor.iter_location(&editor.buffer().iter_at_line(7).unwrap());
     assert!(scroll.max_content_height() < eighth.y() + eighth.height() - first.y() + inset);
-    // UI keystrokes remain visible while all Rust replacements are serialized.
-    for index in 0..100 {
-        editor.buffer().set_text(&format!("edit {index}"));
-    }
+}
+
+#[test]
+#[ignore = "requires a GTK display; run with --ignored --test-threads=1"]
+fn sidebar_filters_and_keeps_selection() {
+    let Some(fixture) = fixture("sidebar_filters_and_keeps_selection") else {
+        return;
+    };
+    let first = fixture.session.new_chat();
+    fixture.send(&first, "Saturday by the river");
+    let second = fixture.session.new_chat();
+    fixture.send(&second, "another conversation");
+    let conversations = crate::app::conversations::Conversations::builder()
+        .launch(fixture.session.clone())
+        .detach();
+    mount(&[conversations.widget().clone().upcast_ref()]);
+    fixture.session.select(first.id());
+    fixture.drain();
+    let list: gtk::ListView = descendant(conversations.widget()).unwrap();
+    let selection = list
+        .model()
+        .unwrap()
+        .downcast::<gtk::SingleSelection>()
+        .unwrap();
+    assert_eq!(selection.n_items(), 2);
+    let selected = selection.selected_item().unwrap();
+    let search: gtk::SearchEntry = descendant(conversations.widget()).unwrap();
+    search.set_text("another");
+    fixture.drain();
+    assert_eq!(selection.n_items(), 1, "the search narrows the list");
+    search.set_text("");
+    fixture.drain();
     assert_eq!(
-        editor.buffer().text(
-            &editor.buffer().start_iter(),
-            &editor.buffer().end_iter(),
-            true
-        ),
-        "edit 99"
+        selection.selected_item().unwrap(),
+        selected,
+        "clearing the search restores the selected conversation"
     );
-    editor.activate_action("composer.send", None).unwrap();
-    wait_until(&context, || {
-        chat.messages_after(0).len() == 6 && editor.buffer().char_count() == 0
-    });
-    assert_eq!(chat.messages_after(0)[4].text, "edit 99");
-    context.block_on(second.composer().replace("other draft".into()));
-    context.block_on(chat.composer().replace("updated draft".into()));
-    drain(&context);
-    let buffer = editor.buffer();
-    assert_eq!(
-        buffer.text(&buffer.start_iter(), &buffer.end_iter(), true),
-        "updated draft"
-    );
-    assert_eq!(second.composer().state().text, "other draft");
-    content.remove(composer.widget());
-    drop(composer);
-    drain(&context);
-    context.block_on(chat.composer().replace("after unmount".into()));
-    drain(&context);
-    assert_eq!(
-        buffer.text(&buffer.start_iter(), &buffer.end_iter(), true),
-        "updated draft",
-        "unmounted composer must stop watching"
-    );
-    window.close();
+    let row = selected.downcast::<ConversationItem>().unwrap();
+    assert!(!row.preview().is_empty());
+}
+
+#[test]
+#[ignore = "requires a GTK display; run with --ignored --test-threads=1"]
+fn shell_restores_navigation_and_per_chat_drafts() {
+    let Some(fixture) = fixture("shell_restores_navigation_and_per_chat_drafts") else {
+        return;
+    };
+    let chat = fixture.session.new_chat();
+    fixture.send(&chat, "restored conversation");
+    let second = fixture.session.new_chat();
+    fixture.send(&second, "another conversation");
+    fixture
+        .context
+        .block_on(chat.composer().replace("saved draft".into()));
     crate::app::navigation::Navigation {
         selected: chat.id(),
         collapsed: false,
     }
     .save();
-    let shell = crate::app::shell::Shell::builder()
-        .launch(session.clone())
-        .detach();
+    let shell = Shell::builder().launch(fixture.session.clone()).detach();
     WidgetExt::realize(shell.widget());
-    wait_until(&context, || {
-        let editor: gtk::TextView = descendant(shell.widget());
-        editor.buffer().text(
-            &editor.buffer().start_iter(),
-            &editor.buffer().end_iter(),
-            true,
-        ) == "after unmount"
+    fixture.wait_until(|| {
+        descendant::<gtk::TextView>(shell.widget())
+            .is_some_and(|editor| text_of(&editor.buffer()) == "saved draft")
     });
-    shell.emit(crate::app::shell::Msg::Select(second.id().unwrap()));
-    drain(&context);
-    shell.emit(crate::app::shell::Msg::Select(chat.id().unwrap()));
-    drain(&context);
-    let draft: gtk::TextView = descendant(shell.widget());
-    assert_eq!(
-        draft.buffer().text(
-            &draft.buffer().start_iter(),
-            &draft.buffer().end_iter(),
-            true
-        ),
-        "after unmount",
-        "restored chat must not reuse the startup pending composer"
-    );
+    let draft: gtk::TextView = descendant(shell.widget()).unwrap();
     draft.buffer().set_text("preserved immediately");
-    shell.emit(crate::app::shell::Msg::Select(second.id().unwrap()));
-    drain(&context);
-    shell.emit(crate::app::shell::Msg::Select(chat.id().unwrap()));
-    drain(&context);
-    let restored: gtk::TextView = descendant(shell.widget());
+    fixture.session.select(second.id());
+    fixture.drain();
+    fixture.session.select(chat.id());
+    fixture.drain();
+    let restored: gtk::TextView = descendant(shell.widget()).unwrap();
     assert_eq!(
         restored.buffer(),
         draft.buffer(),
         "switching keeps the native buffer and undo history"
     );
-    assert_eq!(
-        restored.buffer().text(
-            &restored.buffer().start_iter(),
-            &restored.buffer().end_iter(),
-            true
-        ),
-        "preserved immediately"
-    );
+    assert_eq!(text_of(&restored.buffer()), "preserved immediately");
+    shell.widget().close();
+}
+
+#[test]
+#[ignore = "requires a GTK display; run with --ignored --test-threads=1"]
+fn shell_availability_and_search_follow_the_session() {
+    let Some(fixture) = fixture("shell_availability_and_search_follow_the_session") else {
+        return;
+    };
+    let shell = Shell::builder().launch(fixture.session.clone()).detach();
+    WidgetExt::realize(shell.widget());
+    let availability = find(shell.widget().upcast_ref(), &|widget| {
+        widget.has_css_class("arut-availability")
+    })
+    .unwrap()
+    .downcast::<gtk::Label>()
+    .unwrap();
+    fixture.wait_until(|| availability.label() == "Ready");
     WidgetExt::activate_action(shell.widget(), "win.search", None).unwrap();
-    drain(&context);
-    let search: gtk::SearchEntry = descendant(shell.widget());
+    fixture.drain();
+    let search: gtk::SearchEntry = descendant(shell.widget()).unwrap();
     search.set_text("filter");
     WidgetExt::activate_action(shell.widget(), "win.escape", None).unwrap();
-    drain(&context);
-    assert!(search.text().is_empty());
-    let sidebar: gtk::Revealer = descendant(shell.widget());
-    let toggle: gtk::ToggleButton = descendant(shell.widget());
-    let content = shell.widget().child().unwrap();
-    content.allocate(1000, 600, -1, None);
-    drain(&context);
-    assert!(toggle.is_active());
-    assert!(sidebar.measure(gtk::Orientation::Horizontal, -1).0 > 0);
+    fixture.drain();
+    assert!(search.text().is_empty(), "Escape clears an active search");
+    let sidebar: gtk::Revealer = descendant(shell.widget()).unwrap();
+    assert!(sidebar.reveals_child());
     WidgetExt::activate_action(shell.widget(), "win.sidebar", None).unwrap();
-    drain(&context);
-    content.allocate(1000, 600, -1, None);
-    assert!(!toggle.is_active());
-    assert_eq!(
-        sidebar.transition_duration(),
-        0,
-        "keyboard navigation is immediate"
-    );
+    fixture.drain();
+    shell
+        .widget()
+        .child()
+        .unwrap()
+        .allocate(1000, 600, -1, None);
+    assert!(!sidebar.reveals_child());
     let (minimum, natural, _, _) = sidebar.measure(gtk::Orientation::Horizontal, -1);
     assert_eq!(
         (minimum, natural),
         (0, 0),
-        "collapsed sidebar must release all width"
+        "a collapsed sidebar releases all width"
     );
-    let surface = sidebar.next_sibling().unwrap();
-    assert_eq!(
-        surface.width(),
-        sidebar.parent().unwrap().width(),
-        "chat surface must fill the row when the sidebar closes"
-    );
-    let settings = gtk::Settings::default().unwrap();
-    let animations = settings.is_gtk_enable_animations();
-    settings.set_gtk_enable_animations(false);
-    toggle.emit_clicked();
-    drain(&context);
-    assert!(sidebar.reveals_child());
-    assert_eq!(sidebar.transition_duration(), 0);
-    settings.set_gtk_enable_animations(animations);
     shell.widget().close();
-    drop(shell);
-    drain(&context);
 }

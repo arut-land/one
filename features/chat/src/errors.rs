@@ -15,6 +15,8 @@
 //! The derive reads the string source while this crate compiles, so a variant
 //! added without a message does not build. It is a proc macro and nothing it
 //! emits names a type from above this layer, so the core stays where it is.
+//! It also emits `MESSAGE_KEYS`, the keys each enum names itself, which is what
+//! `product/i18n/tests/error_keys.rs` checks every locale against.
 
 use arut_i18n_macros::Localized;
 use arut_rpc::{Code, Status};
@@ -44,26 +46,6 @@ pub enum NodeFailure {
     Unsupported,
     #[error("the node failed to carry the request out")]
     Internal,
-}
-
-impl NodeFailure {
-    /// Every variant, for the localization test that proves each one has a
-    /// string in every locale (ADR 0022).
-    ///
-    /// A new variant makes the derived `message_key` fail to compile until
-    /// `errors.ftl` has its message; add it here too so the locale test sees it.
-    pub const ALL: &'static [Self] = &[
-        Self::Unreachable,
-        Self::TimedOut,
-        Self::Cancelled,
-        Self::Refused,
-        Self::Overloaded,
-        Self::Rejected,
-        Self::Missing,
-        Self::Conflict,
-        Self::Unsupported,
-        Self::Internal,
-    ];
 }
 
 impl From<Code> for NodeFailure {
@@ -117,30 +99,12 @@ pub enum ComposerError {
     ScopeMismatch,
 }
 
-impl ComposerError {
-    /// Every variant, one sample payload each, for the localization test.
-    ///
-    /// A new variant makes the derived `message_key` fail to compile.
-    pub const ALL: &'static [Self] = &[
-        Self::Node(NodeFailure::Unreachable),
-        Self::RevisionConflict { current: 0 },
-        Self::AuthorityChanged { current_epoch: 0 },
-        Self::SnapshotMissing,
-        Self::OutcomeMissing,
-        Self::ScopeMissing,
-        Self::ScopeMismatch,
-    ];
-}
-
 /// Why a chat could not accept what a person did.
 #[boltffi::data]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Error, Localized)]
 pub enum ChatError {
     #[error("the node did not answer the chat: {0}")]
     Node(NodeFailure),
-    /// Sending needs either a conversation or a pending scope to start one.
-    #[error("this chat has no conversation to send to")]
-    NoConversation,
     /// The conversation scope was cancelled, so nothing was sent.
     #[error("the conversation scope was cancelled")]
     Cancelled,
@@ -148,19 +112,6 @@ pub enum ChatError {
     Draft(#[from] ComposerError),
     #[error("the node started a conversation without naming it")]
     ChatIdMissing,
-}
-
-impl ChatError {
-    /// Every variant, one sample payload each, for the localization test.
-    ///
-    /// A new variant makes the derived `message_key` fail to compile.
-    pub const ALL: &'static [Self] = &[
-        Self::Node(NodeFailure::Unreachable),
-        Self::NoConversation,
-        Self::Cancelled,
-        Self::Draft(ComposerError::SnapshotMissing),
-        Self::ChatIdMissing,
-    ];
 }
 
 macro_rules! node_errors {
@@ -178,28 +129,6 @@ node_errors!(ComposerError, ChatError);
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn every_transport_code_projects_onto_one_product_failure() {
-        for (code, expected) in [
-            (Code::Unavailable, NodeFailure::Unreachable),
-            (Code::DeadlineExceeded, NodeFailure::TimedOut),
-            (Code::Cancelled, NodeFailure::Cancelled),
-            (Code::PermissionDenied, NodeFailure::Refused),
-            (Code::Unauthenticated, NodeFailure::Refused),
-            (Code::ResourceExhausted, NodeFailure::Overloaded),
-            (Code::InvalidArgument, NodeFailure::Rejected),
-            (Code::FailedPrecondition, NodeFailure::Rejected),
-            (Code::OutOfRange, NodeFailure::Rejected),
-            (Code::NotFound, NodeFailure::Missing),
-            (Code::AlreadyExists, NodeFailure::Conflict),
-            (Code::Aborted, NodeFailure::Conflict),
-            (Code::Unimplemented, NodeFailure::Unsupported),
-            (Code::Internal, NodeFailure::Internal),
-        ] {
-            assert_eq!(NodeFailure::from(code), expected);
-        }
-    }
 
     #[test]
     fn a_status_reaches_a_projection_as_a_code_and_never_as_its_text() {

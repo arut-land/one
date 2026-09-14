@@ -4,6 +4,10 @@ version.workspace = true
 edition.workspace = true
 license-file = "../../LICENSE-FSL"
 
+[features]
+# Fixture actions for tools/review-linux.sh; never compiled into a shipped binary.
+review = []
+
 [target.'cfg(target_os = "linux")'.dependencies]
 arut-runtime-local.workspace = true
 arut-product-session.workspace = true
@@ -23,5 +27,8 @@ version = "0.13"
 default-features = false
 features = ["settings", "gtk4", "glib", "tokio"]
 
-[target.'cfg(target_os = "linux")'.dependencies.futures-util]
-version = "0.3"
+# Only theme.rs needs a `Stream` adapter, for the portal's appearance signals.
+[target.'cfg(target_os = "linux")'.dependencies.futures-lite]
+version = "2.6.1"
+default-features = false
+features = ["std"]

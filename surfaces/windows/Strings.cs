@@ -1,46 +1,36 @@
 namespace Arut.Surface.Windows;
 
-// Map Rust outcomes to the generated, localized Windows resource accessors.
+/// <summary>
+/// The core names an error by its Fluent message id and hands over the
+/// arguments that id takes; no sentence crosses the boundary and the core still
+/// learns no locale (ADR 0016, ADR 0022). The lookup and the language
+/// resolution belong to <see cref="L10n"/> and the app's PRI resources.
+/// Fluent ids are hyphenated; resw names are the same ids with underscores.
+/// </summary>
 internal static class Strings
 {
-    public static string Describe(NodeFailure failure) =>
-        failure switch
-        {
-            NodeFailure.Unreachable => L10n.NodeFailureUnreachable(),
-            NodeFailure.TimedOut => L10n.NodeFailureTimedOut(),
-            NodeFailure.Cancelled => L10n.NodeFailureCancelled(),
-            NodeFailure.Refused => L10n.NodeFailureRefused(),
-            NodeFailure.Overloaded => L10n.NodeFailureOverloaded(),
-            NodeFailure.Rejected => L10n.NodeFailureRejected(),
-            NodeFailure.Missing => L10n.NodeFailureMissing(),
-            NodeFailure.Conflict => L10n.NodeFailureConflict(),
-            NodeFailure.Unsupported => L10n.NodeFailureUnsupported(),
-            _ => L10n.NodeFailureInternal(),
-        };
+    public static string Describe(string? key, string[] arguments) =>
+        key is null ? "" : L10n.Get(key.Replace('-', '_'), arguments);
+}
 
-    public static string Describe(ComposerError error) =>
-        error switch
-        {
-            ComposerError.Node node => Describe(node.Field0),
-            ComposerError.RevisionConflict conflict => L10n.ComposerErrorRevisionConflict(
-                conflict.Current.ToString(System.Globalization.CultureInfo.InvariantCulture)
-            ),
-            ComposerError.AuthorityChanged moved => L10n.ComposerErrorAuthorityChanged(
-                moved.CurrentEpoch.ToString(System.Globalization.CultureInfo.InvariantCulture)
-            ),
-            ComposerError.SnapshotMissing => L10n.ComposerErrorSnapshotMissing(),
-            ComposerError.OutcomeMissing => L10n.ComposerErrorOutcomeMissing(),
-            ComposerError.ScopeMissing => L10n.ComposerErrorScopeMissing(),
-            _ => L10n.ComposerErrorScopeMismatch(),
-        };
-
-    public static string Describe(ChatError error) =>
-        error switch
-        {
-            ChatError.Node node => Describe(node.Field0),
-            ChatError.NoConversation => L10n.ChatErrorNoConversation(),
-            ChatError.Cancelled => L10n.ChatErrorCancelled(),
-            ChatError.Draft draft => Describe(draft.Field0),
-            _ => L10n.ChatErrorChatIdMissing(),
-        };
+/// <summary>
+/// The static labels XAML cannot reach through `x:Uid`: WinUI applies every
+/// `<uid>.<property>` entry the generated `.resw` defines, which would replace
+/// an icon button's content or prefill a search box, so those bind here
+/// instead. `x:Uid` carries the labels whose element has no such property.
+/// </summary>
+internal static class Labels
+{
+    public static string AppName => L10n.Get(L10n.AppName);
+    public static string Search => L10n.Get(L10n.ConversationSearchPlaceholder);
+    public static string Conversations => L10n.Get(L10n.LabelConversations);
+    public static string NewConversation => L10n.Get(L10n.ActionNewConversation);
+    public static string NewConversationShortcut =>
+        L10n.Get(L10n.ActionNewConversationShortcut, "Ctrl+N");
+    public static string EmptyTitle => L10n.Get(L10n.ChatEmptyTitle);
+    public static string EmptyHint => L10n.Get(L10n.ChatEmptyHint);
+    public static string Composer => L10n.Get(L10n.ComposerPlaceholder);
+    public static string ComposerHint => L10n.Get(L10n.ComposerHintMultiline);
+    public static string Send => L10n.Get(L10n.ActionSend);
+    public static string Latest => L10n.Get(L10n.ActionScrollToLatest);
 }

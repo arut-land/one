@@ -5,10 +5,10 @@
 //! output is sorted and byte-stable: `mise run check` regenerates and fails on
 //! any diff, which only works if the same input always writes the same bytes.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write as _;
 
-use crate::i18n::catalog::{Argument, Locale, Message, Part, Pattern};
+use arut_i18n_catalog::{Argument, Locale, Message, Part, Pattern};
 
 use super::{BANNER, resource_name};
 
@@ -17,7 +17,7 @@ fn apple_placeholder(index: usize, argument: &Argument) -> String {
     format!(
         "%{}${}",
         index + 1,
-        if argument.numeric() { "lld" } else { "@" }
+        if argument.numeric { "lld" } else { "@" }
     )
 }
 
@@ -27,7 +27,7 @@ fn android_placeholder(index: usize, argument: &Argument) -> String {
     format!(
         "%{}${}",
         index + 1,
-        if argument.numeric() { "d" } else { "s" }
+        if argument.numeric { "d" } else { "s" }
     )
 }
 
@@ -192,12 +192,52 @@ pub(crate) fn strings_xml(locale: &Locale) -> String {
     out
 }
 
+/// The XAML properties an `x:Uid` may resolve. WinUI reads `<Uid>.<property>`
+/// out of the `.resw` and assigns it, so a label a control carries needs no C#
+/// at all.
+const UID_PROPERTIES: [&str; 4] = [
+    "Content",
+    "Text",
+    "PlaceholderText",
+    "AutomationProperties.Name",
+];
+
+/// The message ids WinUI XAML may name with `x:Uid`.
+///
+/// An `x:Uid` names a control's caption, so the prefixes are the ones the
+/// source reserves for captions: an action a button performs, a label on a
+/// region, and the conversation-list controls. An error or a status is chosen
+/// in C# from a typed value (ADR 0016) and never sits in XAML, so it gets no
+/// UID entries.
+const UID_PREFIXES: [&str; 3] = ["action-", "label-", "conversation-"];
+
+fn takes_uid(id: &str) -> bool {
+    UID_PREFIXES.iter().any(|prefix| id.starts_with(prefix))
+}
+
+/// Every `x:Uid` WinUI XAML may name, which is what `arut-dev check` checks the
+/// XAML against.
+#[must_use]
+pub(crate) fn uid_names(locale: &Locale) -> BTreeSet<String> {
+    locale
+        .messages
+        .iter()
+        .filter(|(id, message)| takes_uid(id) && message.selector().is_none())
+        .map(|(id, _)| resource_name(id))
+        .collect()
+}
+
 /// One Windows `.resw`.
 ///
 /// `.resw` is a flat name-to-string map with no plural mechanism, so a plural
 /// message becomes one entry per category, named `<key>_<category>`; that is
 /// the shape WinUI's own plural resources take and what `ResourceLoader`
 /// lookups by suffix expect.
+///
+/// A caption message also gets one `<key>.<property>` entry per
+/// [`UID_PROPERTIES`], so XAML can carry `x:Uid="<key>"` instead of binding a
+/// C# property. `arut-dev check` fails when the XAML names a UID this file
+/// does not define.
 #[must_use]
 pub(crate) fn resw(locale: &Locale) -> String {
     let mut entries: BTreeMap<String, (String, Option<&'static str>)> = BTreeMap::new();
@@ -206,13 +246,13 @@ pub(crate) fn resw(locale: &Locale) -> String {
         let order = message.arguments();
         match message {
             Message::Simple(pattern) => {
-                entries.insert(
-                    name,
-                    (
-                        render(pattern, &order, windows_placeholder, windows_text),
-                        None,
-                    ),
-                );
+                let value = render(pattern, &order, windows_placeholder, windows_text);
+                if takes_uid(id) {
+                    for property in UID_PROPERTIES {
+                        entries.insert(format!("{name}.{property}"), (value.clone(), None));
+                    }
+                }
+                entries.insert(name, (value, None));
             }
             Message::Plural { variants, .. } => {
                 for (category, pattern) in variants {
@@ -260,25 +300,31 @@ const RESW_HEADER: &str = r#"<root>
 "#;
 
 #[cfg(test)]
-mod tests {
-    use super::{resw, strings_xml, xcstrings};
+pub(crate) mod tests {
+    use super::{resw, strings_xml, uid_names, xcstrings};
+    use arut_i18n_catalog::Locale;
 
     const PLURAL: &str = "unread = You have { $count ->\n    [one] { NUMBER($count) } unread message\n   *[other] { NUMBER($count) } unread messages\n }.\n";
 
-    fn locale(source: &str) -> crate::i18n::catalog::Locale {
-        crate::i18n::catalog::tests::locale("en", source)
+    /// One locale from one inline source; the accessor tests build theirs here.
+    pub(crate) fn locale(tag: &str, source: &str) -> Locale {
+        arut_i18n_catalog::parse(tag, &[("test.ftl", source)]).expect("parsed")
+    }
+
+    fn english(source: &str) -> Locale {
+        locale("en", source)
     }
 
     #[test]
     fn apple_gets_positional_specifiers_typed_by_number() {
-        let out = xcstrings("en", &[locale("k = { $who } sent { NUMBER($n) }\n")]);
+        let out = xcstrings("en", &[english("k = { $who } sent { NUMBER($n) }\n")]);
         assert!(out.contains("%2$@ sent %1$lld"), "{out}");
         assert!(out.contains("\"sourceLanguage\": \"en\""), "{out}");
     }
 
     #[test]
     fn apple_plurals_become_variations() {
-        let out = xcstrings("en", &[locale(PLURAL)]);
+        let out = xcstrings("en", &[english(PLURAL)]);
         assert!(out.contains("\"variations\""), "{out}");
         assert!(out.contains("\"one\""), "{out}");
         assert!(out.contains("You have %1$lld unread message."), "{out}");
@@ -286,7 +332,7 @@ mod tests {
 
     #[test]
     fn android_names_are_identifiers_and_placeholders_are_positional() {
-        let out = strings_xml(&locale("chat-error-x = { $who } sent { NUMBER($n) }\n"));
+        let out = strings_xml(&english("chat-error-x = { $who } sent { NUMBER($n) }\n"));
         assert!(
             out.contains("<string name=\"chat_error_x\">%2$s sent %1$d</string>"),
             "{out}"
@@ -295,13 +341,13 @@ mod tests {
 
     #[test]
     fn android_escapes_the_apostrophes_the_copy_is_full_of() {
-        let out = strings_xml(&locale("k = Arut can't reach your node\n"));
+        let out = strings_xml(&english("k = Arut can't reach your node\n"));
         assert!(out.contains("Arut can\\'t reach"), "{out}");
     }
 
     #[test]
     fn android_plurals_become_a_plurals_element() {
-        let out = strings_xml(&locale(PLURAL));
+        let out = strings_xml(&english(PLURAL));
         assert!(out.contains("<plurals name=\"unread\">"), "{out}");
         assert!(
             out.contains("<item quantity=\"other\">You have %1$d unread messages.</item>"),
@@ -311,18 +357,17 @@ mod tests {
 
     #[test]
     fn windows_gets_brace_placeholders_and_one_entry_per_plural_category() {
-        let simple = resw(&locale("k = { $who } sent { NUMBER($n) }\n"));
+        let simple = resw(&english("k = { $who } sent { NUMBER($n) }\n"));
         assert!(simple.contains("<value>{1} sent {0}</value>"), "{simple}");
-        let plural = resw(&locale(PLURAL));
+        let plural = resw(&english(PLURAL));
         assert!(plural.contains("name=\"unread_one\""), "{plural}");
         assert!(plural.contains("name=\"unread_other\""), "{plural}");
     }
 
     #[test]
     fn reordered_translations_keep_the_same_native_argument_positions() {
-        let english =
-            crate::i18n::catalog::tests::locale("en", "k = { $who } sent { NUMBER($n) }\n");
-        let french = crate::i18n::catalog::tests::locale("fr", "k = { NUMBER($n) } de { $who }\n");
+        let english = locale("en", "k = { $who } sent { NUMBER($n) }\n");
+        let french = locale("fr", "k = { NUMBER($n) } de { $who }\n");
         assert_eq!(
             english.messages["k"].arguments(),
             french.messages["k"].arguments()
@@ -335,9 +380,30 @@ mod tests {
     }
 
     #[test]
+    fn a_caption_message_also_gets_the_uid_entries_xaml_resolves() {
+        let out = resw(&english(
+            "action-send = Send\nchat-error-cancelled = Gone\n",
+        ));
+        assert!(out.contains("name=\"action_send.Content\""), "{out}");
+        assert!(
+            out.contains("name=\"action_send.AutomationProperties.Name\""),
+            "{out}"
+        );
+        assert!(out.contains("name=\"action_send\""), "{out}");
+        // An error is chosen in C# from a typed value, so it never sits in XAML.
+        assert!(!out.contains("chat_error_cancelled.Text"), "{out}");
+        assert_eq!(
+            uid_names(&english(
+                "action-send = Send\nchat-error-cancelled = Gone\n"
+            )),
+            ["action_send".to_owned()].into_iter().collect()
+        );
+    }
+
+    #[test]
     fn xml_targets_escape_markup_characters() {
         let source = "k = a & b < c\n";
-        assert!(strings_xml(&locale(source)).contains("a &amp; b &lt; c"));
-        assert!(resw(&locale(source)).contains("a &amp; b &lt; c"));
+        assert!(strings_xml(&english(source)).contains("a &amp; b &lt; c"));
+        assert!(resw(&english(source)).contains("a &amp; b &lt; c"));
     }
 }

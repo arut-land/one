@@ -6,6 +6,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "license": "SEE LICENSE IN ../../LICENSE-FSL",
   "engines": {
     "vscode": "^1.96.0"
   },
@@ -22,17 +23,20 @@
     ]
   },
   "scripts": {
-    "build": "vite build",
-    "check": "tsc --noEmit"
+    "build": "vite build && vite build --mode webview"
   },
   "dependencies": {
     "@arut/bindings-typescript": "workspace:*",
-    "@arut/runtime-browser": "workspace:*"
+    "@arut/chat-ui": "workspace:*",
+    "@arut/runtime-browser": "workspace:*",
+    "react": "catalog:",
+    "react-dom": "catalog:"
   },
   "devDependencies": {
-    "@types/node": "^22.13.1",
-    "@types/vscode": "^1.96.0",
-    "typescript": "catalog:",
+    "@types/react": "catalog:",
+    "@types/react-dom": "catalog:",
+    "@vitejs/plugin-react": "catalog:",
+    "oxc-transform-react": "catalog:",
     "vite": "catalog:"
   }
 }

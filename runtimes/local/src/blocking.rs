@@ -3,68 +3,58 @@
 //! would still perform synchronous storage I/O on the async worker.
 use arut_rpc::{
     Code, Request, Response, RpcChannel, RpcFuture, RpcService, RpcStream, ServiceDescriptor,
-    Status,
+    Status, Wrap, Wrapped,
 };
 use std::sync::Arc;
 
-pub(crate) struct Blocking<R> {
-    service: Arc<dyn RpcService>,
-    runtime: Arc<R>,
-}
-impl<R: Send + Sync + 'static> Blocking<R> {
-    pub(crate) fn new(service: Arc<dyn RpcService>, runtime: Arc<R>) -> Self {
-        Self { service, runtime }
-    }
-    fn run<T: Send + 'static>(
+/// Holds the runtime for as long as a call is in flight, so a node's storage
+/// outlives the last dispatch against it.
+struct Offload<R>(Arc<R>);
+impl<R: Send + Sync + 'static> Wrap for Offload<R> {
+    fn wrap<T: Send + 'static>(
         &self,
-        call: impl FnOnce(Arc<dyn RpcService>) -> RpcFuture<T> + Send + 'static,
+        call: Box<dyn FnOnce() -> RpcFuture<T> + Send>,
     ) -> RpcFuture<T> {
-        let service = self.service.clone();
-        let runtime = self.runtime.clone();
+        let runtime = self.0.clone();
         Box::pin(async move {
             let executor = tokio::runtime::Handle::current();
             tokio::task::spawn_blocking(move || {
                 let _runtime = runtime;
-                executor.block_on(call(service))
+                executor.block_on(call())
             })
             .await
             .map_err(|_| Status::new(Code::Internal, "local service stopped"))?
         })
     }
 }
+
+pub(crate) struct Blocking<R> {
+    descriptor: &'static ServiceDescriptor,
+    channel: Wrapped<Offload<R>>,
+}
+impl<R: Send + Sync + 'static> Blocking<R> {
+    pub(crate) fn new(service: Arc<dyn RpcService>, runtime: Arc<R>) -> Self {
+        Self {
+            descriptor: service.descriptor(),
+            channel: Wrapped::new(service, Offload(runtime)),
+        }
+    }
+}
 impl<R: Send + Sync + 'static> RpcService for Blocking<R> {
     fn descriptor(&self) -> &'static ServiceDescriptor {
-        self.service.descriptor()
+        self.descriptor
     }
 }
 impl<R: Send + Sync + 'static> RpcChannel for Blocking<R> {
     fn unary(&self, procedure: &str, request: Request<Vec<u8>>) -> RpcFuture<Response<Vec<u8>>> {
-        let procedure = procedure.to_owned();
-        self.run(move |service| service.unary(&procedure, request))
+        self.channel.unary(procedure, request)
     }
     fn server_stream(
         &self,
         procedure: &str,
         request: Request<Vec<u8>>,
     ) -> RpcFuture<Response<RpcStream<Vec<u8>>>> {
-        let procedure = procedure.to_owned();
-        self.run(move |service| service.server_stream(&procedure, request))
-    }
-    fn client_stream(
-        &self,
-        procedure: &str,
-        request: Request<RpcStream<Vec<u8>>>,
-    ) -> RpcFuture<Response<Vec<u8>>> {
-        let procedure = procedure.to_owned();
-        self.run(move |service| service.client_stream(&procedure, request))
-    }
-    fn bidirectional(
-        &self,
-        procedure: &str,
-        request: Request<RpcStream<Vec<u8>>>,
-    ) -> RpcFuture<Response<RpcStream<Vec<u8>>>> {
-        let procedure = procedure.to_owned();
-        self.run(move |service| service.bidirectional(&procedure, request))
+        self.channel.server_stream(procedure, request)
     }
 }
 
@@ -76,8 +66,8 @@ mod tests {
         fn descriptor(&self) -> &'static ServiceDescriptor {
             &ServiceDescriptor {
                 name: "Probe",
-                package: "test",
-                version: "v1",
+                package: "test.v1",
+                version: arut_rpc::Version { major: 1, minor: 0 },
                 methods: &[],
             }
         }
@@ -95,20 +85,6 @@ mod tests {
             &self,
             _: &str,
             _: Request<Vec<u8>>,
-        ) -> RpcFuture<Response<RpcStream<Vec<u8>>>> {
-            unreachable!()
-        }
-        fn client_stream(
-            &self,
-            _: &str,
-            _: Request<RpcStream<Vec<u8>>>,
-        ) -> RpcFuture<Response<Vec<u8>>> {
-            unreachable!()
-        }
-        fn bidirectional(
-            &self,
-            _: &str,
-            _: Request<RpcStream<Vec<u8>>>,
         ) -> RpcFuture<Response<RpcStream<Vec<u8>>>> {
             unreachable!()
         }

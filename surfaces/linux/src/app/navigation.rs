@@ -1,4 +1,9 @@
+//! Navigation state across launches. Only navigation lives here: the node owns
+//! durable conversations and drafts.
+use gtk::glib::KeyFile;
 use std::path::PathBuf;
+
+const GROUP: &str = "navigation";
 
 #[derive(Default)]
 pub struct Navigation {
@@ -15,40 +20,37 @@ fn path() -> Option<PathBuf> {
 
 impl Navigation {
     pub fn load() -> Self {
-        let Some(text) = path().and_then(|path| std::fs::read_to_string(path).ok()) else {
+        let file = KeyFile::new();
+        let Some(path) = path() else {
             return Self::default();
         };
-        let mut state = Self::default();
-        for line in text.lines() {
-            if let Some(id) = line.strip_prefix("selected=").filter(|id| !id.is_empty()) {
-                state.selected = Some(id.to_owned());
-            }
-            if line == "collapsed=true" {
-                state.collapsed = true;
-            }
+        if file
+            .load_from_file(path, gtk::glib::KeyFileFlags::NONE)
+            .is_err()
+        {
+            return Self::default();
         }
-        state
+        Self {
+            selected: file
+                .string(GROUP, "selected")
+                .ok()
+                .map(|id| id.to_string())
+                .filter(|id| !id.is_empty()),
+            collapsed: file.boolean(GROUP, "collapsed").unwrap_or(false),
+        }
     }
 
     pub fn save(&self) {
         let Some(path) = path() else {
             return;
         };
-        let result = (|| -> std::io::Result<()> {
-            std::fs::create_dir_all(path.parent().expect("state directory"))?;
-            let temporary = path.with_extension(format!("{}.tmp", std::process::id()));
-            let selected = self
-                .selected
-                .as_deref()
-                .unwrap_or_default()
-                .replace(['\n', '\r'], "");
-            std::fs::write(
-                &temporary,
-                format!("selected={selected}\ncollapsed={}\n", self.collapsed),
-            )?;
-            std::fs::rename(temporary, path)
-        })();
-        if let Err(error) = result {
+        let file = KeyFile::new();
+        file.set_string(GROUP, "selected", self.selected.as_deref().unwrap_or(""));
+        file.set_boolean(GROUP, "collapsed", self.collapsed);
+        let saved = std::fs::create_dir_all(path.parent().expect("state directory"))
+            .map_err(|error| error.to_string())
+            .and_then(|()| file.save_to_file(path).map_err(|error| error.to_string()));
+        if let Err(error) = saved {
             eprintln!("Could not save navigation: {error}");
         }
     }

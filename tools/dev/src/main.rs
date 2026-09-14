@@ -1,19 +1,23 @@
-//! Repository development commands for localization, layering, and binding facades.
-//! Localization resources and accessors share their platform key naming.
-//! Each subcommand supports `--check`; layers always checks without writing.
-mod bindings;
-mod i18n;
-mod layers;
+//! Repository development commands.
+//!
+//! `generate` writes the localization resources each platform's own API reads,
+//! from the one Fluent source (ADR 0022). `check` proves the repository still
+//! matches ARCHITECTURE.md: layer edges, the isolated `bindings/ffi` graph,
+//! TypeScript package boundaries, the generated resources, and the Windows
+//! `x:Uid` references. Mise calls both, and CI calls the same mise tasks.
 
+mod check;
+mod i18n;
+
+use std::error::Error;
 use std::process::ExitCode;
 
 fn main() -> ExitCode {
-    let arguments: Vec<String> = std::env::args().skip(1).collect();
-    let result = match arguments.first().map(String::as_str) {
-        Some("i18n") => return i18n::run(&arguments[1..]),
-        Some("bindings") => bindings::run(arguments.iter().any(|arg| arg == "--check")),
-        Some("layers") => layers::run(),
-        _ => Err("usage: arut-dev <i18n|layers|bindings> [--check]".into()),
+    let command = std::env::args().nth(1);
+    let result: Result<(), Box<dyn Error>> = match command.as_deref() {
+        Some("generate") => i18n::generate().map_err(Into::into),
+        Some("check") => check::run(),
+        _ => Err("usage: arut-dev <generate|check>".into()),
     };
     match result {
         Ok(()) => ExitCode::SUCCESS,

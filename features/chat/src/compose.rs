@@ -5,13 +5,17 @@ use crate::{
     service::ChatServiceImpl,
 };
 use arut_protocol::chat::{
-    composer::v1::{ComposerServiceClient, ComposerServiceRouter},
-    v1::{ChatServiceClient, ChatServiceRouter},
+    composer::v1::{ComposerServiceClient, ComposerServiceId, ComposerServiceRouter},
+    v1::{ChatServiceClient, ChatServiceId, ChatServiceRouter},
 };
-use arut_rpc::{RpcService, ServiceMetadata, ServiceRegistration};
+use arut_rpc::RpcService;
 use std::sync::Arc;
 
 pub type ComposeError = arut_storage::StorageError;
+
+/// The services [`compose`] serves, in the order it registers them. A node
+/// advertises its manifest from this type; nothing repeats their names.
+pub type ChatServices = (ChatServiceId, ComposerServiceId);
 
 /// Generated clients sharing the services owned by the composed feature.
 #[derive(Clone)]
@@ -32,12 +36,6 @@ impl ChatFeature {
     pub fn clients(&self) -> ChatClients {
         self.clients.clone()
     }
-    /// The manifest uses the very descriptors served by this feature.
-    pub fn registrations(&self) -> impl Iterator<Item = ServiceRegistration> {
-        self.routers
-            .iter()
-            .map(|router| ServiceRegistration::new(router.descriptor(), ServiceMetadata::default()))
-    }
 }
 
 pub fn compose<R: ChatRuntime>(runtime: Arc<R>) -> Result<ChatFeature, ComposeError> {
@@ -47,7 +45,7 @@ pub fn compose<R: ChatRuntime>(runtime: Arc<R>) -> Result<ChatFeature, ComposeEr
         runtime.log("chat")?,
         runtime.clone(),
     )?);
-    let composer = Arc::new(ComposerServiceImpl::new(authority).with_runtime(runtime));
+    let composer = Arc::new(ComposerServiceImpl::new(authority));
     Ok(ChatFeature {
         clients: ChatClients {
             chat: ChatServiceClient::direct(chat.clone()),
@@ -88,12 +86,15 @@ mod tests {
         for router in feature.routers() {
             registry = registry.register(router).unwrap();
         }
-        let advertised: Vec<_> = feature.registrations().map(|r| r.descriptor.name).collect();
+        let advertised: Vec<_> = <ChatServices as arut_rpc::ServiceSet>::DESCRIPTORS
+            .iter()
+            .map(|descriptor| descriptor.name)
+            .collect();
         assert_eq!(
             advertised,
-            registry
-                .registrations()
-                .map(|r| r.descriptor.name)
+            feature
+                .routers()
+                .map(|router| router.descriptor().name)
                 .collect::<Vec<_>>()
         );
         let remote = ChatServiceClient::remote(Arc::new(registry));

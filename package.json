@@ -3,7 +3,11 @@
   "private": true,
   "scripts": {
     "build": "pnpm --recursive --if-present build",
-    "check": "pnpm --recursive --if-present check"
+    "check": "tsc -p tsconfig.json && tsc -p tsconfig.node.json && node --test bindings/typescript/tests/*.test.mjs"
   },
-  "packageManager": "pnpm@12.3.4"
+  "devDependencies": {
+    "@types/node": "^22.13.1",
+    "@types/vscode": "^1.96.0",
+    "typescript": "catalog:"
+  }
 }

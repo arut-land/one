@@ -2,8 +2,9 @@
 //! `ChildHost` lifecycle: readiness, dying with the parent, and reuse over
 //! spawning a second daemon against the same node lease (ADR 0011).
 use arut_product_session::{ProductSession, hosting::Host};
+use arut_rpc::StatusDetail;
 use arut_runtime_host_polled::NativeIds;
-use arut_runtime_local::{child::ChildHost, hosting::TokioSpawner};
+use arut_runtime_local::{child::ChildHost, hosting::TokioSpawner, readiness::Readiness};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -20,7 +21,9 @@ fn spawner() -> Arc<dyn arut_rpc::Spawner> {
 }
 
 /// Sends one message over `channel` and proves it actually reached a working
-/// node, rather than merely not having errored while connecting.
+/// node, rather than merely not having errored while connecting: the reply is
+/// there and the conversation it started is listed under the text that started
+/// it.
 async fn assert_channel_works(channel: Arc<dyn arut_rpc::RpcChannel>, text: &str) {
     let session = ProductSession::remote(
         channel,
@@ -34,34 +37,12 @@ async fn assert_channel_works(channel: Arc<dyn arut_rpc::RpcChannel>, text: &str
     let chat = session.chat();
     let state = chat.send(text.into()).await;
     assert_eq!(chat.messages_after(0).len(), 2, "{:?}", state.error);
-}
-
-#[tokio::test]
-async fn child_process_hosts_a_chat_over_unix_socket() {
-    let dir = scratch_dir("basic");
-    let host = ChildHost {
-        executable: env!("CARGO_BIN_EXE_arutd").into(),
-        socket: dir.join("node.sock"),
-        data: dir.join("data.pb"),
-        spawner: spawner(),
-    };
-    let channel = host.connect().await.unwrap();
-    let session = ProductSession::remote(
-        channel,
-        arut_product_session::SessionScope {
-            node_id: "local".into(),
-            workspace_id: "default".into(),
-            pending_scope_id: "test".into(),
-        },
-        Arc::new(NativeIds),
+    assert!(
+        session
+            .chat_summaries()
+            .iter()
+            .any(|summary| summary.title == text)
     );
-    let chat = session.chat();
-    let state = chat.send("through child IPC".into()).await;
-    assert_eq!(chat.messages_after(0).len(), 2, "{:?}", state.error);
-    assert_eq!(session.chat_summaries()[0].title, "through child IPC");
-    drop(chat);
-    drop(session);
-    std::fs::remove_dir_all(dir).unwrap();
 }
 
 /// The abrupt-parent-death case (ADR 0011): nothing here sends `arutd` a
@@ -160,5 +141,27 @@ async fn a_stale_socket_is_cleaned_and_a_fresh_daemon_spawned() {
 
     assert!(std::fs::metadata(&socket).unwrap().file_type().is_socket());
     drop(channel);
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+/// The lease arm of the readiness handshake (ADR 0011): a daemon spawned
+/// against a data directory whose lease is already held exits saying so, and
+/// `connect` reports that reason rather than a bare `Unavailable`.
+#[tokio::test]
+async fn a_daemon_spawned_against_a_held_lease_reports_the_lease() {
+    let dir = scratch_dir("lease-held");
+    let data = dir.join("data.pb");
+    let held = arut_runtime_local::LocalRuntime::open(data.clone(), "chat").unwrap();
+
+    let host = ChildHost {
+        executable: env!("CARGO_BIN_EXE_arutd").into(),
+        socket: dir.join("node.sock"),
+        data,
+        spawner: spawner(),
+    };
+    let error = host.connect().await.err().expect("the lease is held");
+
+    assert_eq!(Readiness::from_status(&error), Some(Readiness::LeaseHeld));
+    drop(held);
     std::fs::remove_dir_all(dir).unwrap();
 }

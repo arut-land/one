@@ -16,11 +16,12 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-/// Synchronous session projections after accepted transcript changes.
+/// The session projection that follows accepted transcript changes.
+///
+/// One callback for both the first accepted message and every later one: the
+/// registry decides insert or update from the chat ID it already keys by.
 pub trait ChatObserver: Send + Sync {
-    fn chat_started(&self, chat_id: String, chat: ChatClient);
-
-    fn chat_updated(&self, chat_id: &str, chat: &ChatClient);
+    fn chat_changed(&self, chat_id: &str, chat: &ChatClient);
 }
 
 /// What a chat that has not started yet needs, and an established one does not.
@@ -30,13 +31,21 @@ struct PendingStart {
     command_id: String,
 }
 
+/// Whether this handle was opened on a conversation the node already has, or on
+/// a pending composer scope that one send will turn into a conversation.
+#[derive(Clone)]
+enum Stage {
+    Pending(PendingStart),
+    Established(String),
+}
+
 #[derive(Clone)]
 pub struct ChatClient {
     service: ChatServiceClient,
     composer: ComposerClient,
     state: Arc<Watch<ChatState>>,
     messages: Arc<Mutex<BTreeMap<u64, ChatMessage>>>,
-    start: Option<PendingStart>,
+    stage: Stage,
     observer: Option<Arc<dyn ChatObserver>>,
     pending_send: Arc<Mutex<Option<SendMessageRequest>>>,
     ids: Arc<dyn IdSource>,
@@ -65,13 +74,13 @@ impl ChatClient {
                 ids.clone(),
                 cancellation.clone(),
             ),
-            state: Arc::new(Watch::new(ChatState {
-                id: Some(id),
+            state: Arc::new(Watch::new(derived(ChatState {
                 last_message_id: messages.last_key_value().map_or(0, |(id, _)| *id),
+                id: Some(id.clone()),
                 ..Default::default()
-            })),
+            }))),
             messages: Arc::new(Mutex::new(messages)),
-            start: None,
+            stage: Stage::Established(id),
             observer: None,
             pending_send: Arc::default(),
             ids,
@@ -95,10 +104,10 @@ impl ChatClient {
                 ids.clone(),
                 cancellation.clone(),
             ),
-            state: Arc::new(Watch::new(ChatState::default())),
+            state: Arc::new(Watch::new(derived(ChatState::default()))),
             messages: Arc::default(),
             pending_send: Arc::default(),
-            start: Some(PendingStart {
+            stage: Stage::Pending(PendingStart {
                 scope_id: pending_scope_id,
                 command_id: ids.new_id(),
             }),
@@ -177,26 +186,29 @@ impl ChatClient {
         if text.is_empty() {
             return self.state.get();
         }
+        // The composer is the draft this send commits, so every edit a person
+        // made is written before the send reads its revision.
+        self.composer.flush().await;
         let operations = self.composer.operations();
         let _composer_operation = operations.lock().await;
         if self.cancellation.is_cancelled() {
             return self.fail(ChatError::Cancelled);
         }
-        self.state.update(|state| {
+        self.write(|state| {
             state.status = ChatStatus::Sending;
             state.error = None;
         });
 
-        match (self.id(), &self.start) {
-            (Some(chat_id), _) => self.send_established(chat_id, text).await,
-            (None, Some(start)) => self.start(start, text).await,
-            (None, None) => self.fail(ChatError::NoConversation),
+        match (&self.stage, self.id()) {
+            (Stage::Established(chat_id), _) => self.send_established(chat_id.clone(), text).await,
+            (Stage::Pending(_), Some(chat_id)) => self.send_established(chat_id, text).await,
+            (Stage::Pending(start), None) => self.start(start, text).await,
         }
     }
 
     async fn start(&self, start: &PendingStart, text: String) -> ChatState {
         if self.composer.state().text != text {
-            let composer = self.composer.replace_unlocked(text.clone()).await;
+            let composer = self.composer.write_locked(text.clone()).await;
             if let Some(error) = composer.error {
                 return self.fail(error.into());
             }
@@ -225,16 +237,14 @@ impl ChatClient {
                     return self.fail(error.into());
                 }
                 let last_message_id = self.accept_messages(response.messages);
-                self.state.update(|state| {
+                let state = self.write(|state| {
                     state.id = Some(chat_id.clone());
                     state.last_message_id = last_message_id;
                     state.status = ChatStatus::Idle;
                     state.error = None;
                 });
-                if let Some(callback) = &self.observer {
-                    callback.chat_started(chat_id, self.clone());
-                }
-                self.state.get()
+                self.publish(&chat_id);
+                state
             }
             Err(error) => self.fail(error.into()),
         }
@@ -261,29 +271,48 @@ impl ChatClient {
             Ok(response) => {
                 self.pending_send.lock().unwrap().take();
                 let last_message_id = self.accept_messages(response.message.messages);
-                self.state.update(|state| {
+                self.write(|state| {
                     state.last_message_id = last_message_id;
                     state.status = ChatStatus::Idle;
                     state.error = None;
                 });
-                if let Some(callback) = &self.observer {
-                    callback.chat_updated(&chat_id, self);
-                }
+                self.publish(&chat_id);
                 // Draft cleanup has its own error state. Acceptance is already durable.
-                self.composer.replace_unlocked(String::new()).await;
+                self.composer.write_locked(String::new()).await;
                 self.state.get()
             }
             Err(error) => self.fail(error.into()),
         }
     }
 
-    fn fail(&self, error: ChatError) -> ChatState {
+    fn publish(&self, chat_id: &str) {
+        if let Some(observer) = &self.observer {
+            observer.chat_changed(chat_id, self);
+        }
+    }
+
+    /// Edits the projection and recomputes what a surface derives from it.
+    fn write(&self, edit: impl FnOnce(&mut ChatState)) -> ChatState {
+        let cancelled = self.cancellation.is_cancelled();
         self.state.update(|state| {
-            state.status = ChatStatus::Failed;
-            state.error = Some(error);
+            edit(state);
+            state.derive(cancelled);
         });
         self.state.get()
     }
+
+    fn fail(&self, error: ChatError) -> ChatState {
+        self.write(|state| {
+            state.status = ChatStatus::Failed;
+            state.error = Some(error);
+        })
+    }
+}
+
+/// A projection with its derived fields already computed, for a fresh handle.
+fn derived(mut state: ChatState) -> ChatState {
+    state.derive(false);
+    state
 }
 
 fn from_wire(message: WireMessage) -> Option<ChatMessage> {

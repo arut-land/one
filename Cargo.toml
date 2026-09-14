@@ -4,6 +4,7 @@ members = [
     "bindings/ffi",
     "features/chat",
     "product/i18n",
+    "product/i18n/catalog",
     "product/i18n/macros",
     "product/session",
     "protocols",
@@ -17,8 +18,7 @@ members = [
     "surfaces/linux",
     "tools/dev",
     "tools/conformance",
-    "transports/connect-http",
-    "transports/ipc",
+    "transports",
 ]
 
 [workspace.package]
@@ -30,6 +30,7 @@ license = "MIT OR Apache-2.0"
 arut-authority = { path = "substrates/authority" }
 arut-feature-chat = { path = "features/chat" }
 arut-i18n = { path = "product/i18n" }
+arut-i18n-catalog = { path = "product/i18n/catalog" }
 arut-i18n-macros = { path = "product/i18n/macros" }
 arut-product-session = { path = "product/session" }
 arut-protocol = { path = "protocols" }
@@ -37,8 +38,7 @@ arut-rpc = { path = "protocols/rpc" }
 arut-runtime-host-polled = { path = "runtimes/host-polled" }
 arut-runtime-local = { path = "runtimes/local" }
 arut-storage = { path = "substrates/storage" }
-arut-transport-connect-http = { path = "transports/connect-http" }
-arut-transport-ipc = { path = "transports/ipc" }
+arut-transport = { path = "transports" }
 arut-watch = { path = "substrates/watch" }
 
 [workspace.lints.rust]

@@ -5,24 +5,16 @@ use crate::app::{
 use arut_i18n::Message;
 use arut_product_session::chat::ChatClient;
 use gtk::{gio, glib, prelude::*};
-use relm4::{Component, ComponentParts, ComponentSender};
+use relm4::{ComponentParts, ComponentSender, SimpleComponent};
 use std::{cell::Cell, rc::Rc};
 
 pub struct Composer {
+    chat: ChatClient,
     state: ViewState,
-    buffer: gtk::TextBuffer,
-    commands: relm4::Sender<Command>,
-    pending: Rc<Cell<usize>>,
-    sending: Rc<Cell<bool>>,
-    active: Rc<Cell<bool>>,
-    edit_signal: Option<glib::SignalHandlerId>,
+    editor: gtk::TextView,
     _tasks: Tasks,
 }
 
-enum Command {
-    Edit(String),
-    Send(String),
-}
 #[derive(Debug, Clone)]
 pub enum Msg {
     Send,
@@ -31,23 +23,22 @@ pub enum Msg {
 }
 
 #[relm4::component(pub)]
-impl Component for Composer {
+impl SimpleComponent for Composer {
     type Init = ChatClient;
     type Input = Msg;
     type Output = ();
-    type CommandOutput = ();
     view! {
         gtk::Box {
             set_orientation: gtk::Orientation::Vertical,
-            set_spacing: 6,
-            set_margin_start: 12,
-            set_margin_end: 12,
-            set_margin_bottom: 12,
+            set_spacing: 8,
+            set_margin_start: 16,
+            set_margin_end: 16,
+            set_margin_bottom: 16,
             gtk::Frame {
                 add_css_class: "arut-composer",
                 gtk::Box {
                     set_spacing: 8,
-                    set_margin_start: 12,
+                    set_margin_start: 16,
                     set_margin_end: 8,
                     set_margin_top: 8,
                     set_margin_bottom: 8,
@@ -58,9 +49,8 @@ impl Component for Composer {
                         gtk::ScrolledWindow {
                             set_hscrollbar_policy: gtk::PolicyType::Never,
                             set_propagate_natural_height: true,
-                            #[name = "editor"]
-                            gtk::TextView {
-                                set_buffer: Some(&model.buffer),
+                            #[local_ref]
+                            editor -> gtk::TextView {
                                 set_wrap_mode: gtk::WrapMode::WordChar,
                                 set_accepts_tab: false,
                                 set_top_margin: 8,
@@ -105,29 +95,15 @@ impl Component for Composer {
         sender: ComponentSender<Self>,
     ) -> ComponentParts<Self> {
         let composer = chat.composer();
-        let state = ViewState::default();
-        let buffer = gtk::TextBuffer::default();
-        let pending = Rc::new(Cell::new(0usize));
-        let sending = Rc::new(Cell::new(false));
-        let applying = Rc::new(Cell::new(false));
-        let (commands, receiver) = relm4::channel();
         let mut model = Self {
-            state,
-            buffer,
-            commands,
-            pending,
-            sending,
-            active: Rc::new(Cell::new(true)),
-            edit_signal: None,
+            chat: chat.clone(),
+            state: ViewState::default(),
+            editor: gtk::TextView::new(),
             _tasks: Tasks::default(),
         };
+        let editor = &model.editor;
         let widgets = view_output!();
-        model
-            .state
-            .bind_property("draft", &model.buffer, "text")
-            .bidirectional()
-            .sync_create()
-            .build();
+        let buffer = model.editor.buffer();
         model
             .state
             .bind_property("enabled", &widgets.editor, "sensitive")
@@ -136,6 +112,12 @@ impl Component for Composer {
         model
             .state
             .bind_property("can-send", &widgets.send, "sensitive")
+            .sync_create()
+            .build();
+        model
+            .state
+            .bind_property("draft", &buffer, "text")
+            .bidirectional()
             .sync_create()
             .build();
         model
@@ -160,69 +142,52 @@ impl Component for Composer {
             initialize.initialize().await;
             initialize.follow().await;
         });
-        let refresh = {
-            let active = model.active.clone();
-            let (composer, state, pending, sending, applying) = (
+        // Writing the draft back into the buffer must not be read as typing.
+        let applying = Rc::new(Cell::new(false));
+        model._tasks.observe(composer.changes(), {
+            let (composer, state, chat, applying) = (
                 composer.clone(),
                 model.state.clone(),
-                model.pending.clone(),
-                model.sending.clone(),
+                chat.clone(),
                 applying.clone(),
             );
             move || {
-                if !active.get() {
-                    return;
-                }
                 let snapshot = composer.state();
                 state.set_status(strings::composer(snapshot.status, snapshot.error));
-                if pending.get() == 0 {
+                if state.draft() != snapshot.text {
                     applying.set(true);
-                    if state.draft() != snapshot.text {
-                        state.set_draft(snapshot.text);
-                    }
+                    state.set_draft(snapshot.text.as_str());
                     applying.set(false);
                 }
-                state.set_can_send(
-                    state.enabled() && !sending.get() && !state.draft().trim().is_empty(),
-                );
+                sensitivity(&state, &chat, &snapshot.text);
             }
-        };
-        model._tasks.observe(composer.changes(), refresh.clone());
-        model.edit_signal = Some(model.buffer.connect_changed({
-            let (commands, pending, state, sending) = (
-                model.commands.clone(),
-                model.pending.clone(),
-                model.state.clone(),
-                model.sending.clone(),
-            );
+        });
+        model._tasks.observe(chat.changes(), {
+            let (state, chat) = (model.state.clone(), chat.clone());
+            move || {
+                let draft = state.draft();
+                sensitivity(&state, &chat, &draft);
+            }
+        });
+        buffer.connect_changed({
+            let (state, chat) = (model.state.clone(), chat.clone());
             move |buffer| {
-                if !applying.get() {
-                    pending.set(pending.get() + 1);
-                    let text = buffer
-                        .text(&buffer.start_iter(), &buffer.end_iter(), true)
-                        .to_string();
-                    state
-                        .set_can_send(state.enabled() && !sending.get() && !text.trim().is_empty());
-                    let _ = commands.send(Command::Edit(text));
+                if applying.get() {
+                    return;
                 }
-            }
-        }));
-        // One consumer orders every edit and send. It drains accepted UI commands
-        // when the component is dropped; observations still cancel immediately.
-        let (pending, sending) = (model.pending.clone(), model.sending.clone());
-        glib::spawn_future_local(async move {
-            while let Some(command) = receiver.recv().await {
-                match command {
-                    Command::Edit(text) => {
-                        composer.replace(text).await;
-                    }
-                    Command::Send(text) => {
-                        chat.send(text).await;
-                        sending.set(false);
-                    }
-                }
-                pending.set(pending.get() - 1);
-                refresh();
+                let text = buffer
+                    .text(&buffer.start_iter(), &buffer.end_iter(), true)
+                    .to_string();
+                sensitivity(&state, &chat, &text);
+                // `replace` writes the draft into the projection as it is
+                // called and coalesces behind one in-flight request, so there
+                // is no edit queue here. The write outlives this widget on
+                // purpose: a draft typed just before a switch still reaches
+                // the node.
+                let composer = composer.clone();
+                glib::spawn_future_local(async move {
+                    composer.replace(text).await;
+                });
             }
         });
         let actions = gio::SimpleActionGroup::new();
@@ -232,10 +197,7 @@ impl Component for Composer {
             .bind_property("can-send", &send, "enabled")
             .sync_create()
             .build();
-        send.connect_activate({
-            let sender = sender.clone();
-            move |_, _| sender.input(Msg::Send)
-        });
+        send.connect_activate(move |_, _| sender.input(Msg::Send));
         actions.add_action(&send);
         root.insert_action_group("composer", Some(&actions));
         let shortcuts = gtk::ShortcutController::new();
@@ -280,40 +242,35 @@ impl Component for Composer {
         });
         ComponentParts { model, widgets }
     }
-    fn update_with_view(
-        &mut self,
-        widgets: &mut Self::Widgets,
-        message: Msg,
-        sender: ComponentSender<Self>,
-        _: &Self::Root,
-    ) {
+    fn update(&mut self, message: Msg, _sender: ComponentSender<Self>) {
         match message {
             Msg::Send if self.state.can_send() => {
-                let _ = sender.output(());
-                self.sending.set(true);
+                let text = self.state.draft();
                 self.state.set_can_send(false);
-                self.pending.set(self.pending.get() + 1);
-                let _ = self.commands.send(Command::Send(self.state.draft()));
+                // `send` flushes the composer first, so the text committed is
+                // the text on screen even with a write still in flight.
+                let chat = self.chat.clone();
+                glib::spawn_future_local(async move {
+                    chat.send(text).await;
+                });
+                let _ = self.editor.activate_action("win.latest", None);
             }
             Msg::Send => (),
             Msg::Enabled(enabled) => {
                 self.state.set_enabled(enabled);
-                self.state.set_can_send(
-                    enabled && !self.sending.get() && !self.state.draft().trim().is_empty(),
-                );
+                let draft = self.state.draft();
+                sensitivity(&self.state, &self.chat, &draft);
             }
             Msg::Focus => {
-                widgets.editor.grab_focus();
+                self.editor.grab_focus();
             }
         }
     }
 }
 
-impl Drop for Composer {
-    fn drop(&mut self) {
-        self.active.set(false);
-        if let Some(signal) = self.edit_signal.take() {
-            self.buffer.disconnect(signal);
-        }
-    }
+/// A send is offered when the node would accept one and there is something to
+/// send: `ChatState::can_send` covers the conversation scope and an in-flight
+/// send, the draft covers the rest (ADR 0007 keeps the two projections apart).
+fn sensitivity(state: &ViewState, chat: &ChatClient, draft: &str) {
+    state.set_can_send(state.enabled() && chat.state().can_send && !draft.trim().is_empty());
 }

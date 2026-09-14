@@ -7,7 +7,7 @@
 //! `arut-rpc` contains the transport-neutral request, response, status, stream, channel, registry, and descriptor types used by generated code. Network protocols and raw I/O remain adapters below `RpcChannel`.
 //!
 //! Capability assembly helpers build a direct client or add its router to a registry.
-//! The capability service derives its manifest from generated service descriptors and runtime registration metadata. Service names, versions, methods, routes, and streaming shapes are never repeated in a handwritten capability registry. Product sessions translate the wire manifest into feature-specific availability.
+//! The capability service derives its manifest from the generated descriptors of the service set a node declares. Service names, versions, methods, routes, and streaming shapes are never repeated in a handwritten capability registry. Product sessions translate the wire manifest into feature-specific availability.
 //!
 //! Feature crates implement generated service traits. Product code uses generated clients. Neither side writes procedure paths, Protobuf framing, or transport-specific dispatch.
 
@@ -94,7 +94,10 @@ mod tests {
     #[test]
     fn generates_canonical_service_descriptors() {
         assert_eq!(CHAT_SERVICE_DESCRIPTOR.package, "arut.chat.v1");
-        assert_eq!(CHAT_SERVICE_DESCRIPTOR.version, "v1");
+        assert_eq!(
+            CHAT_SERVICE_DESCRIPTOR.version,
+            arut_rpc::Version { major: 1, minor: 0 }
+        );
         assert_eq!(
             CHAT_SERVICE_DESCRIPTOR.methods[0].procedure,
             "/arut.chat.v1.ChatService/SendMessage"

@@ -1,6 +1,4 @@
-import react from "@vitejs/plugin-react";
+import { browserApp } from "@arut/chat-ui/vite";
 import { defineConfig } from "vite";
 
-export default defineConfig({
-  plugins: [react({ compiler: true })],
-});
+export default defineConfig(browserApp());

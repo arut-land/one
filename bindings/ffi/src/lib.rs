@@ -1,9 +1,13 @@
 //! Foreign bindings over shared scope projections and host-supplied time and IDs.
 //!
-//! Each handle has an explicit `#[export] impl`. BoltFFI's source scanner does not
-//! expand macros: a macro-generated handle silently disappears from bindings,
-//! even with `--deny-skipped`. Keep exports visible; share watch bridging through
-//! `ffi_subscription`. The factories compose features over memory ports. Chat metadata and keyed message ranges cross FFI separately.
+//! Each handle has an explicit `#[export] impl`. BoltFFI's source scanner does
+//! not expand macros: a macro-generated handle silently disappears from the
+//! bindings, even with `--deny-skipped`. Keep exports visible and share watch
+//! bridging through `ffi_subscription`.
+//!
+//! An error crosses as its Fluent message id and its arguments, never as a
+//! sentence: the surface resolves the id in its own resource system, so the
+//! core still learns no locale (ADR 0016, ADR 0022).
 
 pub use arut_feature_chat::composer::{ComposerState, ComposerStatus};
 pub use arut_feature_chat::errors::{ChatError, ComposerError, NodeFailure};
@@ -15,6 +19,8 @@ pub use arut_product_session::{ChatSummary, FeatureAvailability, SessionAvailabi
 use arut_watch::Subscription;
 use boltffi::{EventSubscription, export};
 use std::sync::Arc;
+
+mod observation;
 
 pub struct ProductSessionHandle {
     session: Arc<ProductSession>,
@@ -68,7 +74,14 @@ impl ConversationsHandle {
     pub fn state(&self) -> Vec<ChatSummary> {
         self.session.chat_summaries()
     }
-    #[ffi_stream(item = u64, mode = "callback")]
+    /// The conversation every surface on this session is showing.
+    pub fn selected_id(&self) -> Option<String> {
+        self.session.selected_id()
+    }
+    pub fn select(&self, id: Option<String>) {
+        self.session.select(id);
+    }
+    #[ffi_stream(item = u64, mode = "async")]
     pub fn list_changes(&self) -> Arc<EventSubscription<u64>> {
         ffi_subscription(self.session.conversations_changes())
     }
@@ -81,7 +94,7 @@ impl AvailabilityHandle {
     pub async fn refresh(&self) -> SessionAvailability {
         self.session.refresh_capabilities().await
     }
-    #[ffi_stream(item = u64, mode = "callback")]
+    #[ffi_stream(item = u64, mode = "async")]
     pub fn availability_changes(&self) -> Arc<EventSubscription<u64>> {
         ffi_subscription(self.session.availability_changes())
     }
@@ -102,7 +115,23 @@ impl ChatHandle {
     pub async fn send(&self, text: String) -> ChatState {
         self.client.send(text).await
     }
-    #[ffi_stream(item = u64, mode = "callback")]
+    /// The Fluent message id for the current error, if there is one.
+    pub fn error_key(&self) -> Option<String> {
+        self.client
+            .state()
+            .error
+            .map(|error| error.message_key().to_owned())
+    }
+    /// The arguments the current error's message takes, in the order the
+    /// message names them. Empty for every message that takes none.
+    pub fn error_args(&self) -> Vec<String> {
+        self.client
+            .state()
+            .error
+            .map(chat_error_args)
+            .unwrap_or_default()
+    }
+    #[ffi_stream(item = u64, mode = "async")]
     pub fn chat_changes(&self) -> Arc<EventSubscription<u64>> {
         ffi_subscription(self.client.changes())
     }
@@ -121,7 +150,23 @@ impl ComposerHandle {
     pub async fn replace(&self, text: String) -> ComposerState {
         self.client.replace(text).await
     }
-    #[ffi_stream(item = u64, mode = "callback")]
+    /// The Fluent message id for the current error, if there is one.
+    pub fn error_key(&self) -> Option<String> {
+        self.client
+            .state()
+            .error
+            .map(|error| error.message_key().to_owned())
+    }
+    /// The arguments the current error's message takes, in the order the
+    /// message names them. Empty for every message that takes none.
+    pub fn error_args(&self) -> Vec<String> {
+        self.client
+            .state()
+            .error
+            .map(composer_error_args)
+            .unwrap_or_default()
+    }
+    #[ffi_stream(item = u64, mode = "async")]
     pub fn composer_changes(&self) -> Arc<EventSubscription<u64>> {
         ffi_subscription(self.client.changes())
     }
@@ -147,10 +192,26 @@ pub fn create_product_session(pending_scope_id: String) -> ProductSessionHandle 
     }
 }
 
+/// The two composer messages that name a value, and nothing else.
+fn composer_error_args(error: ComposerError) -> Vec<String> {
+    match error {
+        ComposerError::RevisionConflict { current } => vec![current.to_string()],
+        ComposerError::AuthorityChanged { current_epoch } => vec![current_epoch.to_string()],
+        _ => Vec::new(),
+    }
+}
+
+fn chat_error_args(error: ChatError) -> Vec<String> {
+    match error {
+        ChatError::Draft(error) => composer_error_args(error),
+        _ => Vec::new(),
+    }
+}
+
 fn ffi_subscription(source: Arc<Subscription<u64>>) -> Arc<EventSubscription<u64>> {
     let target = Arc::new(EventSubscription::new(1));
     let weak = Arc::downgrade(&target);
-    arut_runtime_host_polled::observe(source, move |revision| {
+    observation::observe(source, move |revision| {
         let Some(target) = weak.upgrade() else {
             return false;
         };

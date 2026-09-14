@@ -353,17 +353,6 @@
         }
       }
     },
-    "chat-error-no-conversation": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "There's no conversation to send this to yet."
-          }
-        }
-      }
-    },
     "chat-history-empty": {
       "extractionState": "manual",
       "localizations": {
@@ -826,7 +815,7 @@
         }
       }
     },
-    "node-startup-failure-lease-held": {
+    "readiness-lease-held": {
       "extractionState": "manual",
       "localizations": {
         "en": {
@@ -837,7 +826,18 @@
         }
       }
     },
-    "node-startup-failure-socket-unreachable": {
+    "readiness-ready": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Your node is running."
+          }
+        }
+      }
+    },
+    "readiness-socket-unreachable": {
       "extractionState": "manual",
       "localizations": {
         "en": {
@@ -848,7 +848,7 @@
         }
       }
     },
-    "node-startup-failure-spawn-failed": {
+    "readiness-spawn-failed": {
       "extractionState": "manual",
       "localizations": {
         "en": {
@@ -859,123 +859,13 @@
         }
       }
     },
-    "rpc-error-already-exists": {
+    "readiness-timed-out": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "This item already exists on the node."
-          }
-        }
-      }
-    },
-    "rpc-error-cancelled": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "The request was cancelled."
-          }
-        }
-      }
-    },
-    "rpc-error-changed": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "The node changed before the request completed. Try again."
-          }
-        }
-      }
-    },
-    "rpc-error-denied": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Access to this node was denied."
-          }
-        }
-      }
-    },
-    "rpc-error-exhausted": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "The node has no capacity for this request."
-          }
-        }
-      }
-    },
-    "rpc-error-internal": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "The node encountered an internal error."
-          }
-        }
-      }
-    },
-    "rpc-error-not-found": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "The requested conversation was not found."
-          }
-        }
-      }
-    },
-    "rpc-error-rejected": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "The node could not accept this request."
-          }
-        }
-      }
-    },
-    "rpc-error-timed-out": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "The node took too long to respond."
-          }
-        }
-      }
-    },
-    "rpc-error-unavailable": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "The local node is unavailable."
-          }
-        }
-      }
-    },
-    "rpc-error-unsupported": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "This node does not support the request."
+            "value": "Your node did not finish starting in time."
           }
         }
       }

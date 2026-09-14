@@ -13,7 +13,7 @@ targets:
   ArutMac:
     type: application
     platform: macOS
-    deploymentTarget: "13.0"
+    deploymentTarget: "14.0"
     sources:
       - shared/app
     dependencies:
@@ -24,7 +24,7 @@ targets:
   ArutiOS:
     type: application
     platform: iOS
-    deploymentTarget: "16.0"
+    deploymentTarget: "17.0"
     sources:
       - shared/app
     dependencies:

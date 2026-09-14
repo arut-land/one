@@ -34,30 +34,18 @@ composer-error-scope-mismatch = Your node answered about a different draft.
 
 ## ChatError -- why a chat could not accept what a person did.
 
-chat-error-no-conversation = There's no conversation to send this to yet.
 chat-error-cancelled = This conversation closed before your message could send.
 chat-error-chat-id-missing = Your node started a conversation but didn't tell us its name.
 
-## Connect-time transport statuses, before any scope exists to fail.
+## Readiness -- whether the local node came up, and if not, why
+## `arut_runtime_local::child::ChildHost` could not give a session a working
+## connection to it at all (ADR 0011). This is a separate enum from
+## `NodeFailure` above: that one is why a call over an already-open connection
+## failed, this is why the connection never came to be, so the two never share
+## a variant name.
 
-rpc-error-unavailable = The local node is unavailable.
-rpc-error-cancelled = The request was cancelled.
-rpc-error-rejected = The node could not accept this request.
-rpc-error-timed-out = The node took too long to respond.
-rpc-error-not-found = The requested conversation was not found.
-rpc-error-already-exists = This item already exists on the node.
-rpc-error-denied = Access to this node was denied.
-rpc-error-exhausted = The node has no capacity for this request.
-rpc-error-changed = The node changed before the request completed. Try again.
-rpc-error-unsupported = This node does not support the request.
-rpc-error-internal = The node encountered an internal error.
-
-## NodeStartupFailure -- why `arut_runtime_local::child::ChildHost` could not
-## give a session a working connection to the local node at all (ADR 0011).
-## This is a separate enum from `NodeFailure` above: that one is why a call
-## over an already-open connection failed, this is why the connection never
-## came to be, so the two never share a variant name.
-
-node-startup-failure-lease-held = Another running copy of your node already holds its lease.
-node-startup-failure-socket-unreachable = Your node's socket exists, but nothing answered on it.
-node-startup-failure-spawn-failed = Your node process could not be started.
+readiness-ready = Your node is running.
+readiness-lease-held = Another running copy of your node already holds its lease.
+readiness-socket-unreachable = Your node's socket exists, but nothing answered on it.
+readiness-spawn-failed = Your node process could not be started.
+readiness-timed-out = Your node did not finish starting in time.

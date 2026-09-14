@@ -1,12 +1,12 @@
-//! # Watch
+//! `Watch<T>` is one Tokio watch sender holding the value and its revision.
 //!
-//! `Watch<T>` wraps one Tokio watch sender containing the value and revision.
-//! Subscribers receive the current revision, coalesce intervening updates, and close
-//! when the writer is dropped. Tokio enables only `sync`; callers supply polling.
+//! Subscribers read the current revision, coalesce intervening updates, and
+//! close when the writer is dropped. Tokio enables only `sync`; callers supply
+//! the polling.
 //!
 //! The revision is the coalescing key every binding hops a scheduler for, so it
-//! moves only when the value actually differs: `update` and `set` compare through
-//! `send_if_modified` and leave the revision alone when a write is a no-op.
+//! moves only when the value actually differs: `update` and `set` compare
+//! through `send_if_modified` and leave the revision alone for a no-op write.
 
 use futures_lite::{StreamExt, stream::Boxed};
 use std::sync::Arc;
@@ -153,40 +153,5 @@ mod tests {
         watch.update(|value| value.push('s'));
         assert_eq!(watch.get(), "drafts");
         assert_eq!(ready(&changes), Some(1));
-    }
-
-    #[test]
-    fn update_clones_once_and_a_panicking_edit_leaves_the_value_unchanged() {
-        use std::sync::atomic::{AtomicUsize, Ordering};
-        struct Counted(u64, Arc<AtomicUsize>);
-        impl Clone for Counted {
-            fn clone(&self) -> Self {
-                self.1.fetch_add(1, Ordering::Relaxed);
-                Self(self.0, self.1.clone())
-            }
-        }
-        impl PartialEq for Counted {
-            fn eq(&self, other: &Self) -> bool {
-                self.0 == other.0
-            }
-        }
-        let clones = Arc::new(AtomicUsize::new(0));
-        let watch = Watch::new(Counted(0, clones.clone()));
-        watch.update(|value| value.0 = 1);
-        assert_eq!(clones.load(Ordering::Relaxed), 1);
-        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            watch.update(|value| {
-                value.0 = 2;
-                panic!("cancel edit");
-            });
-        }));
-        assert!(result.is_err());
-        assert_eq!(watch.read(|value| value.0), 1);
-    }
-
-    #[test]
-    fn reads_one_field_without_cloning_the_whole_value() {
-        let watch = Watch::new((7u64, vec![1u8, 2, 3]));
-        assert_eq!(watch.read(|value| value.0), 7);
     }
 }

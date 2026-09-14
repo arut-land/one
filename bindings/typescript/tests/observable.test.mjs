@@ -1,81 +1,121 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { ObservableState } from "../src/observable.ts";
+import { chatReader, observe } from "../src/observable.ts";
 
 const flush = () => new Promise(resolve => queueMicrotask(resolve));
 
-test("subscribe precedes the initial and replacement snapshots", () => {
-  let value = 0;
-  const observer = new ObservableState(() => value, () => {
-    value = 1;
-    return { cancel() {} };
-  });
-  assert.equal(observer.getSnapshot(), 1);
-  observer.observe(() => value, () => {
-    value = 2;
-    return { cancel() {} };
-  });
-  assert.equal(observer.getSnapshot(), 2);
-  observer.dispose();
-});
+/** A change stream a test drives by hand, in the shape the core's streams take. */
+function revisions() {
+  let waiting = null;
+  let closed = false;
+  return {
+    disposals: 0,
+    emit(revision) {
+      const resolve = waiting;
+      waiting = null;
+      resolve?.({ value: revision, done: false });
+    },
+    changes() {
+      const source = this;
+      return {
+        dispose() {
+          source.disposals++;
+          closed = true;
+          const resolve = waiting;
+          waiting = null;
+          resolve?.({ value: undefined, done: true });
+        },
+        [Symbol.asyncIterator]: () => ({
+          next: () =>
+            closed
+              ? Promise.resolve({ value: undefined, done: true })
+              : new Promise(resolve => {
+                  waiting = resolve;
+                }),
+        }),
+      };
+    },
+  };
+}
 
-test("a burst refreshes once and dispose suppresses queued work", async () => {
-  let notify;
+test("a burst refreshes once and dispose stops the stream", async () => {
+  const source = revisions();
   let value = 0;
   let reads = 0;
-  let cancellations = 0;
-  const observer = new ObservableState(() => { reads++; return value; }, callback => {
-    notify = callback;
-    return { cancel() { cancellations++; } };
-  });
+  const store = observe(
+    () => {
+      reads++;
+      return value;
+    },
+    () => source.changes(),
+  );
   let renders = 0;
-  observer.subscribe(() => renders++);
-  for (let i = 1; i <= 10000; i++) { value = i; notify(); }
+  store.subscribe(() => renders++);
+  for (let i = 1; i <= 10000; i++) {
+    value = i;
+    source.emit(BigInt(i));
+  }
   await flush();
-  assert.equal(observer.getSnapshot(), 10000);
+  assert.equal(store.getSnapshot(), 10000);
   assert.equal(reads, 2);
   assert.equal(renders, 1);
-  notify();
-  observer.dispose();
-  observer.dispose();
+
+  source.emit(10001n);
+  store.dispose();
+  store.dispose();
   await flush();
   assert.equal(reads, 2);
-  assert.equal(cancellations, 1);
+  assert.equal(source.disposals, 1);
 });
 
-test("pending work reads the replacement source", async () => {
-  let notify;
-  const observer = new ObservableState(() => "old", callback => {
-    notify = callback;
-    return { cancel() {} };
-  });
-  notify();
-  observer.observe(() => "new", () => ({ cancel() {} }));
+test("unsubscribing stops one listener and leaves the others", async () => {
+  const source = revisions();
+  let value = 0;
+  const store = observe(() => value, () => source.changes());
+  let kept = 0;
+  const stop = store.subscribe(() => assert.fail("a dropped listener was called"));
+  store.subscribe(() => kept++);
+  stop();
+  value = 1;
+  source.emit(1n);
   await flush();
-  assert.equal(observer.getSnapshot(), "new");
-  observer.dispose();
+  assert.equal(store.getSnapshot(), 1);
+  assert.equal(kept, 1);
+  store.dispose();
 });
 
-test("replacement rejects stale callbacks and queued invalidations", async () => {
-  let stale;
-  let current;
-  let reads = 0;
-  const observer = new ObservableState(() => "old", callback => {
-    stale = callback;
-    return { cancel() {} };
-  });
-  stale();
-  observer.observe(() => { reads++; return "new"; }, callback => {
-    current = callback;
-    return { cancel() {} };
-  });
+test("a stream that ends leaves the last snapshot readable", async () => {
+  const source = revisions();
+  let value = 0;
+  const store = observe(() => value, () => source.changes());
+  value = 7;
+  source.emit(1n);
   await flush();
-  stale();
+  source.changes().dispose();
+  value = 9;
   await flush();
-  assert.equal(reads, 1);
-  current();
-  stale();
-  await flush();
-  assert.equal(reads, 2);
-  observer.dispose();
+  assert.equal(store.getSnapshot(), 7);
+  store.dispose();
+});
+
+/** A chat handle over a fixed transcript, as the wasm and bridge ports both read. */
+function transcript(messages) {
+  return {
+    state: () => ({ id: "c", lastMessageId: messages.at(-1)?.id ?? 0n, status: 0, error: null, canSend: true, isSending: false, isEmpty: messages.length === 0 }),
+    messagesAfter: afterId => messages.filter(message => message.id > afterId),
+  };
+}
+
+test("the transcript appends new rows and starts over when the handle rebinds", () => {
+  const rows = [{ id: 1n, text: "one" }, { id: 2n, text: "two" }];
+  const chat = transcript(rows);
+  const read = chatReader(chat);
+  assert.deepEqual(read().messages.map(message => message.text), ["one", "two"]);
+  rows.push({ id: 3n, text: "three" });
+  assert.deepEqual(read().messages.map(message => message.text), ["one", "two", "three"]);
+  // The editor bridge rebinds one handle to another conversation: a transcript
+  // that moved backwards is not one this cache has a prefix of.
+  rows.length = 0;
+  rows.push({ id: 1n, text: "elsewhere" });
+  assert.deepEqual(read().messages.map(message => message.text), ["elsewhere"]);
 });

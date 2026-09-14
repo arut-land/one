@@ -56,11 +56,8 @@ fn generate_service(service: &Service, output: &mut String) -> std::fmt::Result 
     let router_name = format!("{}Router", service.name);
     let methods_name = format!("{}_METHODS", screaming_snake(&service.name));
     let descriptor_name = format!("{}_DESCRIPTOR", screaming_snake(&service.name));
-    let version = service
-        .package
-        .rsplit('.')
-        .next()
-        .unwrap_or(&service.package);
+    let marker_name = format!("{}Id", service.name);
+    let major = major_version(&service.package);
 
     writeln!(output, "pub trait {trait_name}: Send + Sync + 'static {{")?;
     for method in &service.methods {
@@ -121,13 +118,33 @@ fn generate_service(service: &Service, output: &mut String) -> std::fmt::Result 
     writeln!(output, "];")?;
     writeln!(
         output,
-        "pub const {descriptor_name}: ::arut_rpc::ServiceDescriptor = ::arut_rpc::ServiceDescriptor {{ name: {:?}, package: {:?}, version: {version:?}, methods: {methods_name} }};",
+        "pub const {descriptor_name}: ::arut_rpc::ServiceDescriptor = ::arut_rpc::ServiceDescriptor {{ name: {:?}, package: {:?}, version: ::arut_rpc::Version {{ major: {major}, minor: 0 }}, methods: {methods_name} }};",
         service.proto_name, service.package
     )?;
     writeln!(
         output,
         "impl<T: {trait_name}> ::arut_rpc::RpcService for {router_name}<T> {{ fn descriptor(&self) -> &'static ::arut_rpc::ServiceDescriptor {{ &{descriptor_name} }} }}"
+    )?;
+    writeln!(
+        output,
+        "/// Names this service in a `ServiceSet` or a manifest lookup without naming a value."
+    )?;
+    writeln!(output, "pub struct {marker_name};")?;
+    writeln!(
+        output,
+        "impl ::arut_rpc::Service for {marker_name} {{ const DESCRIPTOR: ::arut_rpc::ServiceDescriptor = {descriptor_name}; }}"
     )
+}
+
+/// The Protobuf package suffix is the major version: `arut.chat.v1` is 1. A
+/// package that does not end in `v<digits>` has no version to report.
+fn major_version(package: &str) -> u32 {
+    package
+        .rsplit('.')
+        .next()
+        .and_then(|suffix| suffix.strip_prefix('v'))
+        .and_then(|digits| digits.parse().ok())
+        .unwrap_or(0)
 }
 
 fn write_service_method(output: &mut String, method: &Method) -> std::fmt::Result {
@@ -205,8 +222,19 @@ fn write_router_impl(
         output,
         "impl<T: {trait_name}> ::arut_rpc::RpcChannel for {router_name}<T> {{"
     )?;
+    // `unary` and `server_stream` have no default, so every router declares
+    // them; the two request-streaming shapes appear only where the service has
+    // a method of that shape, and otherwise take the trait's default.
     for shape in ["unary", "server_stream", "client_stream", "bidirectional"] {
-        write_router_method(output, service, shape)?;
+        let required = matches!(shape, "unary" | "server_stream");
+        if required
+            || service
+                .methods
+                .iter()
+                .any(|method| method_shape(method) == shape)
+        {
+            write_router_method(output, service, shape)?;
+        }
     }
     writeln!(output, "}}")
 }
@@ -240,6 +268,9 @@ fn write_router_method(output: &mut String, service: &Service, shape: &str) -> s
         .iter()
         .filter(|method| method_shape(method) == shape)
         .collect::<Vec<_>>();
+    // Only `unary` and `server_stream` reach this empty form, and only for a
+    // service with no method of that shape; the request-streaming shapes are
+    // not declared at all unless a method needs them.
     if methods.is_empty() {
         writeln!(output, "        let _ = request;")?;
         writeln!(output, "        let procedure = procedure.to_owned();")?;
@@ -386,6 +417,26 @@ mod tests {
         assert!(output.contains("channel.client_stream("));
         assert!(output.contains("channel.bidirectional("));
         assert!(output.contains("StreamingKind::Bidirectional"));
+        assert!(output.contains("::arut_rpc::Version { major: 1, minor: 0 }"));
+        assert!(output.contains("impl ::arut_rpc::Service for ShapeServiceId"));
+    }
+
+    #[test]
+    fn a_router_declares_only_the_shapes_its_service_has_methods_for() {
+        let service = Service {
+            name: "UnaryService".into(),
+            proto_name: "UnaryService".into(),
+            package: "arut.testing.v1".into(),
+            comments: Comments::default(),
+            methods: vec![method("unary", false, false)],
+            options: Default::default(),
+        };
+        let mut output = String::new();
+        generate_service(&service, &mut output).unwrap();
+
+        assert!(output.contains("fn unary(&self, procedure: &str"));
+        assert!(!output.contains("fn client_stream("));
+        assert!(!output.contains("fn bidirectional("));
     }
 
     fn method(name: &str, client_streaming: bool, server_streaming: bool) -> Method {

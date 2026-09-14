@@ -1,8 +1,4 @@
-use crate::app::{
-    message_model::Messages,
-    observe::{Tasks, ViewState},
-    strings,
-};
+use crate::app::{message_model::Messages, observe::Tasks, strings};
 use arut_i18n::Message;
 use arut_product_session::chat::{ChatClient, ChatMessage, ChatRole};
 use gtk::{gio, glib, prelude::*};
@@ -10,16 +6,45 @@ use relm4::{ComponentParts, ComponentSender, SimpleComponent};
 use std::{cell::Cell, rc::Rc};
 
 pub struct Transcript {
-    pub adjustment: gtk::Adjustment,
-    pub restore_position: Rc<Cell<Option<f64>>>,
-    _tasks: Tasks,
+    chat: ChatClient,
+    messages: Messages,
+    list: gtk::ListView,
+    status: gtk::Label,
+    empty: gtk::Box,
+    adjustment: gtk::Adjustment,
+    restore: Rc<Cell<Option<f64>>>,
+    near_bottom: Rc<Cell<bool>>,
+    tasks: Tasks,
 }
+
+pub enum Msg {
+    /// Show another conversation in the same widgets.
+    Chat(Box<ChatClient>),
+    /// Reading position to return to once this conversation has laid out.
+    Restore(f64),
+    Latest,
+}
+
+impl std::fmt::Debug for Msg {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Chat(chat) => formatter.debug_tuple("Chat").field(&chat.id()).finish(),
+            Self::Restore(position) => formatter.debug_tuple("Restore").field(position).finish(),
+            Self::Latest => formatter.write_str("Latest"),
+        }
+    }
+}
+
+/// The reading position of the conversation being left, so the shell can hand
+/// it back the next time that conversation is shown.
+#[derive(Debug)]
+pub struct Position(pub Option<String>, pub f64);
 
 #[relm4::component(pub)]
 impl SimpleComponent for Transcript {
     type Init = ChatClient;
-    type Input = ();
-    type Output = Option<String>;
+    type Input = Msg;
+    type Output = Position;
     view! {
         gtk::Box {
             set_orientation: gtk::Orientation::Vertical,
@@ -38,7 +63,7 @@ impl SimpleComponent for Transcript {
                 #[name = "empty"]
                 add_overlay = &gtk::Box {
                     set_orientation: gtk::Orientation::Vertical,
-                    set_spacing: 12,
+                    set_spacing: 16,
                     set_halign: gtk::Align::Center,
                     set_valign: gtk::Align::Center,
                     set_can_target: false,
@@ -53,11 +78,13 @@ impl SimpleComponent for Transcript {
                     gtk::Label {
                         set_label: &strings::show(&Message::ChatEmptyTitle),
                         set_wrap: true,
+                        set_justify: gtk::Justification::Center,
                         add_css_class: "arut-empty-title",
                     },
                     gtk::Label {
                         set_label: &strings::show(&Message::ChatEmptyHint),
                         set_wrap: true,
+                        set_justify: gtk::Justification::Center,
                         set_max_width_chars: 36,
                         add_css_class: "dim-label",
                     },
@@ -66,7 +93,7 @@ impl SimpleComponent for Transcript {
                 add_overlay = &gtk::Revealer {
                     set_halign: gtk::Align::End,
                     set_valign: gtk::Align::End,
-                    set_margin_end: 20,
+                    set_margin_end: 16,
                     set_margin_bottom: 16,
                     set_transition_type: gtk::RevealerTransitionType::Crossfade,
                     set_transition_duration: 160,
@@ -74,7 +101,7 @@ impl SimpleComponent for Transcript {
                         add_css_class: "circular",
                         add_css_class: "arut-latest",
                         set_icon_name: "go-down-symbolic",
-                        set_action_name: Some("transcript.latest"),
+                        set_action_name: Some("win.latest"),
                         set_tooltip_text: Some(&strings::show(&Message::ActionScrollToLatest)),
                         update_property: &[gtk::accessible::Property::Label(&strings::show(&Message::ActionScrollToLatest))],
                     },
@@ -89,13 +116,12 @@ impl SimpleComponent for Transcript {
     fn init(
         chat: ChatClient,
         root: Self::Root,
-        sender: ComponentSender<Self>,
+        _sender: ComponentSender<Self>,
     ) -> ComponentParts<Self> {
         let messages = Messages::default();
-        let factory = message_factory();
         let list = gtk::ListView::new(
             Some(gtk::NoSelection::new(Some(messages.clone()))),
-            Some(factory),
+            Some(message_factory()),
         );
         list.add_css_class("arut-transcript");
         list.set_accessible_role(gtk::AccessibleRole::Log);
@@ -103,66 +129,79 @@ impl SimpleComponent for Transcript {
             &Message::LabelTranscript,
         ))]);
         let mut model = Self {
+            chat: chat.clone(),
+            messages,
+            list: list.clone(),
+            status: gtk::Label::new(None),
+            empty: gtk::Box::default(),
             adjustment: gtk::Adjustment::default(),
-            restore_position: Rc::default(),
-            _tasks: Tasks::default(),
+            restore: Rc::default(),
+            near_bottom: Rc::new(Cell::new(true)),
+            tasks: Tasks::default(),
         };
         let widgets = view_output!();
+        model.status = widgets.status.clone();
+        model.empty = widgets.empty.clone();
         model.adjustment = widgets.scroll.vadjustment();
-        let near_bottom = Rc::new(Cell::new(true));
         model.adjustment.connect_value_changed({
-            let near = near_bottom.clone();
-            let latest = widgets.latest.clone();
-            move |a| {
-                near.set(a.upper() - a.page_size() - a.value() < 48.0);
+            let (near, latest) = (model.near_bottom.clone(), widgets.latest.clone());
+            move |adjustment| {
+                near.set(adjustment.upper() - adjustment.page_size() - adjustment.value() < 48.0);
                 latest.set_reveal_child(!near.get());
             }
         });
         model.adjustment.connect_changed({
-            let near = near_bottom.clone();
-            let restore = model.restore_position.clone();
-            move |a| {
-                if a.page_size() > 0.0
+            let (near, restore) = (model.near_bottom.clone(), model.restore.clone());
+            move |adjustment| {
+                if adjustment.page_size() > 0.0
                     && let Some(position) = restore.take()
                 {
                     near.set(false);
-                    a.set_value(position);
+                    adjustment.set_value(position);
                 } else if near.get() {
-                    a.set_value((a.upper() - a.page_size()).max(0.0));
+                    adjustment.set_value((adjustment.upper() - adjustment.page_size()).max(0.0));
                 }
             }
         });
-        let actions = gio::SimpleActionGroup::new();
-        let latest = gio::SimpleAction::new("latest", None);
-        latest.connect_activate({
-            let a = model.adjustment.clone();
-            move |_, _| a.set_value((a.upper() - a.page_size()).max(0.0))
-        });
-        actions.add_action(&latest);
-        root.insert_action_group("transcript", Some(&actions));
-        let state = ViewState::default();
-        state
-            .bind_property("status", &widgets.status, "label")
-            .sync_create()
-            .build();
-        state
-            .bind_property("status", &widgets.status, "visible")
-            .transform_to(|_, text: String| Some(!text.is_empty()))
-            .sync_create()
-            .build();
-        let empty = widgets.empty.clone();
-        let changes = chat.changes();
-        let mut previous_id = None;
-        model._tasks.observe(changes, move || {
-            let snapshot = chat.state();
-            state.set_status(strings::chat(snapshot.status, snapshot.error));
-            if snapshot.id != previous_id {
-                previous_id.clone_from(&snapshot.id);
-                let _ = sender.output(snapshot.id);
+        model.follow(chat);
+        ComponentParts { model, widgets }
+    }
+    fn update(&mut self, message: Msg, sender: ComponentSender<Self>) {
+        match message {
+            Msg::Chat(chat) => {
+                let _ = sender.output(Position(self.chat.id(), self.adjustment.value()));
+                self.messages.reset();
+                self.near_bottom.set(true);
+                self.chat = (*chat).clone();
+                self.follow(*chat);
             }
+            Msg::Restore(position) => self.restore.set(Some(position)),
+            Msg::Latest => self
+                .adjustment
+                .set_value((self.adjustment.upper() - self.adjustment.page_size()).max(0.0)),
+        }
+    }
+}
+
+impl Transcript {
+    /// Replaces the conversation watch. Dropping the previous `Tasks` cancels
+    /// it before the first refresh of the new one reaches these widgets.
+    fn follow(&mut self, chat: ChatClient) {
+        let mut tasks = Tasks::default();
+        let (messages, list, status, empty) = (
+            self.messages.clone(),
+            self.list.clone(),
+            self.status.clone(),
+            self.empty.clone(),
+        );
+        tasks.observe(chat.changes(), move || {
+            let snapshot = chat.state();
+            let caption = strings::chat(snapshot.status, snapshot.error);
+            status.set_visible(!caption.is_empty());
+            status.set_label(&caption);
+            empty.set_visible(snapshot.is_empty);
             let before = messages.n_items();
             messages.refresh(|key| chat.messages_after(key));
-            empty.set_visible(messages.n_items() == 0);
             if before > 0 && messages.n_items() > before {
                 // GTK's AT-SPI announcement is separate from row recycling.
                 for index in before..messages.n_items() {
@@ -178,7 +217,7 @@ impl SimpleComponent for Transcript {
                 }
             }
         });
-        ComponentParts { model, widgets }
+        self.tasks = tasks;
     }
 }
 
@@ -187,8 +226,8 @@ fn message_factory() -> gtk::SignalListItemFactory {
     factory.connect_setup(|_, item| {
         let item = item.downcast_ref::<gtk::ListItem>().unwrap();
         let container = gtk::Box::new(gtk::Orientation::Vertical, 8);
-        container.set_margin_start(12);
-        container.set_margin_end(12);
+        container.set_margin_start(16);
+        container.set_margin_end(16);
         container.set_margin_bottom(4);
         let row = gtk::Box::new(gtk::Orientation::Vertical, 4);
         row.add_css_class("arut-message");
@@ -259,23 +298,16 @@ fn message_factory() -> gtk::SignalListItemFactory {
         role.set_visible(starts_speaker);
         text.set_label(&message.text);
         text.set_tooltip_text((message.accepted_at_ms > 0).then_some(formatted.as_str()));
-        container.set_margin_top(if starts_speaker { 12 } else { 0 });
-        row.set_halign(if message.role == ChatRole::User {
+        container.set_margin_top(if starts_speaker { 16 } else { 0 });
+        let outgoing = message.role == ChatRole::User;
+        row.set_halign(if outgoing {
             gtk::Align::End
         } else {
             gtk::Align::Start
         });
-        row.set_margin_start(if message.role == ChatRole::User {
-            48
-        } else {
-            0
-        });
-        row.set_margin_end(if message.role == ChatRole::User {
-            0
-        } else {
-            48
-        });
-        if message.role == ChatRole::User {
+        row.set_margin_start(if outgoing { 48 } else { 0 });
+        row.set_margin_end(if outgoing { 0 } else { 48 });
+        if outgoing {
             row.add_css_class("arut-outgoing");
         } else {
             row.remove_css_class("arut-outgoing");

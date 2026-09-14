@@ -1,51 +1,56 @@
-import { FluentBundle, FluentResource, type FluentVariable } from "@fluent/bundle";
+import { FluentBundle, FluentResource } from "@fluent/bundle";
 import { negotiateLanguages } from "@fluent/langneg";
-import { NodeFailure, type ChatError, type ComposerError } from "@arut/ffi";
-import { t, type L10nBundle } from "./generated/l10n";
+import { catalog, locales } from "./generated/catalog";
+import type { L10nBundle, MessageKey } from "./generated/l10n";
 
-// The core returns typed outcomes only (ADR 0016) and every sentence lives once
-// in product/i18n as Fluent (ADR 0022). This module loads the same .ftl files
-// the generator copied beside each surface and formats them with
-// @fluent/bundle; the message ids are never written here, they come from the
-// generated `t` in ./generated/l10n. Locale choice stays with the host -- a
-// browser negotiates from navigator.languages, the VS Code extension host from
-// vscode.env.language.
+// The core returns typed outcomes only (ADR 0016) and every sentence lives
+// once in product/i18n as Fluent (ADR 0022). The generator emits that source
+// as ./generated/catalog, so a surface holds no locale files of its own and
+// needs no fetch: negotiation is synchronous, and no composition root awaits a
+// string before its first render.
 
-export { t, keys, type L10nBundle, type MessageKey } from "./generated/l10n";
+export { t, type Args, type L10nBundle, type MessageKey } from "./generated/l10n";
+export { locales } from "./generated/catalog";
 
-/** What the generator writes beside the `.ftl` tree it copies out. */
-interface Manifest {
-  locales: string[];
-  files: string[];
+type Locale = (typeof locales)[number];
+
+function load(preferred: readonly string[]): FluentBundle[] {
+  const chosen = negotiateLanguages([...preferred], [...locales], {
+    defaultLocale: locales[0],
+    strategy: "filtering",
+  });
+  return chosen
+    .filter((locale): locale is Locale => locale in catalog)
+    .map(locale => {
+      // Fluent isolates placeables with U+2068/U+2069 by default, which show up
+      // as stray characters anywhere the string is not rendered as bidi text.
+      const bundle = new FluentBundle(locale, { useIsolating: false });
+      bundle.addResource(new FluentResource(catalog[locale]));
+      return bundle;
+    });
 }
 
-/** Where and how to read the generated Fluent tree. */
-export interface StringsSource {
-  /**
-   * The directory holding `locales.json` and `<lang>/<file>.ftl`. Ignored when
-   * `read` is supplied. The composition root supplies the resource location.
-   */
-  baseUrl?: string;
-  /** Languages best first, resolved by the surface. */
-  preferred: readonly string[];
-  /**
-   * Read one file of the tree by its path within it (`locales.json`,
-   * `en/errors.ftl`). A host without `fetch` -- the VS Code extension host
-   * reading its own resource URIs, say -- supplies this instead of `baseUrl`.
-   */
-  read?: (file: string) => Promise<string>;
-}
-
-/** The negotiated bundles, best locale first. Empty until `loadStrings`. */
-let bundles: FluentBundle[] = [];
+let bundles = load(globalThis.navigator?.languages ?? []);
 
 /**
- * The loaded string source, as the generated accessors want it.
+ * Negotiate the person's languages against the catalog, best first.
  *
- * Pass it as the first argument to any `t.*`: `t.actionSend(strings)`.
+ * A surface whose host names the language itself -- the VS Code extension host
+ * reading `vscode.env.language` -- calls this during activation; a browser page
+ * needs no call, because `navigator.languages` is negotiated on load.
+ */
+export function selectLocale(preferred: readonly string[]): readonly string[] {
+  bundles = load(preferred);
+  return bundles.map(bundle => bundle.locales[0] ?? locales[0]);
+}
+
+/**
+ * The loaded string source, as the generated accessor wants it.
+ *
+ * Pass it as the first argument to `t`: `t(strings, "action-send")`.
  */
 export const strings: L10nBundle = {
-  format(key: string, args?: Record<string, FluentVariable>): string {
+  format(key: string, args?: Record<string, string | number>): string {
     for (const bundle of bundles) {
       const found = bundle.getMessage(key);
       if (!found?.value) continue;
@@ -60,93 +65,29 @@ export const strings: L10nBundle = {
 };
 
 /**
- * Load the string source and negotiate the person's locale against it.
+ * The messages whose arguments the core sends positionally, in message order.
  *
- * Call it once during a surface's bootstrap, before the first render: every
- * `describe*` below is synchronous, and until this resolves they answer with
- * the message id rather than a sentence.
- *
- * Returns the negotiated locales, best first.
+ * Every other error message takes none, so this is the whole of what a surface
+ * has to know about error arguments -- the ids themselves come from the core.
  */
-export async function loadStrings(source: StringsSource): Promise<readonly string[]> {
-  const base = source.baseUrl;
-  if (!source.read && base === undefined) throw new Error("a string source needs a reader or base URL");
-  const read = source.read ?? (async (file: string) => {
-    const response = await fetch(`${base}/${file}`);
-    if (!response.ok) throw new Error(`${base}/${file}: ${response.status} ${response.statusText}`);
-    return response.text();
-  });
-  const manifest = JSON.parse(await read("locales.json")) as Manifest;
-  const preferred = source.preferred;
-  const chosen = negotiateLanguages([...preferred], manifest.locales, {
-    defaultLocale: manifest.locales[0],
-    strategy: "filtering",
-  });
-  bundles = await Promise.all(chosen.map(async locale => {
-    // Fluent isolates placeables with U+2068/U+2069 by default, which show up
-    // as stray characters anywhere the string is not rendered as bidi text.
-    const bundle = new FluentBundle(locale, { useIsolating: false });
-    for (const file of manifest.files) {
-      bundle.addResource(new FluentResource(await read(`${locale}/${file}`)));
-    }
-    return bundle;
-  }));
-  return chosen;
+const ERROR_ARGUMENTS = new Map<string, readonly string[]>(
+  Object.entries({
+    "composer-error-authority-changed": ["currentEpoch"],
+    "composer-error-revision-conflict": ["current"],
+  } satisfies Partial<Record<MessageKey, readonly string[]>>),
+);
+
+/** A handle that names its current error by Fluent id (ADR 0016). */
+export interface ErrorSource {
+  errorKey(): string | null;
+  errorArgs(): string[];
 }
 
-/** One sentence for every `NodeFailure` variant. */
-function describeNodeFailure(failure: NodeFailure): string {
-  switch (failure) {
-    case NodeFailure.Unreachable: return t.nodeFailureUnreachable(strings);
-    case NodeFailure.TimedOut: return t.nodeFailureTimedOut(strings);
-    case NodeFailure.Cancelled: return t.nodeFailureCancelled(strings);
-    case NodeFailure.Refused: return t.nodeFailureRefused(strings);
-    case NodeFailure.Overloaded: return t.nodeFailureOverloaded(strings);
-    case NodeFailure.Rejected: return t.nodeFailureRejected(strings);
-    case NodeFailure.Missing: return t.nodeFailureMissing(strings);
-    case NodeFailure.Conflict: return t.nodeFailureConflict(strings);
-    case NodeFailure.Unsupported: return t.nodeFailureUnsupported(strings);
-    case NodeFailure.Internal: return t.nodeFailureInternal(strings);
-    default: return t.nodeFailureInternal(strings);
-  }
-}
-
-/** One sentence for every `ComposerError` variant, payload included. */
-export function describeComposerError(error: ComposerError): string {
-  switch (error.tag) {
-    case "Node":
-      return describeNodeFailure(error.value0);
-    case "RevisionConflict":
-      return t.composerErrorRevisionConflict(strings, { current: error.current.toString() });
-    case "AuthorityChanged":
-      return t.composerErrorAuthorityChanged(strings, { currentEpoch: error.currentEpoch.toString() });
-    case "SnapshotMissing":
-      return t.composerErrorSnapshotMissing(strings);
-    case "OutcomeMissing":
-      return t.composerErrorOutcomeMissing(strings);
-    case "ScopeMissing":
-      return t.composerErrorScopeMissing(strings);
-    case "ScopeMismatch":
-      return t.composerErrorScopeMismatch(strings);
-    default:
-      return t.nodeFailureInternal(strings);
-  }
-}
-
-/** One sentence for every `ChatError` variant. */
-export function describeChatError(error: ChatError): string {
-  switch (error.tag) {
-    case "Node":
-      return describeNodeFailure(error.value0);
-    case "NoConversation":
-      return t.chatErrorNoConversation(strings);
-    case "Cancelled":
-      return t.chatErrorCancelled(strings);
-    case "Draft":
-      return describeComposerError(error.value0);
-    case "ChatIdMissing":
-      return t.chatErrorChatIdMissing(strings);
-    default:
-      return t.nodeFailureInternal(strings);
-  }
+/** The sentence for whatever error a chat or composer handle is holding. */
+export function errorMessage(source: ErrorSource): string | null {
+  const key = source.errorKey();
+  if (key === null) return null;
+  const names = ERROR_ARGUMENTS.get(key) ?? [];
+  const values = source.errorArgs();
+  return strings.format(key, Object.fromEntries(names.map((name, index) => [name, values[index] ?? ""])));
 }

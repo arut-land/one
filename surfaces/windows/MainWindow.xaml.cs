@@ -15,7 +15,7 @@ public sealed class MainWindow : Window
 
     public MainWindow()
     {
-        Title = L10n.AppName();
+        Title = L10n.Get(L10n.AppName);
         AppWindow.SetIcon(System.IO.Path.Combine(AppContext.BaseDirectory, "Assets", "Arut.ico"));
         AppWindow.TitleBar.PreferredTheme = TitleBarTheme.UseDefaultAppMode;
         SystemBackdrop = new Microsoft.UI.Xaml.Media.MicaBackdrop();

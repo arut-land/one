@@ -75,7 +75,10 @@ mod tests {
         assert_eq!(runtime.new_id(), "injected");
         assert_eq!(runtime.now(), 42);
         let one = <MemoryRuntime as Persist<String>>::log(&runtime, "one").unwrap();
-        one.append(0, 1, "command", "fact".into()).unwrap();
+        one.commit(Some(0), 1, "command", &mut |_, _, _| {
+            Ok(Some("fact".into()))
+        })
+        .unwrap();
         assert_eq!(
             <MemoryRuntime as Persist<String>>::log(&runtime, "one")
                 .unwrap()

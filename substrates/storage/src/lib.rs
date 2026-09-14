@@ -4,10 +4,12 @@
 //! transaction. Facts and snapshots are Protobuf rows. Compaction requires a
 //! snapshot and retains outcomes for retries.
 //!
-//! Memory supplies all three ports for tests and wasm, with ordered log range reads.
-//! Native `redb` supplies transactional logs and key-value tables in one exclusively
-//! owned database file. Both implementations share conformance tests.
+//! Memory supplies all three ports for tests and wasm. Native `redb` supplies
+//! transactional logs and key-value tables in one exclusively owned database
+//! file. Both implementations run the same commit policy and the same
+//! conformance suite.
 
+mod log;
 mod memory;
 #[cfg(feature = "redb")]
 mod redb;
@@ -26,27 +28,33 @@ pub struct Record<F> {
     pub command_id: String,
     pub fact: F,
 }
-#[derive(Debug, Clone, PartialEq, Eq)]
+
+/// The projection a log can resume from, stored as its own Protobuf row.
+#[derive(Clone, PartialEq, prost::Message)]
 pub struct Snapshot {
+    #[prost(uint64, tag = "1")]
     pub sequence: u64,
+    #[prost(uint64, tag = "2")]
     pub epoch: u64,
+    #[prost(bytes = "vec", tag = "3")]
     pub data: Vec<u8>,
 }
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
 pub enum StorageError {
+    #[error("storage I/O failed: {0:?}")]
     Io(std::io::ErrorKind),
+    #[error("stored bytes are not what this build can read")]
     Corrupt,
+    #[error("the log has moved on to sequence {actual}")]
     Conflict { actual: u64 },
+    #[error("the log has moved on to epoch {current}")]
     Epoch { current: u64 },
+    #[error("records through {through} are compacted away")]
     CursorUnavailable { through: u64 },
+    #[error("a snapshot must cover the sequence first")]
     SnapshotRequired,
 }
-impl std::fmt::Display for StorageError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{self:?}")
-    }
-}
-impl std::error::Error for StorageError {}
 impl From<std::io::Error> for StorageError {
     fn from(e: std::io::Error) -> Self {
         Self::Io(e.kind())
@@ -64,26 +72,10 @@ pub type CommitDecision<'a, F> =
     dyn FnMut(u64, &[Record<F>], Option<Record<F>>) -> Result<Option<F>> + 'a;
 
 pub trait FactLog<F: Fact>: Send + Sync {
-    /// Atomically compare the cursor, fence stale epochs, deduplicate, and append.
-    fn append(&self, expected: u64, epoch: u64, command_id: &str, fact: F) -> Result<Record<F>> {
-        let mut fact = Some(fact);
-        let mut duplicate = None;
-        let appended = self.commit(None, epoch, command_id, &mut |actual, _, prior| {
-            if prior.is_some() {
-                duplicate = prior;
-                Ok(None)
-            } else if expected != actual {
-                Err(StorageError::Conflict { actual })
-            } else {
-                Ok(fact.take())
-            }
-        })?;
-        appended.or(duplicate).ok_or(StorageError::Corrupt)
-    }
     /// Refresh, inspect a retry, and optionally append under one storage lock.
     /// `decide` runs once after fencing and cursor validation; it must not
     /// re-enter this log. Return `None` to leave the log unchanged. A `None`
-    /// cursor skips refresh, as used by `append`.
+    /// cursor skips refresh.
     fn commit(
         &self,
         cursor: Option<u64>,

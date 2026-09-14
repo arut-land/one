@@ -1,11 +1,13 @@
-//! Typed accessors, one per message, for every consumer.
+//! Message keys for the consumers whose platform has no resource file.
 //!
-//! A message id is never typed by hand anywhere in the tree (ADR 0022): each
-//! language gets a generated function or enum variant whose name is the message
-//! and whose parameters are its Fluent arguments, typed by
-//! [`crate::i18n::catalog::Kind`]. Getting a key wrong, or passing the wrong argument,
-//! is then a compile error in that language rather than a string that renders
-//! as its own id.
+//! No message id is typed by hand (ADR 0022), but the mechanism that enforces
+//! that differs per platform. Apple, Android and Windows each read a generated
+//! resource file, so all their consumers need is a checked way to name a key:
+//! a Swift function over `String(localized:)`, a C# `const string`. Android
+//! needs nothing at all, because AAPT2 generates `R.string` from the
+//! `strings.xml` this generator already emits. TypeScript has no resource
+//! format, so it gets the key union, the argument types, and the Fluent text
+//! itself.
 //!
 //! Every emitter here is a pure function of the catalog, like the resource
 //! emitters in [`crate::i18n::targets`], and for the same reason.
@@ -13,7 +15,8 @@
 use std::collections::BTreeMap;
 use std::fmt::Write as _;
 
-use crate::i18n::catalog::{Kind, Locale, Message};
+use arut_i18n::{available_locales, locale_resources};
+use arut_i18n_catalog::{Locale, Message};
 
 use super::{BANNER, resource_name};
 
@@ -32,22 +35,6 @@ fn camel(id: &str) -> String {
     })
 }
 
-/// `currentEpoch` -> `current_epoch`, for Rust field and parameter names.
-fn snake(name: &str) -> String {
-    let mut out = String::new();
-    for character in name.chars() {
-        if character == '-' {
-            out.push('_');
-        } else if character.is_ascii_uppercase() {
-            out.push('_');
-            out.push(character.to_ascii_lowercase());
-        } else {
-            out.push(character);
-        }
-    }
-    out
-}
-
 fn capitalize(part: &str) -> String {
     let mut characters = part.chars();
     characters.next().map_or_else(String::new, |first| {
@@ -64,113 +51,11 @@ fn source_of<'a>(locales: &'a [Locale], tag: &str) -> &'a BTreeMap<String, Messa
     )
 }
 
-/// `product/i18n/src/generated.rs`: a `Message` enum with one variant per
-/// message, its key, and its Fluent arguments.
-#[must_use]
-pub(crate) fn rust(default_locale: &str, locales: &[Locale]) -> String {
-    let messages = source_of(locales, default_locale);
-    let mut out = String::new();
-    let _ = writeln!(out, "//! {BANNER}");
-    out.push_str(
-        "//!\n\
-         //! One variant per message in `locales/en/*.ftl`, carrying that message's\n\
-         //! Fluent arguments with the types the source declares. A key is never\n\
-         //! written by hand: [`Localizer::format`] takes a `Message`, so a message\n\
-         //! that does not exist, or an argument of the wrong type, does not compile.\n\
-         \n\
-         use crate::{FluentArgs, FluentValue};\n\
-         \n\
-         /// Every string the product can show.\n\
-         #[derive(Clone, Debug, PartialEq, Eq)]\n\
-         #[non_exhaustive]\n\
-         pub enum Message {\n",
-    );
-    for (id, message) in messages {
-        let arguments = message.arguments();
-        let _ = writeln!(out, "    /// `{id}`");
-        if arguments.is_empty() {
-            let _ = writeln!(out, "    {},", pascal(id));
-        } else {
-            let _ = writeln!(out, "    {} {{", pascal(id));
-            for argument in &arguments {
-                let _ = writeln!(
-                    out,
-                    "        {}: {},",
-                    snake(&argument.name),
-                    rust_type(argument.kind)
-                );
-            }
-            out.push_str("    },\n");
-        }
-    }
-    out.push_str("}\n\nimpl Message {\n    /// The Fluent message id this variant names.\n    #[must_use]\n    pub const fn key(&self) -> &'static str {\n        match self {\n");
-    for (id, message) in messages {
-        let pattern = if message.arguments().is_empty() {
-            format!("Self::{}", pascal(id))
-        } else {
-            format!("Self::{} {{ .. }}", pascal(id))
-        };
-        let _ = writeln!(out, "            {pattern} => \"{id}\",");
-    }
-    out.push_str(
-        "        }\n    }\n\n    /// The Fluent arguments this variant carries.\n    #[must_use]\n    pub fn args(&self) -> FluentArgs<'_> {\n        let mut args = FluentArgs::new();\n",
-    );
-    // Only the variants that carry something get an arm; a message with no
-    // arguments is the whole rest of the enum.
-    let carrying: Vec<(&String, &Message)> = messages
-        .iter()
-        .filter(|(_, message)| !message.arguments().is_empty())
-        .collect();
-    if carrying.is_empty() {
-        out.push_str("        let _ = self;\n");
-    } else {
-        out.push_str("        match self {\n");
-        let mut arms: BTreeMap<String, Vec<String>> = BTreeMap::new();
-        for (id, message) in carrying {
-            let arguments = message.arguments();
-            let bindings = arguments
-                .iter()
-                .map(|argument| snake(&argument.name))
-                .collect::<Vec<_>>()
-                .join(", ");
-            let pattern = format!("Self::{} {{ {bindings} }}", pascal(id));
-            let mut body = String::new();
-            for argument in &arguments {
-                let value = match argument.kind {
-                    Kind::Number => format!("FluentValue::from(*{})", snake(&argument.name)),
-                    Kind::Date | Kind::Text => {
-                        format!("FluentValue::from({}.as_str())", snake(&argument.name))
-                    }
-                };
-                let _ = writeln!(
-                    body,
-                    "                args.set(\"{}\", {value});",
-                    argument.name
-                );
-            }
-            arms.entry(body).or_default().push(pattern);
-        }
-        for (body, patterns) in arms {
-            let _ = writeln!(out, "            {} => {{", patterns.join(" | "));
-            out.push_str(&body);
-            out.push_str("            }\n");
-        }
-        out.push_str("            _ => {}\n        }\n");
-    }
-    out.push_str("        args\n    }\n}\n");
-    out
-}
-
-fn rust_type(kind: Kind) -> &'static str {
-    match kind {
-        Kind::Number => "u64",
-        // A date crosses as text the caller already formatted: fluent-rs has no
-        // datetime value to hand a bundle.
-        Kind::Date | Kind::Text => "String",
-    }
-}
-
 /// `surfaces/apple/shared/Sources/ArutSurface/Generated/L10n.swift`.
+///
+/// One line per message: Foundation does the lookup, the argument
+/// substitution and the language negotiation, so the generated half is the
+/// key and the parameter list.
 #[must_use]
 pub(crate) fn swift(default_locale: &str, locales: &[Locale]) -> String {
     let messages = source_of(locales, default_locale);
@@ -178,10 +63,9 @@ pub(crate) fn swift(default_locale: &str, locales: &[Locale]) -> String {
     let _ = writeln!(out, "// {BANNER}");
     out.push_str(
         "//\n\
-         // One static function per message in product/i18n/locales, over the\n\
-         // Localizable.xcstrings catalog generated beside it. Foundation does the\n\
-         // lookup and the language negotiation, so this surface localizes the way\n\
-         // any other Apple app does.\n\
+         // One function per message in product/i18n/locales, over the\n\
+         // Localizable.xcstrings catalog generated beside it, so this surface\n\
+         // localizes the way any other Apple app does.\n\
          \n\
          import Foundation\n\
          \n\
@@ -191,134 +75,40 @@ pub(crate) fn swift(default_locale: &str, locales: &[Locale]) -> String {
         let arguments = message.arguments();
         let parameters = arguments
             .iter()
-            .map(|argument| format!("{}: {}", camel(&argument.name), swift_type(argument.kind)))
+            .map(|argument| {
+                let swift_type = if argument.numeric { "Int" } else { "String" };
+                format!("{}: {swift_type}", camel(&argument.name))
+            })
             .collect::<Vec<_>>()
             .join(", ");
-        let _ = writeln!(out, "    /// `{id}`");
-        let _ = writeln!(
-            out,
-            "    static func {}({parameters}) -> String {{",
-            camel(id)
-        );
         let lookup =
             format!("String(localized: \"{id}\", table: \"Localizable\", bundle: .module)");
-        if arguments.is_empty() {
-            let _ = writeln!(out, "        {lookup}");
+        let body = if arguments.is_empty() {
+            lookup
         } else {
             let values = arguments
                 .iter()
                 .map(|argument| camel(&argument.name))
                 .collect::<Vec<_>>()
                 .join(", ");
-            let _ = writeln!(out, "        String(format: {lookup}, {values})");
-        }
-        out.push_str("    }\n");
-    }
-    out.push_str("}\n");
-    out
-}
-
-fn swift_type(kind: Kind) -> &'static str {
-    match kind {
-        Kind::Number => "Int",
-        Kind::Date | Kind::Text => "String",
-    }
-}
-
-/// `surfaces/android/src/main/kotlin/dev/arut/surface/generated/L10n.kt`.
-#[must_use]
-pub(crate) fn kotlin(default_locale: &str, locales: &[Locale], package: &str) -> String {
-    let messages = source_of(locales, default_locale);
-    let mut out = String::new();
-    let _ = writeln!(out, "// {BANNER}");
-    out.push_str(
-        "//\n\
-         // One function per message in product/i18n/locales, over the strings.xml\n\
-         // generated beside it: a Context form for anything outside composition and\n\
-         // a @Composable form for anything inside it.\n\
-         \n",
-    );
-    let _ = writeln!(out, "package {package}.generated\n");
-    let _ = writeln!(
-        out,
-        "import android.content.Context\nimport androidx.compose.runtime.Composable\nimport androidx.compose.ui.res.pluralStringResource\nimport androidx.compose.ui.res.stringResource\nimport {package}.R\n"
-    );
-    out.push_str("object L10n {\n");
-    for (id, message) in messages {
-        let arguments = message.arguments();
-        let name = camel(id);
-        let resource = resource_name(id);
-        let plural = message.selector().is_some();
-        let declaration = arguments
-            .iter()
-            .map(|argument| format!("{}: {}", camel(&argument.name), kotlin_type(argument.kind)))
-            .collect::<Vec<_>>()
-            .join(", ");
-        let values = arguments
-            .iter()
-            .map(|argument| camel(&argument.name))
-            .collect::<Vec<_>>()
-            .join(", ");
-        let (family, count) = if plural {
-            (
-                "plurals",
-                format!(
-                    ", {}.toInt()",
-                    camel(&message.selector().expect("a plural selects").name)
-                ),
-            )
-        } else {
-            ("string", String::new())
+            format!("String(format: {lookup}, {values})")
         };
-        let trailing = if values.is_empty() {
-            String::new()
-        } else {
-            format!(", {values}")
-        };
-        let separator = if declaration.is_empty() { "" } else { ", " };
-        let _ = writeln!(out, "    /** `{id}` */");
         let _ = writeln!(
             out,
-            "    fun {name}(context: Context{separator}{declaration}): String ="
+            "    static func {}({parameters}) -> String {{ {body} }}",
+            camel(id)
         );
-        if plural {
-            let _ = writeln!(
-                out,
-                "        context.resources.getQuantityString(R.{family}.{resource}{count}{trailing})"
-            );
-        } else {
-            let _ = writeln!(
-                out,
-                "        context.getString(R.{family}.{resource}{trailing})"
-            );
-        }
-        let _ = writeln!(out, "\n    /** `{id}` */\n    @Composable");
-        let _ = writeln!(out, "    fun {name}({declaration}): String =");
-        if plural {
-            let _ = writeln!(
-                out,
-                "        pluralStringResource(R.{family}.{resource}{count}{trailing})"
-            );
-        } else {
-            let _ = writeln!(
-                out,
-                "        stringResource(R.{family}.{resource}{trailing})"
-            );
-        }
-        out.push('\n');
     }
     out.push_str("}\n");
     out
-}
-
-fn kotlin_type(kind: Kind) -> &'static str {
-    match kind {
-        Kind::Number => "Long",
-        Kind::Date | Kind::Text => "String",
-    }
 }
 
 /// `surfaces/windows/Generated/L10n.cs`.
+///
+/// Key constants plus the two lookups that need a body. `Get` exists because
+/// `ResourceLoader` takes a string and `string.Format` takes the arguments;
+/// `Quantity` exists because `.resw` is a flat map with no plural mechanism,
+/// so the CLDR category has to be chosen in C#.
 #[must_use]
 pub(crate) fn csharp(default_locale: &str, locales: &[Locale]) -> String {
     let messages = source_of(locales, default_locale);
@@ -326,71 +116,84 @@ pub(crate) fn csharp(default_locale: &str, locales: &[Locale]) -> String {
     let _ = writeln!(out, "// {BANNER}");
     out.push_str(
         "//\n\
-         // One method per message in product/i18n/locales, over the Resources.resw\n\
-         // generated beside it. ResourceLoader does the lookup and the language\n\
-         // resolution, so this surface localizes the way any other WinUI app does.\n\
+         // One constant per message in product/i18n/locales, naming its entry in\n\
+         // the Resources.resw generated beside it. ResourceLoader does the lookup\n\
+         // and the language resolution, so this surface localizes the way any\n\
+         // other WinUI app does. XAML that carries x:Uid needs no constant: the\n\
+         // resw also holds the Uid.Property entries WinUI resolves on its own.\n\
          \n\
+         using System.Globalization;\n\
          using Microsoft.Windows.ApplicationModel.Resources;\n\
          \n\
          namespace Arut.Surface.Windows;\n\
          \n\
          internal static class L10n\n\
          {\n\
-         \x20   private static readonly ResourceLoader Resources = new();\n",
+         \x20   private static readonly ResourceLoader Resources = new();\n\
+         \n\
+         \x20   /// <summary>The string named by <paramref name=\"key\"/>, with its arguments substituted.</summary>\n\
+         \x20   public static string Get(string key, params object[] arguments) =>\n\
+         \x20       arguments.Length == 0\n\
+         \x20           ? Resources.GetString(key)\n\
+         \x20           : string.Format(Resources.GetString(key), arguments);\n\
+         \n\
+         \x20   /// <summary>The plural entry of <paramref name=\"key\"/> for <paramref name=\"count\"/>.</summary>\n\
+         \x20   public static string Quantity(string key, long count) =>\n\
+         \x20       Resources.GetString($\"{key}_{Category(count)}\");\n\
+         \n",
     );
-    let has_plural = messages
-        .values()
-        .any(|message| message.selector().is_some());
-    if has_plural {
-        out.push_str(
-            "\n    // .resw is a flat map, so a plural is one entry per category and the\n\
-             \x20   // category is chosen here. English is one-or-other; a language with\n\
-             \x20   // more categories needs a real CLDR plural rule at this line.\n\
-             \x20   private static string Quantity(string name, long count) =>\n\
-             \x20       Resources.GetString(count == 1 ? name + \"_one\" : name + \"_other\");\n",
-        );
-    }
-    for (id, message) in messages {
-        let arguments = message.arguments();
-        let parameters = arguments
-            .iter()
-            .map(|argument| format!("{} {}", csharp_type(argument.kind), camel(&argument.name)))
-            .collect::<Vec<_>>()
-            .join(", ");
-        let values = arguments
-            .iter()
-            .map(|argument| camel(&argument.name))
-            .collect::<Vec<_>>()
-            .join(", ");
-        let resource = resource_name(id);
-        let lookup = match message.selector() {
-            Some(selector) => format!("Quantity(\"{resource}\", {})", camel(&selector.name)),
-            None => format!("Resources.GetString(\"{resource}\")"),
-        };
-        let body = if arguments.is_empty() {
-            lookup
-        } else {
-            format!("string.Format({lookup}, {values})")
-        };
-        let _ = writeln!(out, "\n    /// <summary><c>{id}</c></summary>");
+    out.push_str(&csharp_plural_rule(locales));
+    for id in messages.keys() {
         let _ = writeln!(
             out,
-            "    public static string {}({parameters}) => {body};",
-            pascal(id)
+            "    public const string {} = \"{}\";",
+            pascal(id),
+            resource_name(id)
         );
     }
     out.push_str("}\n");
     out
 }
 
-fn csharp_type(kind: Kind) -> &'static str {
-    match kind {
-        Kind::Number => "long",
-        Kind::Date | Kind::Text => "string",
+/// The CLDR plural rule of every shipped locale, as one `switch`.
+///
+/// `.resw` has no plural mechanism, so this is the only place the category can
+/// be chosen. A new locale adds an arm here through `cldr_rule`; a locale with
+/// categories beyond one-or-other renders wrongly until it does.
+fn csharp_plural_rule(locales: &[Locale]) -> String {
+    let mut out = String::from(
+        "    private static string Category(long count) =>\n\
+         \x20       CultureInfo.CurrentUICulture.TwoLetterISOLanguageName switch\n\
+         \x20       {\n",
+    );
+    for locale in locales {
+        let _ = writeln!(
+            out,
+            "            \"{}\" => {},",
+            locale.tag,
+            cldr_rule(&locale.tag)
+        );
+    }
+    out.push_str("            _ => \"other\",\n        };\n\n");
+    out
+}
+
+/// The CLDR cardinal rule of one language, as a C# expression over `count`.
+fn cldr_rule(tag: &str) -> &'static str {
+    match tag {
+        "en" | "de" | "nl" | "sv" | "da" | "it" | "es" | "pt" => "count == 1 ? \"one\" : \"other\"",
+        "fr" => "count is 0 or 1 ? \"one\" : \"other\"",
+        // Correct for a language with one category, wrong for anything with
+        // few/many; add that language's rule here when its locale lands.
+        _ => "\"other\"",
     }
 }
 
 /// `bindings/typescript/src/generated/l10n.ts`.
+///
+/// A key union, the argument types each parameterised message needs, and one
+/// `t`. Naming a message that does not exist, or forgetting its arguments, is
+/// a type error.
 #[must_use]
 pub(crate) fn typescript(default_locale: &str, locales: &[Locale]) -> String {
     let messages = source_of(locales, default_locale);
@@ -398,81 +201,97 @@ pub(crate) fn typescript(default_locale: &str, locales: &[Locale]) -> String {
     let _ = writeln!(out, "// {BANNER}");
     out.push_str(
         "//\n\
-         // The message ids as an `as const` map, and one typed function per message\n\
-         // over whatever bundle the surface loaded. Nothing outside this file names\n\
-         // a key, so a message that does not exist is a type error.\n\
+         // Every message id, the arguments each one interpolates, and one `t` over\n\
+         // whatever bundle the surface loaded. Nothing outside this file writes a\n\
+         // key, so a message that does not exist is a type error.\n\
          \n\
          /** What `t` needs from a loaded string source. */\n\
          export interface L10nBundle {\n\
          \x20 format(key: string, args?: Record<string, string | number>): string;\n\
          }\n\
          \n\
-         /** Every message id, for the rare caller that needs the id itself. */\n\
-         export const keys = {\n",
+         /** Every message the product can show. */\n\
+         export type MessageKey =\n",
     );
-    for id in messages.keys() {
-        let _ = writeln!(out, "  {}: \"{id}\",", camel(id));
+    let keys: Vec<&String> = messages.keys().collect();
+    for (index, id) in keys.iter().enumerate() {
+        let end = if index + 1 == keys.len() { ";" } else { "" };
+        let _ = writeln!(out, "  | \"{id}\"{end}");
     }
-    out.push_str("} as const;\n\nexport type MessageKey = (typeof keys)[keyof typeof keys];\n\n/** One typed accessor per message. */\nexport const t = {\n");
+    out.push_str("\n/** The arguments each parameterised message interpolates. */\nexport interface Args {\n");
     for (id, message) in messages {
         let arguments = message.arguments();
-        let _ = writeln!(out, "  /** `{id}` */");
         if arguments.is_empty() {
-            let _ = writeln!(
-                out,
-                "  {}: (bundle: L10nBundle): string => bundle.format(keys.{}),",
-                camel(id),
-                camel(id)
-            );
-        } else {
-            let fields = arguments
-                .iter()
-                .map(|argument| {
-                    format!(
-                        "{}: {}",
-                        camel(&argument.name),
-                        typescript_type(argument.kind)
-                    )
-                })
-                .collect::<Vec<_>>()
-                .join("; ");
-            let values = arguments
-                .iter()
-                .map(|argument| {
-                    let key = if argument.name == camel(&argument.name) {
-                        argument.name.clone()
-                    } else {
-                        format!("{:?}", argument.name)
-                    };
-                    format!("{key}: args.{}", camel(&argument.name))
-                })
-                .collect::<Vec<_>>()
-                .join(", ");
-            let body = format!("{{ {values} }}");
-            let _ = writeln!(
-                out,
-                "  {}: (bundle: L10nBundle, args: {{ {fields} }}): string =>\n    bundle.format(keys.{}, {body}),",
-                camel(id),
-                camel(id)
-            );
+            continue;
         }
+        let fields = arguments
+            .iter()
+            .map(|argument| {
+                let typescript_type = if argument.numeric { "number" } else { "string" };
+                format!("{}: {typescript_type}", argument.name)
+            })
+            .collect::<Vec<_>>()
+            .join("; ");
+        let _ = writeln!(out, "  \"{id}\": {{ {fields} }};");
     }
-    out.push_str("} as const;\n");
+    out.push_str(
+        "}\n\
+         \n\
+         /** Format one message. */\n\
+         export function t(bundle: L10nBundle, key: Exclude<MessageKey, keyof Args>): string;\n\
+         export function t<K extends keyof Args>(bundle: L10nBundle, key: K, args: Args[K]): string;\n\
+         export function t(\n\
+         \x20 bundle: L10nBundle,\n\
+         \x20 key: MessageKey,\n\
+         \x20 args?: Record<string, string | number>,\n\
+         ): string {\n\
+         \x20 return bundle.format(key, args);\n\
+         }\n",
+    );
     out
 }
 
-fn typescript_type(kind: Kind) -> &'static str {
-    match kind {
-        Kind::Number => "number",
-        Kind::Date | Kind::Text => "string",
+/// `bindings/typescript/src/generated/catalog.ts`: the Fluent source itself.
+///
+/// One copy reaches web, Chromium and the VS Code extension host through this
+/// package, instead of three copies beside three bundles. Past roughly ten
+/// locales this becomes a map of loaders and the call site does not change.
+#[must_use]
+pub(crate) fn typescript_catalog() -> String {
+    let mut out = String::new();
+    let _ = writeln!(out, "// {BANNER}");
+    out.push_str(
+        "//\n\
+         // The Fluent source as a module, so the browser and editor surfaces read\n\
+         // one copy through this package rather than fetching files beside their\n\
+         // own bundles. `@fluent/bundle` parses the text; `@fluent/langneg`\n\
+         // negotiates over `locales`.\n\
+         \n\
+         /** Every locale the product ships, in the order it prefers them. */\n\
+         export const locales = [\n",
+    );
+    for tag in available_locales() {
+        let _ = writeln!(out, "  \"{tag}\",");
     }
+    out.push_str("] as const;\n\n/** The Fluent text of each locale: every `.ftl` file it ships, in order. */\nexport const catalog: Record<(typeof locales)[number], string> = {\n");
+    for tag in available_locales() {
+        let text: String = locale_resources(tag)
+            .iter()
+            .map(|(_, source)| *source)
+            .collect::<Vec<_>>()
+            .join("\n");
+        let literal = serde_json::to_string(&text).expect("a string serializes");
+        let _ = writeln!(out, "  {tag}: {literal},");
+    }
+    out.push_str("};\n");
+    out
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{camel, csharp, kotlin, pascal, rust, snake, swift, typescript};
-    use crate::i18n::catalog::Locale;
-    use crate::i18n::catalog::tests::locale;
+    use super::{camel, csharp, pascal, swift, typescript, typescript_catalog};
+    use crate::i18n::targets::tests::locale;
+    use arut_i18n_catalog::Locale;
 
     const SOURCE: &str = "chat-error-no-conversation = There's no conversation yet.\ncomposer-error-revision-conflict = now at { NUMBER($current) }\nwelcome = Hello { $who }\n";
     const PLURAL: &str =
@@ -492,133 +311,84 @@ mod tests {
             camel("composer-error-revision-conflict"),
             "composerErrorRevisionConflict"
         );
-        assert_eq!(snake("currentEpoch"), "current_epoch");
     }
 
     #[test]
-    fn rust_gets_one_variant_per_message_with_typed_fields() {
-        let out = rust("en", &only(SOURCE));
-        assert!(out.contains("ChatErrorNoConversation,"), "{out}");
-        assert!(
-            out.contains("ComposerErrorRevisionConflict {\n        current: u64,\n    },"),
-            "{out}"
-        );
-        assert!(
-            out.contains("Welcome {\n        who: String,\n    },"),
-            "{out}"
-        );
-        assert!(
-            out.contains("=> \"composer-error-revision-conflict\","),
-            "{out}"
-        );
-        assert!(
-            out.contains("args.set(\"current\", FluentValue::from(*current));"),
-            "{out}"
-        );
-        assert!(
-            out.contains("args.set(\"who\", FluentValue::from(who.as_str()));"),
-            "{out}"
-        );
-    }
-
-    #[test]
-    fn swift_gets_typed_static_functions_over_the_string_catalog() {
+    fn swift_gets_one_typed_function_per_message_over_the_string_catalog() {
         let out = swift("en", &only(SOURCE));
         assert!(
-            out.contains("static func chatErrorNoConversation() -> String"),
+            out.contains("static func chatErrorNoConversation() -> String { String(localized: \"chat-error-no-conversation\", table: \"Localizable\", bundle: .module) }"),
             "{out}"
         );
         assert!(
-            out.contains("static func composerErrorRevisionConflict(current: Int) -> String"),
-            "{out}"
-        );
-        assert!(out.contains("String(format: String(localized: \"composer-error-revision-conflict\", table: \"Localizable\", bundle: .module), current)"), "{out}");
-    }
-
-    #[test]
-    fn kotlin_gets_both_a_context_form_and_a_composable_form() {
-        let out = kotlin("en", &only(SOURCE), "dev.arut.surface");
-        assert!(out.contains("package dev.arut.surface.generated"), "{out}");
-        assert!(
-            out.contains(
-                "fun composerErrorRevisionConflict(context: Context, current: Long): String ="
-            ),
-            "{out}"
-        );
-        assert!(
-            out.contains("context.getString(R.string.composer_error_revision_conflict, current)"),
-            "{out}"
-        );
-        assert!(
-            out.contains(
-                "@Composable\n    fun composerErrorRevisionConflict(current: Long): String ="
-            ),
-            "{out}"
-        );
-        assert!(
-            out.contains("stringResource(R.string.composer_error_revision_conflict, current)"),
+            out.contains("static func composerErrorRevisionConflict(current: Int) -> String { String(format: String(localized: \"composer-error-revision-conflict\", table: \"Localizable\", bundle: .module), current) }"),
             "{out}"
         );
     }
 
     #[test]
-    fn csharp_gets_typed_methods_over_the_resource_loader() {
+    fn csharp_gets_key_constants_and_the_two_lookups_that_need_a_body() {
         let out = csharp("en", &only(SOURCE));
-        assert!(out.contains("public static string ChatErrorNoConversation() => Resources.GetString(\"chat_error_no_conversation\");"), "{out}");
-        assert!(out.contains("public static string ComposerErrorRevisionConflict(long current) => string.Format(Resources.GetString(\"composer_error_revision_conflict\"), current);"), "{out}");
+        assert!(
+            out.contains(
+                "public const string ChatErrorNoConversation = \"chat_error_no_conversation\";"
+            ),
+            "{out}"
+        );
+        assert!(
+            out.contains("public static string Get(string key, params object[] arguments)"),
+            "{out}"
+        );
+        assert!(
+            out.contains("public static string Quantity(string key, long count)"),
+            "{out}"
+        );
+        assert!(
+            out.contains("\"en\" => count == 1 ? \"one\" : \"other\","),
+            "{out}"
+        );
     }
 
     #[test]
-    fn typescript_gets_a_key_map_and_typed_functions() {
+    fn typescript_gets_a_key_union_and_an_argument_map() {
         let out = typescript("en", &only(SOURCE));
         assert!(
-            out.contains("chatErrorNoConversation: \"chat-error-no-conversation\","),
+            out.contains("  | \"chat-error-no-conversation\"\n"),
             "{out}"
         );
-        assert!(out.contains("composerErrorRevisionConflict: (bundle: L10nBundle, args: { current: number }): string =>"), "{out}");
+        assert!(out.contains("  | \"welcome\";\n"), "{out}");
         assert!(
-            out.contains(
-                "bundle.format(keys.composerErrorRevisionConflict, { current: args.current }),"
-            ),
+            out.contains("  \"composer-error-revision-conflict\": { current: number };"),
+            "{out}"
+        );
+        assert!(out.contains("  \"welcome\": { who: string };"), "{out}");
+        assert!(
+            out.contains("export function t(bundle: L10nBundle, key: Exclude<MessageKey, keyof Args>): string;"),
             "{out}"
         );
     }
 
     #[test]
-    fn a_plural_reaches_each_platforms_plural_lookup() {
+    fn a_plural_selector_is_numeric_in_every_accessor() {
         let locales = only(PLURAL);
-        assert!(
-            kotlin("en", &locales, "dev.arut.surface")
-                .contains("getQuantityString(R.plurals.unread, count.toInt(), count)")
-        );
-        assert!(
-            kotlin("en", &locales, "dev.arut.surface")
-                .contains("pluralStringResource(R.plurals.unread, count.toInt(), count)")
-        );
-        let windows = csharp("en", &locales);
-        assert!(
-            windows.contains("private static string Quantity("),
-            "{windows}"
-        );
-        assert!(
-            windows.contains("string.Format(Quantity(\"unread\", count), count)"),
-            "{windows}"
-        );
-        // Apple's catalog and Fluent both select on their own, so the accessor
-        // is the ordinary one.
         assert!(swift("en", &locales).contains("static func unread(count: Int) -> String"));
-        assert!(rust("en", &locales).contains("Unread {\n        count: u64,\n    },"));
+        assert!(typescript("en", &locales).contains("\"unread\": { count: number };"));
+    }
+
+    #[test]
+    fn the_typescript_catalog_carries_the_shipped_fluent_text() {
+        let out = typescript_catalog();
+        assert!(
+            out.contains("export const locales = [\n  \"en\",\n] as const;"),
+            "{out}"
+        );
+        assert!(out.contains("chat-error-cancelled ="), "{out}");
     }
 
     #[test]
     fn every_emitter_is_a_function_of_its_input_alone() {
         let locales = only(SOURCE);
-        assert_eq!(rust("en", &locales), rust("en", &only(SOURCE)));
         assert_eq!(swift("en", &locales), swift("en", &only(SOURCE)));
-        assert_eq!(
-            kotlin("en", &locales, "dev.arut.surface"),
-            kotlin("en", &only(SOURCE), "dev.arut.surface")
-        );
         assert_eq!(csharp("en", &locales), csharp("en", &only(SOURCE)));
         assert_eq!(typescript("en", &locales), typescript("en", &only(SOURCE)));
     }

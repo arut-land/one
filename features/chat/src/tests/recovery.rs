@@ -109,28 +109,9 @@ fn restart_recovers_transcript_operations_drafts_and_send_deduplication() {
 
 #[test]
 fn committed_promotion_recovers_after_cleanup_failure_without_erasing_later_edits() {
-    use arut_storage::{KeyValue, MemoryLog, MemoryStore, StorageError};
-    use std::sync::atomic::{AtomicBool, Ordering};
-    #[derive(Default)]
-    struct Store {
-        data: MemoryStore,
-        fail: AtomicBool,
-    }
-    impl KeyValue for Store {
-        fn get(&self, key: &str) -> Result<Option<Vec<u8>>, StorageError> {
-            self.data.get(key)
-        }
-        fn put(&self, key: &str, value: &[u8]) -> Result<(), StorageError> {
-            if self.fail.load(Ordering::Relaxed) {
-                return Err(StorageError::Io(std::io::ErrorKind::StorageFull));
-            }
-            self.data.put(key, value)
-        }
-        fn remove(&self, key: &str) -> Result<(), StorageError> {
-            self.data.remove(key)
-        }
-    }
-    let store = Arc::new(Store::default());
+    use crate::test_support::FaultyStore;
+    use arut_storage::MemoryLog;
+    let store = Arc::new(FaultyStore::default());
     let log = Arc::new(MemoryLog::default());
     let composer = Arc::new(ComposerAuthority::with_store(store.clone()));
     let scope = ComposerScope::pending("owner");
@@ -150,13 +131,13 @@ fn committed_promotion_recovers_after_cleanup_failure_without_erasing_later_edit
         text: "accepted".into(),
     };
     let service = ChatServiceImpl::new(composer.clone(), log.clone(), Arc::new(TestIds)).unwrap();
-    store.fail.store(true, Ordering::Relaxed);
+    store.fail_writes();
     assert!(block_on(service.start_chat(Request::new(request.clone()))).is_err());
     assert_eq!(service.projection().conversations.len(), 1);
     drop(service);
     drop(composer);
 
-    store.fail.store(false, Ordering::Relaxed);
+    store.repair();
     let composer = Arc::new(ComposerAuthority::with_store(store.clone()));
     let service = ChatServiceImpl::new(composer.clone(), log.clone(), Arc::new(TestIds)).unwrap();
     let cleared = composer.snapshot(&scope).unwrap();

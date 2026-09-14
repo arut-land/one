@@ -2,6 +2,7 @@ packages:
   - "runtimes/browser"
   - "bindings/generated/wasm/pkg"
   - "bindings/typescript"
+  - "surfaces/chat-ui"
   - "surfaces/web"
   - "surfaces/chromium"
   - "surfaces/vscode"
