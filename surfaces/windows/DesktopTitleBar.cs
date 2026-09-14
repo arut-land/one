@@ -48,17 +48,26 @@ public sealed class DesktopTitleBar : TitleBar
         queued = DispatcherQueue.TryEnqueue(() =>
         {
             queued = false;
-            if (root is null || left is null || right is null)
+            if (root is null || !root.IsHostVisible || left is null || right is null)
                 return;
-            var caption = AppWindow
-                .GetFromWindowId(root.ContentIslandEnvironment.AppWindowId)
-                .TitleBar;
+            var window = AppWindow.GetFromWindowId(root.ContentIslandEnvironment.AppWindowId);
+            // Caption geometry is transient while minimizing/restoring. Keep
+            // the last valid padding until the window supplies usable insets.
+            if (window.Presenter is OverlappedPresenter { State: OverlappedPresenterState.Minimized })
+                return;
+            var caption = window.TitleBar;
+            var leftInset = caption.LeftInset;
+            var rightInset = caption.RightInset;
+            // On restore the runtime can briefly report a negative inset
+            // (observed RightInset = -19). GridLength requires nonnegative values.
+            if (leftInset < 0 || rightInset < 0)
+                return;
             var rtl = FlowDirection == FlowDirection.RightToLeft;
             left.Width = new GridLength(
-                (rtl ? caption.RightInset : caption.LeftInset) / root.RasterizationScale
+                (rtl ? rightInset : leftInset) / root.RasterizationScale
             );
             right.Width = new GridLength(
-                (rtl ? caption.LeftInset : caption.RightInset) / root.RasterizationScale
+                (rtl ? leftInset : rightInset) / root.RasterizationScale
             );
         });
     }

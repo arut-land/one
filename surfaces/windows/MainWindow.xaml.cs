@@ -33,6 +33,14 @@ public sealed class MainWindow : Window
         SetMinimumSize(scale);
         var session = Arut_ffi.CreateProductSession(Guid.NewGuid().ToString());
         var view = new ChatView(session);
+        void UpdateTitle() => Title = $"{view.ViewModel.Title} - {L10n.Get(L10n.AppName)}";
+        System.ComponentModel.PropertyChangedEventHandler titleChanged = (_, args) =>
+        {
+            if (args.PropertyName == nameof(ChatViewModel.Title))
+                UpdateTitle();
+        };
+        view.ViewModel.PropertyChanged += titleChanged;
+        UpdateTitle();
         Content = view;
         view.Loaded += (_, _) =>
         {
@@ -50,6 +58,7 @@ public sealed class MainWindow : Window
         SetTitleBar(view.WindowTitleBar);
         AppWindow.TitleBar.ButtonBackgroundColor = Colors.Transparent;
         AppWindow.TitleBar.ButtonInactiveBackgroundColor = Colors.Transparent;
+        WindowPlacement.Restore(Win32Interop.GetWindowFromWindowId(AppWindow.Id));
         var closing = false;
         var cleanedUp = false;
         AppWindow.Closing += async (_, args) =>
@@ -60,6 +69,8 @@ public sealed class MainWindow : Window
             if (closing)
                 return;
             closing = true;
+            WindowPlacement.Save(Win32Interop.GetWindowFromWindowId(AppWindow.Id));
+            view.ViewModel.PropertyChanged -= titleChanged;
             await view.DisposeAsync();
             session.Dispose();
             cleanedUp = true;

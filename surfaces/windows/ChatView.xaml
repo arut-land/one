@@ -7,80 +7,9 @@
 >
   <UserControl.Resources>
     <ResourceDictionary>
-      <ResourceDictionary.ThemeDictionaries>
-        <!-- Layer brushes carry light and dark; High Contrast needs the system
-             colors, or the incoming bubble loses its boundary entirely. -->
-        <ResourceDictionary x:Key="Default">
-          <Thickness x:Key="ToolbarBorderThickness">0</Thickness>
-          <StaticResource
-            x:Key="IncomingBubbleBackgroundBrush"
-            ResourceKey="CardBackgroundFillColorDefaultBrush"
-          />
-          <StaticResource
-            x:Key="IncomingBubbleBorderBrush"
-            ResourceKey="CardStrokeColorDefaultBrush"
-          />
-          <StaticResource
-            x:Key="IncomingBubbleForegroundBrush"
-            ResourceKey="TextFillColorPrimaryBrush"
-          />
-          <StaticResource
-            x:Key="IncomingBubbleCaptionBrush"
-            ResourceKey="TextFillColorSecondaryBrush"
-          />
-          <StaticResource
-            x:Key="OutgoingBubbleBackgroundBrush"
-            ResourceKey="AccentFillColorDefaultBrush"
-          />
-          <StaticResource
-            x:Key="OutgoingBubbleBorderBrush"
-            ResourceKey="AccentFillColorDefaultBrush"
-          />
-          <StaticResource
-            x:Key="OutgoingBubbleForegroundBrush"
-            ResourceKey="TextOnAccentFillColorPrimaryBrush"
-          />
-          <StaticResource
-            x:Key="OutgoingBubbleCaptionBrush"
-            ResourceKey="TextOnAccentFillColorSecondaryBrush"
-          />
-        </ResourceDictionary>
-        <ResourceDictionary x:Key="HighContrast">
-          <Thickness x:Key="ToolbarBorderThickness">1</Thickness>
-          <StaticResource
-            x:Key="IncomingBubbleBackgroundBrush"
-            ResourceKey="SystemColorWindowColorBrush"
-          />
-          <StaticResource
-            x:Key="IncomingBubbleBorderBrush"
-            ResourceKey="SystemColorWindowTextColorBrush"
-          />
-          <StaticResource
-            x:Key="IncomingBubbleForegroundBrush"
-            ResourceKey="SystemColorWindowTextColorBrush"
-          />
-          <StaticResource
-            x:Key="IncomingBubbleCaptionBrush"
-            ResourceKey="SystemColorWindowTextColorBrush"
-          />
-          <StaticResource
-            x:Key="OutgoingBubbleBackgroundBrush"
-            ResourceKey="SystemColorHighlightColorBrush"
-          />
-          <StaticResource
-            x:Key="OutgoingBubbleBorderBrush"
-            ResourceKey="SystemColorHighlightTextColorBrush"
-          />
-          <StaticResource
-            x:Key="OutgoingBubbleForegroundBrush"
-            ResourceKey="SystemColorHighlightTextColorBrush"
-          />
-          <StaticResource
-            x:Key="OutgoingBubbleCaptionBrush"
-            ResourceKey="SystemColorHighlightTextColorBrush"
-          />
-        </ResourceDictionary>
-      </ResourceDictionary.ThemeDictionaries>
+      <ResourceDictionary.MergedDictionaries>
+        <ResourceDictionary Source="Themes/ChatResources.xaml" />
+      </ResourceDictionary.MergedDictionaries>
       <StandardUICommand x:Key="CopyMessageCommand" Kind="Copy" ExecuteRequested="CopyMessage" />
       <XamlUICommand x:Key="NewChatCommand" ExecuteRequested="NewChat">
         <XamlUICommand.KeyboardAccelerators>
@@ -92,43 +21,6 @@
           <KeyboardAccelerator Key="F" Modifiers="Control" />
         </XamlUICommand.KeyboardAccelerators>
       </XamlUICommand>
-      <Style
-        x:Key="IconButtonStyle"
-        TargetType="Button"
-        BasedOn="{StaticResource DefaultButtonStyle}"
-      >
-        <Setter Property="Width" Value="28" />
-        <Setter Property="Height" Value="28" />
-        <Setter Property="Padding" Value="0" />
-        <Setter Property="Background" Value="Transparent" />
-        <Setter Property="BorderThickness" Value="{ThemeResource ToolbarBorderThickness}" />
-      </Style>
-      <Style
-        x:Key="TimeGroupStyle"
-        TargetType="TextBlock"
-        BasedOn="{StaticResource CaptionTextBlockStyle}"
-      >
-        <Setter Property="HorizontalAlignment" Value="Center" />
-        <Setter Property="Margin" Value="0,24,0,16" />
-        <Setter Property="Foreground" Value="{ThemeResource TextFillColorSecondaryBrush}" />
-      </Style>
-      <Style x:Key="BubbleTextStyle" TargetType="TextBlock">
-        <Setter Property="FontSize" Value="14" />
-        <Setter Property="TextWrapping" Value="Wrap" />
-        <Setter Property="IsTextSelectionEnabled" Value="True" />
-      </Style>
-      <Style
-        x:Key="BubbleTimeStyle"
-        TargetType="TextBlock"
-        BasedOn="{StaticResource CaptionTextBlockStyle}"
-      >
-        <Setter Property="HorizontalAlignment" Value="Right" />
-        <Setter Property="Margin" Value="0,4,0,0" />
-      </Style>
-      <Style x:Key="BubbleStyle" TargetType="Border">
-        <Setter Property="MaxWidth" Value="560" />
-        <Setter Property="Padding" Value="16,12" />
-      </Style>
       <DataTemplate x:Key="IncomingMessage" x:DataType="local:MessageRow">
         <Grid Margin="{x:Bind Spacing}">
           <Grid.RowDefinitions>
@@ -149,7 +41,6 @@
             Background="{ThemeResource IncomingBubbleBackgroundBrush}"
             BorderBrush="{ThemeResource IncomingBubbleBorderBrush}"
             BorderThickness="1"
-            ToolTipService.ToolTip="{x:Bind FullTime}"
           >
             <Border.ContextFlyout>
               <MenuFlyout>
@@ -166,6 +57,7 @@
                 Foreground="{ThemeResource IncomingBubbleForegroundBrush}"
               />
               <TextBlock
+                ToolTipService.ToolTip="{x:Bind FullTime}"
                 Text="{x:Bind Time}"
                 Visibility="{x:Bind HasTime}"
                 Style="{StaticResource BubbleTimeStyle}"
@@ -191,7 +83,6 @@
             MaxWidth="560"
             Margin="48,0,0,0"
             HorizontalAlignment="Right"
-            ToolTipService.ToolTip="{x:Bind FullTime}"
           >
             <Grid.ContextFlyout>
               <MenuFlyout>
@@ -217,6 +108,7 @@
               />
               <TextBlock
                 x:Name="MessageTime"
+                ToolTipService.ToolTip="{x:Bind FullTime}"
                 Text="{x:Bind Time}"
                 Visibility="{x:Bind HasTime}"
                 Style="{StaticResource BubbleTimeStyle}"
@@ -319,22 +211,35 @@
       </TitleBar.Content>
       <TitleBar.RightHeader>
         <StackPanel Orientation="Horizontal" Spacing="4">
-          <Button
+          <local:ActionButton
+            x:Name="SearchButton"
             Style="{StaticResource IconButtonStyle}"
             Command="{StaticResource SearchCommand}"
             AutomationProperties.Name="{x:Bind local:Labels.Search}"
             ToolTipService.ToolTip="{x:Bind local:Labels.Search}"
           >
-            <FontIcon Glyph="&#xE721;" FontSize="16" />
-          </Button>
-          <Button
+            <Grid Width="16" Height="16">
+              <AnimatedIcon>
+                <AnimatedIcon.Source>
+                  <animated:AnimatedFindVisualSource />
+                </AnimatedIcon.Source>
+                <AnimatedIcon.FallbackIconSource>
+                  <FontIconSource Glyph="&#xE721;" FontSize="16" />
+                </AnimatedIcon.FallbackIconSource>
+              </AnimatedIcon>
+            </Grid>
+          </local:ActionButton>
+          <local:ActionButton
+            x:Name="NewChatButton"
             Style="{StaticResource IconButtonStyle}"
             Command="{StaticResource NewChatCommand}"
             AutomationProperties.Name="{x:Bind local:Labels.NewConversation}"
             ToolTipService.ToolTip="{x:Bind local:Labels.NewConversationShortcut}"
           >
-            <FontIcon Glyph="&#xE710;" FontSize="16" />
-          </Button>
+            <Grid Width="16" Height="16">
+              <FontIcon Glyph="&#xE710;" FontSize="16" />
+            </Grid>
+          </local:ActionButton>
         </StackPanel>
       </TitleBar.RightHeader>
     </local:DesktopTitleBar>

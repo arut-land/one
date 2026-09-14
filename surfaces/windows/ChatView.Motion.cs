@@ -71,6 +71,8 @@ public sealed partial class ChatView
     {
         SendButton.MotionEnabled = motionSettings.AnimationsEnabled;
         LatestSurface.MotionEnabled = motionSettings.AnimationsEnabled;
+        SearchButton.MotionEnabled = motionSettings.AnimationsEnabled;
+        NewChatButton.MotionEnabled = motionSettings.AnimationsEnabled;
         foreach (var element in new UIElement[] { LatestSurface, EmptyState })
         {
             var visual = ElementCompositionPreview.GetElementVisual(element);

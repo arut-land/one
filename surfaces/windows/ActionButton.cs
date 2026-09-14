@@ -13,6 +13,13 @@ public sealed class ActionButton : Button
     private readonly Vector3Transition feedbackTransition = new() { Duration = TimeSpan.FromMilliseconds(83) };
     private bool motionEnabled = true;
 
+    public ActionButton()
+    {
+        Loaded += (_, _) => UpdateMotion();
+        SizeChanged += (_, _) => UpdateMotion();
+        RegisterPropertyChangedCallback(ContentProperty, (_, _) => UpdateMotion());
+    }
+
     public bool MotionEnabled
     {
         get => motionEnabled;
@@ -27,6 +34,7 @@ public sealed class ActionButton : Button
     {
         if (commonStates is not null)
             commonStates.CurrentStateChanged -= StateChanged;
+        commonStates = null;
         base.OnApplyTemplate();
         if (VisualTreeHelper.GetChildrenCount(this) > 0
             && VisualTreeHelper.GetChild(this, 0) is FrameworkElement root)
