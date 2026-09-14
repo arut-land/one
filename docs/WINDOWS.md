@@ -15,7 +15,7 @@ The repository pins cargo-binstall and requires prebuilt Cargo tools. BoltFFI co
 
 The app references `bindings/dotnet/Arut.Bindings.csproj`, which holds the Rust-to-.NET idiom and brings the generated project with it. Debug and Release bindings live in separate `bindings/generated/csharp/Debug` and `Release` directories. MSBuild selects the directory through `$(Configuration)`, so publishing cannot replace the Debug native library. Generate the corresponding package through mise before opening a fresh checkout in an IDE. See [build workflows](BUILDING.md) for the shared tool setup.
 
-The app targets Windows x64, .NET 10, and Windows App SDK 2.4. It runs unpackaged with the .NET and Windows App SDK runtimes beside the executable. `mise run publish:windows` builds Rust and C# in Release mode and writes the distributable folder to `surfaces/windows/bin/publish`. Distribute the entire folder, including `arut_ffi.dll`, `Arut.Windows.pri`, and the compiled `.xbf` views.
+The app targets Windows x64, .NET 10 (`net10.0-windows10.0.26100.0`), Windows App SDK 2.4.0 and CommunityToolkit.Mvvm 8.4.2, each the current stable release. It runs unpackaged with the .NET and Windows App SDK runtimes beside the executable. `mise run publish:windows` builds Rust and C# in Release mode and writes the distributable folder to `surfaces/windows/bin/publish`. Distribute the entire folder, including `arut_ffi.dll`, `Arut.Windows.pri`, and the compiled `.xbf` views.
 
 ```powershell
 mise run check:windows
@@ -87,7 +87,7 @@ This surface has not been compiled since the `Arut.Bindings` adoption: no .NET S
 
 The Windows Release build passes with zero warnings. UI Automation verified three composer grow/clear cycles, independent drafts, and sending the final value after 30 consecutive edits. Keyboard input verified that Shift+Enter inserts a newline and Enter sends the exact two-line message. Twenty consecutive sends verified following the latest message and the jump-to-latest action after scrolling up.
 
-Screenshots at 1100, 560, and 420 physical pixels checked wide, collapsed, and overlay layouts at 125% scaling. The compact caption and actions do not overlap. `DesktopTitleBar` corrects the pinned WinUI control's physical-pixel caption insets to logical units. Window closure completed after canceling native work. Multi-monitor DPI transitions, IME composition, and reduced-motion appearance still need interactive review on appropriate hardware/settings.
+Screenshots at 1100, 560, and 420 physical pixels checked wide, collapsed, and overlay layouts at 125% scaling. The compact caption and actions do not overlap. `DesktopTitleBar` corrects the pinned WinUI control's physical-pixel caption insets to logical units; [microsoft-ui-xaml#10344](https://github.com/microsoft/microsoft-ui-xaml/issues/10344) is still open, so the correction stays. Window closure completed after canceling native work. Multi-monitor DPI transitions, IME composition, and reduced-motion appearance still need interactive review on appropriate hardware/settings.
 
 The floating-composer checks verified that the transcript extends behind the input and that the final message clears it after draft growth, clearing, and a narrow resize. Screenshots also checked the composer and jump-to-latest button over the middle of a scrolling transcript.
 

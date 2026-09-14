@@ -7,7 +7,7 @@ plugins {
 
 android {
     namespace = "dev.arut.bindings"
-    compileSdk = 35
+    compileSdk = 37
 
     defaultConfig {
         minSdk = 24

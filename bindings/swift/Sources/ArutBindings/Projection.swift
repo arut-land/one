@@ -11,7 +11,6 @@ import Observation
 /// Observation tracks the properties a `body` actually reads, so a view binds to
 /// `value` and re-renders only when what it reads changed.
 @Observable
-@MainActor
 public final class Projection<Value> {
     public private(set) var value: Value
 
@@ -46,7 +45,6 @@ public final class Projection<Value> {
 /// stands on has rebound -- an editor bridge points one handle at another
 /// subject -- and there is nothing to append to, so the cursor starts over.
 @Observable
-@MainActor
 public final class Rows<Row> {
     public private(set) var rows: [Row] = []
 
@@ -99,7 +97,6 @@ public final class Rows<Row> {
 /// error -- takes one subscription and applies them together, rather than one
 /// subscription each. The apply runs once before the first revision, so a change
 /// between construction and subscription is not missed.
-@MainActor
 public func observing(_ changes: AsyncStream<UInt64>, apply: () -> Void) async {
     apply()
     for await _ in changes {
@@ -111,7 +108,6 @@ public func observing(_ changes: AsyncStream<UInt64>, apply: () -> Void) async {
 ///
 /// Cancellation is the only way out: SwiftUI cancels the task that owns the
 /// view, which ends the awaits and releases the subscription behind them.
-@MainActor
 public func following(
     initialize: () async throws -> Void,
     follow: () async throws -> Void,
@@ -132,7 +128,6 @@ public func following(
 /// A projection echoes what a surface just wrote, and applying that echo back to
 /// the control the person is using would fight them. Anything applied inside
 /// `applying` is ours, and the follower skips it.
-@MainActor
 public final class EchoGuard {
     private var depth = 0
 
@@ -155,7 +150,6 @@ public final class EchoGuard {
 /// is taken only while nothing local is unacknowledged, so the field never
 /// reverts a keystroke the person has already typed.
 @Observable
-@MainActor
 public final class Draft {
     public var text: String {
         get { stored }
@@ -212,7 +206,11 @@ public final class Draft {
 /// in the order every generated catalog interpolates them, so a positional
 /// formatter passes the values straight through and a formatter that wants the
 /// names already has them.
-public protocol ErrorSource {
+///
+/// `nonisolated` because the generated handles conform to it from another
+/// module and carry their own isolation; the module's default main-actor
+/// isolation must not reach across that conformance.
+public nonisolated protocol ErrorSource {
     func errorKey() -> String?
     func errorArgs() -> [ErrorArg]
 }

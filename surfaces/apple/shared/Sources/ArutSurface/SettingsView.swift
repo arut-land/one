@@ -9,7 +9,6 @@ public struct SettingsView: View {
     private let handle: AvailabilityHandle
     @State private var availability: Projection<SessionAvailability>
 
-    @MainActor
     public init(session: ProductSessionHandle) {
         let handle = session.availability()
         self.handle = handle

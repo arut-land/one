@@ -473,8 +473,7 @@ pub trait LocalSpawner: 'static {
 /// touches nothing above it. Scopes hold this rather than a bare token so the
 /// tree needs no bookkeeping: the `DropGuard` inside fires with the scope.
 pub struct Cancellation {
-    token: CancellationToken,
-    _guard: DropGuard,
+    guard: DropGuard,
 }
 
 impl Cancellation {
@@ -485,21 +484,21 @@ impl Cancellation {
 
     /// A token cancelled by this scope, by its own drop, or by either parent.
     pub fn child(&self) -> Self {
-        Self::from(self.token.child_token())
+        Self::from(self.guard.token().child_token())
     }
 
     /// The token to hand to work that must stop with this scope.
     pub fn token(&self) -> CancellationToken {
-        self.token.clone()
+        self.guard.token().clone()
     }
 
     pub fn is_cancelled(&self) -> bool {
-        self.token.is_cancelled()
+        self.guard.token().is_cancelled()
     }
 
     /// Cancels this scope and everything under it, before it is dropped.
     pub fn cancel(&self) {
-        self.token.cancel();
+        self.guard.token().cancel();
     }
 }
 
@@ -512,8 +511,7 @@ impl Default for Cancellation {
 impl From<CancellationToken> for Cancellation {
     fn from(token: CancellationToken) -> Self {
         Self {
-            _guard: token.clone().drop_guard(),
-            token,
+            guard: token.drop_guard(),
         }
     }
 }
@@ -522,7 +520,7 @@ impl std::fmt::Debug for Cancellation {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         formatter
             .debug_struct("Cancellation")
-            .field("cancelled", &self.token.is_cancelled())
+            .field("cancelled", &self.is_cancelled())
             .finish()
     }
 }

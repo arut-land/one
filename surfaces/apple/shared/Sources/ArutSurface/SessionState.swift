@@ -34,7 +34,6 @@ enum Selection: Equatable {
 /// owns the selection, so every surface on one session follows the same one;
 /// the sidebar binds straight to it (ADR 0007).
 @Observable
-@MainActor
 final class SessionState {
     let conversations: Projection<ConversationsList>
     private(set) var conversation: ConversationState

@@ -1,15 +1,10 @@
 //! One CSS provider for Arut's own classes. GTK owns the theme: `style.css`
-//! references the theme's named colors and its own media queries, so a theme or
-//! contrast change re-resolves without anything being rebuilt here. The portal
-//! supplies the two settings GTK 4.20 does not: accent and reduced motion.
+//! references the theme's named colors and its own media queries, so a theme,
+//! contrast or motion change re-resolves without anything being rebuilt here.
+//! GTK 4.22 reports color scheme, contrast and reduced motion itself. The
+//! portal supplies only the accent, which GTK does not expose before 4.24.
 use crate::glib_observe::Tasks;
-use ashpd::desktop::{
-    Color,
-    settings::{
-        ACCENT_COLOR_SCHEME_KEY, APPEARANCE_NAMESPACE, REDUCED_MOTION_KEY, ReducedMotion,
-        Settings as PortalSettings,
-    },
-};
+use ashpd::desktop::{Color, settings::Settings as PortalSettings};
 use futures_lite::StreamExt;
 use gtk::{gdk, glib, prelude::*};
 use std::{cell::Cell, rc::Rc};
@@ -22,12 +17,6 @@ pub struct Theme {
     _tasks: Tasks,
 }
 
-#[derive(Clone, Copy, Default)]
-struct Appearance {
-    accent: Option<gdk::RGBA>,
-    reduced_motion: bool,
-}
-
 impl Theme {
     pub fn install(widget: &impl IsA<gtk::Widget>) -> Self {
         let display = widget.as_ref().display();
@@ -38,23 +27,24 @@ impl Theme {
             &provider,
             gtk::STYLE_PROVIDER_PRIORITY_APPLICATION,
         );
-        let appearance = Rc::new(Cell::new(Appearance::default()));
-        refresh(&settings, &provider, appearance.get());
+        let accent: Rc<Cell<Option<gdk::RGBA>>> = Rc::new(Cell::new(None));
+        refresh(&settings, &provider, accent.get());
         let mut signals = Vec::new();
         for property in [
             "gtk-interface-color-scheme",
             "gtk-interface-contrast",
+            "gtk-interface-reduced-motion",
             "gtk-enable-animations",
         ] {
-            let (provider, appearance) = (provider.clone(), appearance.clone());
+            let (provider, accent) = (provider.clone(), accent.clone());
             signals.push(
                 settings.connect_notify_local(Some(property), move |settings, _| {
-                    refresh(settings, &provider, appearance.get());
+                    refresh(settings, &provider, accent.get());
                 }),
             );
         }
         let mut tasks = Tasks::default();
-        tasks.spawn(portal(settings.clone(), provider.clone(), appearance));
+        tasks.spawn(portal(settings.clone(), provider.clone(), accent));
         Self {
             provider,
             display,
@@ -74,68 +64,33 @@ impl Drop for Theme {
     }
 }
 
-/// Reads accent and reduced motion from the appearance portal and follows their
-/// changes. GTK 4.20 exposes neither; 4.22 adds reduced motion, 4.24 the accent.
+/// Reads the accent color from the appearance portal and follows its changes.
+/// It is the one appearance setting GTK does not report; 4.24 adds it, and this
+/// task goes away when the crate can require that.
 async fn portal(
     settings: gtk::Settings,
     provider: gtk::CssProvider,
-    appearance: Rc<Cell<Appearance>>,
+    accent: Rc<Cell<Option<gdk::RGBA>>>,
 ) {
     let portal = match PortalSettings::new().await {
         Ok(portal) => portal,
         Err(error) => {
-            eprintln!("Appearance portal unavailable; using GTK theme: {error}");
+            eprintln!("Appearance portal unavailable; using the GTK theme accent: {error}");
             return;
         }
     };
-    // Subscribe before reading so an appearance change cannot fall between them.
-    let changes = portal.receive_setting_changed().await;
-    let accent = portal
-        .read::<(f64, f64, f64)>(APPEARANCE_NAMESPACE, ACCENT_COLOR_SCHEME_KEY)
-        .await
-        .ok()
-        .and_then(|rgb| valid_accent(Color::from(rgb)));
-    let reduced_motion =
-        portal.reduced_motion().await.unwrap_or_default() == ReducedMotion::ReducedMotion;
-    appearance.set(Appearance {
-        accent,
-        reduced_motion,
-    });
-    refresh(&settings, &provider, appearance.get());
+    // Subscribe before reading so an accent change cannot fall between them.
+    let changes = portal.receive_accent_color_changed().await;
+    accent.set(portal.accent_color().await.ok().and_then(valid_accent));
+    refresh(&settings, &provider, accent.get());
     let Ok(changes) = changes else {
-        eprintln!("Appearance portal change stream unavailable");
+        eprintln!("Appearance portal accent stream unavailable");
         return;
     };
     let mut changes = std::pin::pin!(changes);
-    while let Some(change) = changes.next().await {
-        if change.namespace() != APPEARANCE_NAMESPACE {
-            continue;
-        }
-        let mut next = appearance.get();
-        match change.key() {
-            ACCENT_COLOR_SCHEME_KEY => {
-                next.accent = change
-                    .value()
-                    .try_clone()
-                    .ok()
-                    .and_then(|value| <(f64, f64, f64)>::try_from(value).ok())
-                    .and_then(|rgb| valid_accent(Color::from(rgb)));
-            }
-            REDUCED_MOTION_KEY => {
-                let Some(reduced) = change
-                    .value()
-                    .try_clone()
-                    .ok()
-                    .and_then(|value| ReducedMotion::try_from(value).ok())
-                else {
-                    continue;
-                };
-                next.reduced_motion = reduced == ReducedMotion::ReducedMotion;
-            }
-            _ => continue,
-        }
-        appearance.set(next);
-        refresh(&settings, &provider, next);
+    while let Some(color) = changes.next().await {
+        accent.set(valid_accent(color));
+        refresh(&settings, &provider, accent.get());
     }
 }
 
@@ -146,18 +101,22 @@ fn valid_accent(color: Color) -> Option<gdk::RGBA> {
         .then(|| color.into())
 }
 
-fn refresh(settings: &gtk::Settings, provider: &gtk::CssProvider, appearance: Appearance) {
+fn refresh(settings: &gtk::Settings, provider: &gtk::CssProvider, accent: Option<gdk::RGBA>) {
     // GTK owns portal discovery and desktop defaults, including unsupported values.
     provider.set_prefers_color_scheme(settings.gtk_interface_color_scheme());
     provider.set_prefers_contrast(settings.gtk_interface_contrast());
-    let accent = appearance.accent.map_or_else(
+    // A desktop that turns animations off entirely is asking for reduced motion
+    // even where it leaves the interface setting at its default.
+    provider.set_prefers_reduced_motion(if settings.is_gtk_enable_animations() {
+        settings.gtk_interface_reduced_motion()
+    } else {
+        gtk::ReducedMotion::Reduce
+    });
+    let accent = accent.map_or_else(
         || "@theme_selected_bg_color".to_owned(),
         |accent| accent.to_string(),
     );
     let mut css = format!("@define-color arut_accent {accent};\n");
     css.push_str(include_str!("style.css"));
-    if appearance.reduced_motion || !settings.is_gtk_enable_animations() {
-        css.push_str(".arut-window, .arut-window * { transition: none; animation: none; }\n");
-    }
     provider.load_from_string(&css);
 }

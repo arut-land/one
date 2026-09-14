@@ -10,7 +10,7 @@ default = []
 redb = ["dep:redb"]
 
 [dependencies]
-prost = "0.14.1"
+prost = "0.14.4"
 thiserror = "2.0.20"
 tracing = "0.1.44"
 blake3 = "1.8.7"

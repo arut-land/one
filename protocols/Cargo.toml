@@ -6,13 +6,13 @@ license.workspace = true
 
 [dependencies]
 arut-rpc.workspace = true
-prost = "0.14.1"
+prost = "0.14.4"
 
 [build-dependencies]
 arut-protocol-build = { path = "build" }
 
 [dev-dependencies]
-futures-executor = "0.3.31"
+futures-executor = "0.3.34"
 
 [lints]
 workspace = true

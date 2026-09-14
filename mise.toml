@@ -3,7 +3,7 @@
 # surface's `mise.toml` and are namespaced `//surfaces/linux:run`; the `alias`
 # field keeps the repository-wide names (`surface:linux`) working from here.
 #
-# Linux also needs system GTK >= 4.20, C/C++ compilers and pkg-config; CI lists
+# Linux also needs system GTK >= 4.22, C/C++ compilers and pkg-config; CI lists
 # the Fedora packages. Platform toolchains (dotnet, java, gradle, xcodegen) are
 # scoped to the tasks that need them, so a Windows build never installs Node.
 # Machine-specific tuning goes in mise.local.toml (gitignored), for example
@@ -78,7 +78,7 @@ rust = { version = "1.98.1", mr_boxington = true, components = ["rustfmt", "clip
 dotnet_version = "10.0.401"
 node_version = "26.8.2"
 # Must equal the pnpm-workspace.yaml catalog pin.
-typescript_version = "5.9.3"
+typescript_version = "7.0.2"
 
 # ---------------------------------------------------------------------------
 # Task inputs. Groups are resolved relative to the config file that defines
@@ -161,11 +161,16 @@ tools.dotnet = "{{vars.dotnet_version}}"
 
 [task_templates.javascript]
 tools.node = "{{vars.node_version}}"
-tools.pnpm = "12.3.4"
+tools.pnpm = "12.4.1"
 
+# AGP 9.4.0 (surfaces/android/gradle/libs.versions.toml) requires Gradle 9.6+,
+# so Gradle tracks the newest 9.x. Java does not track the newest: Gradle runs
+# on JVM 17 through 26 and rejects 27, and of what is left this takes the
+# current LTS, because nothing in this repo's CI matrix builds Android and a
+# non-LTS JDK would be pinned with nothing proving it works.
 [task_templates.jvm]
-tools.java = "21"
-tools.gradle = "8.12.1"
+tools.java = "25"
+tools.gradle = "9.7.1"
 
 # Templates are read from this file only, so the binding generator's pin lives
 # here even though its tasks live in bindings/ffi/mise.toml.
@@ -213,7 +218,7 @@ outputs = ["node_modules/.modules.yaml"]
 # humans. `check:rust` and `check:core-graph` are scripts under mise-tasks/.
 
 [tasks."check:proto"]
-tools.buf = "1.72.0"
+tools.buf = "1.73.0"
 description = "Lint Protobuf contracts and reject breaking changes against master"
 # Deliberately no sources: `buf breaking` compares against the master branch,
 # which moves without any file in the working tree changing.
@@ -260,7 +265,7 @@ description = "Build the Linux surface, daemon, and web/Chromium/VS Code bundles
 depends = ["build:rust", "build:js"]
 
 [tasks.fmt]
-tools.buf = "1.72.0"
+tools.buf = "1.73.0"
 description = "Format Rust and Protobuf sources in place"
 run = ["cargo fmt --all", "buf format -w"]
 

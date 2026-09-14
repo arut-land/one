@@ -105,11 +105,8 @@ pub struct RedbLog<F> {
     fact: PhantomData<F>,
 }
 
-fn watermark(write: &WriteTransaction) -> Result<u64> {
-    Ok(write
-        .open_table(META)?
-        .get(COMPACTED_KEY)?
-        .map_or(0, |value| value.value()))
+fn watermark(meta: &impl ReadableTable<&'static str, u64>) -> Result<u64> {
+    Ok(meta.get(COMPACTED_KEY)?.map_or(0, |value| value.value()))
 }
 
 fn saved(table: &impl ReadableTable<&'static str, &'static [u8]>) -> Result<Option<Snapshot>> {
@@ -161,7 +158,7 @@ struct Commit<F> {
 
 impl<F: Fact> LogStore<F> for Commit<F> {
     fn head(&mut self) -> Result<(u64, u64)> {
-        let compacted = watermark(&self.write)?;
+        let compacted = watermark(&self.write.open_table(META)?)?;
         let snapshot = saved(&self.write.open_table(SNAPSHOT)?)?;
         let newest = self
             .write
@@ -184,7 +181,7 @@ impl<F: Fact> LogStore<F> for Commit<F> {
     }
 
     fn watermark(&mut self) -> Result<u64> {
-        watermark(&self.write)
+        watermark(&self.write.open_table(META)?)
     }
 
     fn duplicate(&mut self, command_id: &str) -> Result<Option<Record<F>>> {
@@ -244,10 +241,7 @@ impl<F: Fact> FactLog<F> for RedbLog<F> {
 
     fn read_from(&self, cursor: u64) -> Result<Vec<Record<F>>> {
         let read = self.database.begin_read()?;
-        let through = read
-            .open_table(META)?
-            .get(COMPACTED_KEY)?
-            .map_or(0, |value| value.value());
+        let through = watermark(&read.open_table(META)?)?;
         if cursor < through {
             return Err(StorageError::CursorUnavailable { through });
         }
@@ -261,7 +255,7 @@ impl<F: Fact> FactLog<F> for RedbLog<F> {
 
     fn save_snapshot(&self, snapshot: Snapshot) -> Result<()> {
         let write = self.database.begin_write()?;
-        let through = watermark(&write)?;
+        let through = watermark(&write.open_table(META)?)?;
         let newest = write
             .open_table(RECORDS)?
             .last()?
@@ -278,23 +272,18 @@ impl<F: Fact> FactLog<F> for RedbLog<F> {
     fn compact(&self, through: u64) -> Result<()> {
         let write = self.database.begin_write()?;
         compaction_allowed(saved(&write.open_table(SNAPSHOT)?)?.as_ref(), through)?;
-        let reached = watermark(&write)?.max(through);
+        let reached = watermark(&write.open_table(META)?)?.max(through);
         {
             let mut records = write.open_table(RECORDS)?;
             let mut commands = write.open_table(COMMANDS)?;
             let mut outcomes = write.open_table(OUTCOMES)?;
-            let compacted: Vec<(u64, Vec<u8>)> = records
-                .range(..=through)?
-                .map(|entry| {
-                    let (key, value) = entry?;
-                    Ok((key.value(), value.value().to_vec()))
-                })
-                .collect::<Result<_>>()?;
-            for (sequence, stored) in compacted {
+            // `extract_from_if` removes each row as it is read, so the range
+            // is never materialized and nothing walks it twice.
+            for entry in records.extract_from_if(..=through, |_, _| true)? {
+                let stored = entry?.1.value().to_vec();
                 let command_id = StoredRecord::decode(&stored[..])?.command_id;
                 outcomes.insert(command_id.as_str(), stored.as_slice())?;
                 commands.remove(command_id.as_str())?;
-                records.remove(sequence)?;
             }
             write.open_table(META)?.insert(COMPACTED_KEY, reached)?;
         }

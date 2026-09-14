@@ -7,7 +7,6 @@ public struct ChatView: View {
     /// Window restoration: the pane the window was left showing (macOS rule 2.5).
     @SceneStorage("conversation-selection") private var restoredSelection = ""
 
-    @MainActor
     public init(session: ProductSessionHandle) {
         _state = State(initialValue: SessionState(session: session))
     }

@@ -1,7 +1,5 @@
 package dev.arut.surface
 
-import android.provider.Settings
-import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -48,7 +46,6 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.rememberDrawerState
-import androidx.compose.material3.windowsizeclass.WindowWidthSizeClass
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
@@ -67,6 +64,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.window.core.layout.WindowSizeClass
 import dev.arut.bindings.ErrorSource
 import dev.arut.bindings.acceptedAt
 import dev.arut.bindings.generated.Messages
@@ -78,7 +76,7 @@ import java.text.DateFormat
 import kotlinx.coroutines.launch
 
 @Composable
-fun ChatScreen(viewModel: ConversationViewModel, width: WindowWidthSizeClass) {
+fun ChatScreen(viewModel: ConversationViewModel, windowSizeClass: WindowSizeClass) {
     val conversations by viewModel.conversations.collectAsStateWithLifecycle()
     val transcript by viewModel.transcript.collectAsStateWithLifecycle()
     val draft by viewModel.draft.collectAsStateWithLifecycle()
@@ -87,7 +85,7 @@ fun ChatScreen(viewModel: ConversationViewModel, width: WindowWidthSizeClass) {
 
     // Material's own adaptive rule, read off the window rather than measured by
     // us: a permanent list beside the conversation once there is room for both.
-    if (width == WindowWidthSizeClass.Expanded) {
+    if (windowSizeClass.isWidthAtLeastBreakpoint(WindowSizeClass.WIDTH_DP_EXPANDED_LOWER_BOUND)) {
         PermanentNavigationDrawer(
             drawerContent = {
                 PermanentDrawerSheet(Modifier.width(320.dp)) {
@@ -113,12 +111,12 @@ fun ChatScreen(viewModel: ConversationViewModel, width: WindowWidthSizeClass) {
     } else {
         val drawer = rememberDrawerState(DrawerValue.Closed)
         val scope = rememberCoroutineScope()
-        // Predictive back closes the pane before it leaves the app.
-        BackHandler(enabled = drawer.isOpen) { scope.launch { drawer.close() } }
         ModalNavigationDrawer(
             drawerState = drawer,
             drawerContent = {
-                ModalDrawerSheet {
+                // A sheet given the drawer state handles back itself, and
+                // animates through a predictive back gesture on Android 14+.
+                ModalDrawerSheet(drawerState = drawer) {
                     ConversationList(
                         conversations = conversations,
                         onSelect = { id ->
@@ -273,12 +271,13 @@ private fun Conversation(
 private fun MessageList(messages: List<ChatMessage>) {
     val scroll = rememberLazyListState()
     val scope = rememberCoroutineScope()
-    val animate = animationsEnabled()
     val nearBottom by remember(scroll) { derivedStateOf { scroll.isNearBottom() } }
     // New activity follows the tail only while the reader is already there.
+    // Compose scales every animation by the system's animator duration, so a
+    // device with motion turned off lands on the last message in one frame.
     LaunchedEffect(messages.lastOrNull()?.id) {
         if (messages.isNotEmpty() && nearBottom) {
-            scroll.scrollToLatest(messages.lastIndex, animate)
+            scroll.animateScrollToItem(messages.lastIndex)
         }
     }
     Box(Modifier.fillMaxSize()) {
@@ -297,7 +296,7 @@ private fun MessageList(messages: List<ChatMessage>) {
             modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp),
         ) {
             SmallFloatingActionButton(
-                onClick = { scope.launch { scroll.scrollToLatest(messages.lastIndex, animate) } }
+                onClick = { scope.launch { scroll.animateScrollToItem(messages.lastIndex) } }
             ) {
                 Icon(
                     Icons.Filled.ArrowDownward,
@@ -424,30 +423,9 @@ private fun timeOf(message: ChatMessage): String =
     acceptedAt(message.acceptedAtMs)?.let { DateFormat.getTimeInstance(DateFormat.SHORT).format(it) }
         ?: ""
 
-/**
- * Whether this device animates at all. Compose has no reduced-motion flag of its
- * own; `ANIMATOR_DURATION_SCALE` is what the system setting writes, and it is
- * what every other Android app reads.
- */
-@Composable
-private fun animationsEnabled(): Boolean {
-    val context = LocalContext.current
-    return remember(context) {
-        Settings.Global.getFloat(
-            context.contentResolver,
-            Settings.Global.ANIMATOR_DURATION_SCALE,
-            1f,
-        ) != 0f
-    }
-}
-
 private fun LazyListState.isNearBottom(): Boolean {
     val last = layoutInfo.visibleItemsInfo.lastOrNull() ?: return true
     return last.index >= layoutInfo.totalItemsCount - 1
-}
-
-private suspend fun LazyListState.scrollToLatest(index: Int, animate: Boolean) {
-    if (animate) animateScrollToItem(index) else scrollToItem(index)
 }
 
 @Preview

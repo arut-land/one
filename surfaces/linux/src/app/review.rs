@@ -1,10 +1,11 @@
 //! Visual fixtures for tools/review-linux.sh, compiled only under the `review`
 //! feature. Messages go through the child node; only the typed error is injected.
 use crate::app::{
+    Session,
     shell::{Msg, Shell},
     testing::{descendant, transcript},
 };
-use arut_product_session::{ProductSession, SessionError};
+use arut_product_session::SessionError;
 use gtk::{gio, glib, prelude::*};
 use relm4::ComponentSender;
 use std::{cell::RefCell, rc::Rc};
@@ -26,7 +27,7 @@ const LONG: &str = "A longer message, with wrapping and a second paragraph. We c
 
 pub fn install(
     window: &gtk::ApplicationWindow,
-    session: Rc<ProductSession>,
+    session: Rc<Session>,
     sender: ComponentSender<Shell>,
 ) {
     let action = gio::SimpleAction::new("review", Some(glib::VariantTy::STRING));

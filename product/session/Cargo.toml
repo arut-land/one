@@ -14,7 +14,7 @@ arut-watch.workspace = true
 
 [dev-dependencies]
 arut-feature-chat = { workspace = true, features = ["test-support"] }
-futures-executor = "0.3.31"
+futures-executor = "0.3.34"
 
 [lints]
 workspace = true

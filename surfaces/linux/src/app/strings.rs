@@ -16,26 +16,23 @@ use arut_product_session::chat::{
 };
 use arut_product_session::{FeatureAvailability, SessionError};
 use gtk::glib;
-use std::sync::OnceLock;
+use std::sync::LazyLock;
 
 /// The process-wide localizer, negotiated once from GTK's own language list.
 ///
 /// `glib::language_names()` is the list GLib already resolved from `LANGUAGE`,
 /// `LC_MESSAGES` and the rest, best first and with the `C` locale last;
 /// `Localizer` drops the entries that are not languages.
-fn localizer() -> &'static Localizer {
-    static LOCALIZER: OnceLock<Localizer> = OnceLock::new();
-    LOCALIZER.get_or_init(|| {
-        let preferred: Vec<String> = glib::language_names()
-            .iter()
-            .map(ToString::to_string)
-            .collect();
-        Localizer::negotiate(&preferred)
-    })
-}
+static LOCALIZER: LazyLock<Localizer> = LazyLock::new(|| {
+    let preferred: Vec<String> = glib::language_names()
+        .iter()
+        .map(ToString::to_string)
+        .collect();
+    Localizer::negotiate(&preferred)
+});
 
 pub fn show(message: &Message) -> String {
-    localizer().format(message)
+    LOCALIZER.format(message)
 }
 
 pub fn availability(value: FeatureAvailability) -> String {

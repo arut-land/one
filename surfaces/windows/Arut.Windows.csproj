@@ -30,7 +30,7 @@
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.WindowsAppSDK" Version="2.4.0" />
-    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.0" />
+    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
     <!-- The generated project comes with the bindings project. -->
     <ProjectReference Include="../../bindings/dotnet/Arut.Bindings.csproj" />
     <Content

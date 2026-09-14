@@ -9,8 +9,8 @@
 //! - the generated localization resources match `product/i18n/locales`, the
 //!   generated FFI handles match `bindings/ffi/handles.toml`, and every `x:Uid`
 //!   in the WinUI XAML has entries in the generated `.resw`;
-//! - under `--strict-surfaces`, no surface subscribes to a revision stream by
-//!   hand instead of using its binding package's observation helper.
+//! - no surface subscribes to a revision stream by hand instead of using its
+//!   binding package's observation helper.
 //!
 //! What used to be here and is not: the rule that `runtimes/` and `product/`
 //! may not name a feature service implementation, which Rust privacy already
@@ -309,18 +309,13 @@ fn xaml_files(directory: &Path) -> Result<Vec<std::path::PathBuf>> {
     Ok(files)
 }
 
-pub(crate) fn run(arguments: &[String]) -> Result<()> {
+pub(crate) fn run() -> Result<()> {
     let root = repository_root();
-    let strict_surfaces = arguments
-        .iter()
-        .any(|argument| argument == "--strict-surfaces");
     let mut violations = BTreeSet::new();
     let files = tracked_files(&root)?;
     crates(&mut violations)?;
     typescript_imports(&root, &files, &mut violations);
-    if strict_surfaces {
-        surface_subscriptions(&root, &files, &mut violations);
-    }
+    surface_subscriptions(&root, &files, &mut violations);
     windows_uids(&root, &mut violations)?;
     for path in i18n::run(&root, Run::Check)?.stale {
         violations.insert(format!(
@@ -343,7 +338,8 @@ pub(crate) fn run(arguments: &[String]) -> Result<()> {
     }
     println!(
         "Layer boundaries, the isolated bindings/ffi graph, TypeScript package boundaries, \
-         generated localization resources and FFI handles, and Windows x:Uid references passed"
+         surface revision observation, generated localization resources and FFI handles, \
+         and Windows x:Uid references passed"
     );
     Ok(())
 }

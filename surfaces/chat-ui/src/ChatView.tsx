@@ -5,7 +5,6 @@ import {
   useEffect,
   useRef,
   useState,
-  type FormEvent,
   type ReactNode,
   type TouchEvent,
 } from "react";
@@ -85,11 +84,6 @@ export function ChatView(props: ChatViewProps) {
     announced.current = { chat: props.chatKey, id: latest.id };
     region.textContent = latest.text;
   }, [props.chatKey, props.messages]);
-
-  function submit(event: FormEvent): void {
-    event.preventDefault();
-    props.send();
-  }
 
   function selectChat(chatId: string): void {
     props.selectChat(chatId);
@@ -244,7 +238,9 @@ export function ChatView(props: ChatViewProps) {
               {props.error}
             </p>
           )}
-          <form onSubmit={submit}>
+          {/* React 19 runs a form action in a transition and suppresses the
+              navigation itself, so there is no submit event to cancel. */}
+          <form action={props.send}>
             <textarea
               aria-label={t(strings, "composer-placeholder")}
               autoComplete="off"

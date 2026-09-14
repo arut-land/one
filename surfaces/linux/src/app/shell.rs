@@ -542,7 +542,7 @@ fn install_menu(window: &gtk::ApplicationWindow, button: &gtk::MenuButton) {
 /// plain GTK4. It is also the only overlay `set_help_overlay` accepts, which
 /// is what supplies `win.show-help-overlay`. The deprecation is allowed here
 /// and nowhere else.
-#[allow(deprecated)]
+#[expect(deprecated)]
 fn install_overlay(window: &gtk::ApplicationWindow, display: &gtk::gdk::Display) {
     let group = gtk::ShortcutsGroup::builder()
         .title(strings::show(&Message::LabelShortcutsGeneral))

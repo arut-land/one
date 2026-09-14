@@ -6,21 +6,21 @@ Mise downloads BoltFFI's release binary. Cargo tools use cargo-binstall with sou
 
 | Work | Command | System prerequisites |
 | --- | --- | --- |
-| Everything CI checks | `mise run check` | GTK 4.20+ for the Rust build; network for cargo-deny |
+| Everything CI checks | `mise run check` | GTK 4.22+ for the Rust build; network for cargo-deny |
 | Build everything this machine can build | `mise run build` | Same as above |
 | Regenerate localization resources and handle descriptors | `mise run generate` | None beyond mise |
 | Windows build, formatting and observation tests | `mise run check:windows` | Windows x64, Visual Studio C++ Build Tools and Windows SDK |
 | Windows distributable folder | `mise run publish:windows` | Same as Windows build |
 | Web development | `mise run surface:web` | None beyond mise |
 | JavaScript checks and store tests | `mise run check:ts` | None beyond mise |
-| Linux app | `mise run surface:linux` | GTK 4.20+, C/C++ compiler and pkg-config |
+| Linux app | `mise run surface:linux` | GTK 4.22+, C/C++ compiler and pkg-config |
 | macOS build and Swift tests | `mise run check:apple` | Xcode |
 | Android build | `mise run surface:android` | Android SDK 35, NDK and `ANDROID_NDK_HOME` |
 | Wasm, Apple, Android, .NET bindings | `mise run ffi:wasm` and `ffi:apple`, `ffi:android`, `ffi:csharp` | Per target: Xcode, the NDK, the .NET SDK |
 
 `mise run check` depends on `check:rust`, `check:core-graph`, `check:proto`, `check:deps` and `check:ts`. `mise run build` builds the Linux surface, the daemon, and the web, Chromium, and VS Code bundles. Use the platform tasks on Windows or macOS. CI calls the same tasks and installs platform system dependencies separately.
 
-CI has four workflows' worth of jobs. The Linux job runs `mise run check` and `mise run build` in a Fedora container, because the GitHub Ubuntu image ships GTK 4.14 and the surface needs 4.20. Dependency policy is a separate job running `mise run check:deps`, so an advisory-database fetch failure neither masks a compile failure nor blocks the build. Windows runs `mise run check:windows`; macOS runs `mise run check:apple` on pull requests and version tags; Android has its own workflow, filtered by GitHub's `paths:`.
+CI has four workflows' worth of jobs. The Linux job runs `mise run check` and `mise run build` in a Fedora container, because the GitHub Ubuntu image ships GTK 4.14 and the surface needs 4.22. Dependency policy is a separate job running `mise run check:deps`, so an advisory-database fetch failure neither masks a compile failure nor blocks the build. Windows runs `mise run check:windows`; macOS runs `mise run check:apple` on pull requests and version tags; Android has its own workflow, filtered by GitHub's `paths:`.
 
 ## Where tasks live
 

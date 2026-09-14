@@ -10,7 +10,6 @@ import Observation
 /// generic helper cannot know -- that this screen shows the chat's error first
 /// and the composer's when the chat itself is idle.
 @Observable
-@MainActor
 final class ConversationState {
     let chat: Projection<ChatState>
     let messages: Rows<ChatMessage>

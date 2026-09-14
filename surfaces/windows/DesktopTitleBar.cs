@@ -4,9 +4,10 @@ using Microsoft.UI.Xaml.Controls;
 
 namespace Arut.Surface.Windows;
 
-// WinUI 2.3.6 copies AppWindow's physical caption insets into XAML GridLengths.
+// WinUI copies AppWindow's physical caption insets into XAML GridLengths.
 // Convert them to DIPs until the upstream TitleBar performs that conversion.
-// Recheck TitleBar::UpdatePadding when upgrading WinUI; see docs/WINDOWS-AUDIT.md.
+// Still open as of Windows App SDK 2.4.0; recheck TitleBar::UpdatePadding against
+// https://github.com/microsoft/microsoft-ui-xaml/issues/10344 on the next upgrade.
 public sealed class DesktopTitleBar : TitleBar
 {
     private ColumnDefinition? left;
@@ -24,8 +25,7 @@ public sealed class DesktopTitleBar : TitleBar
         };
         Unloaded += (_, _) =>
         {
-            if (root is not null)
-                root.Changed -= RootChanged;
+            root?.Changed -= RootChanged;
             root = null;
         };
         SizeChanged += (_, _) => UpdateInsets();

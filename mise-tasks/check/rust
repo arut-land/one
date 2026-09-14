@@ -13,4 +13,8 @@ cargo machete
 cargo check --target wasm32-unknown-unknown \
   -p arut_ffi -p arut-i18n -p arut-feature-chat -p arut-product-session \
   -p arut-watch -p arut-storage -p arut-authority
-cargo run --quiet -p arut-dev -- check --strict-surfaces
+# The review fixtures rewrite the binary and are built by nothing else, so they
+# rot silently: `ProductSession` gaining a generic left them uncompilable for a
+# commit before `tools/review-linux.sh` next ran. Type-check them here.
+cargo check -p arut-linux --features review
+cargo run --quiet -p arut-dev -- check

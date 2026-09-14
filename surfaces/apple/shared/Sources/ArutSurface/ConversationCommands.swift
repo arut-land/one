@@ -1,15 +1,10 @@
 #if os(macOS)
 import SwiftUI
 
-private struct SessionStateKey: FocusedValueKey {
-    typealias Value = SessionState
-}
-
 extension FocusedValues {
-    var conversations: SessionState? {
-        get { self[SessionStateKey.self] }
-        set { self[SessionStateKey.self] = newValue }
-    }
+    // `@Entry` writes the key type and both accessors. It expands at compile
+    // time, so it costs nothing at this deployment floor.
+    @Entry var conversations: SessionState?
 }
 
 public struct ConversationCommands: Commands {

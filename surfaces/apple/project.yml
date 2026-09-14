@@ -1,6 +1,15 @@
 name: Arut
 options:
   bundleIdPrefix: dev.arut
+  # The toolchain the generated project declares it was last checked against.
+  # Xcode 26 is the floor: it carries Swift 6.2, which is the manifest level
+  # both Package.swift files ask for, and the Liquid Glass APIs the views use.
+  xcodeVersion: "26.0"
+  # One floor per platform, so no target repeats it. macOS 14 / iOS 17 is what
+  # SwiftUI's Observation needs; nothing here needs more.
+  deploymentTarget:
+    macOS: "14.0"
+    iOS: "17.0"
 settings:
   GENERATE_INFOPLIST_FILE: YES
   ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
@@ -13,7 +22,6 @@ targets:
   ArutMac:
     type: application
     platform: macOS
-    deploymentTarget: "14.0"
     sources:
       - shared/app
     dependencies:
@@ -24,7 +32,6 @@ targets:
   ArutiOS:
     type: application
     platform: iOS
-    deploymentTarget: "17.0"
     sources:
       - shared/app
     dependencies:
@@ -36,7 +43,6 @@ targets:
   ArutMacUITests:
     type: bundle.ui-testing
     platform: macOS
-    deploymentTarget: "14.0"
     sources:
       - tests
     dependencies:

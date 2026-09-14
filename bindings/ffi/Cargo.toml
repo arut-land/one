@@ -16,7 +16,7 @@ boltffi = "=0.30.1"
 arut-runtime-host-polled.workspace = true
 
 [dev-dependencies]
-futures-executor = "0.3.31"
+futures-executor = "0.3.34"
 
 [lints]
 workspace = true

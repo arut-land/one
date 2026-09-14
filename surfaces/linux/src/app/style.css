@@ -163,3 +163,13 @@ paned.arut-collapsed > separator {
         outline-offset: -2px;
     }
 }
+
+/* GTK resolves this from the provider's `prefers-reduced-motion`, which
+   theme.rs sets from GTK's own interface setting. */
+@media (prefers-reduced-motion: reduce) {
+    .arut-window,
+    .arut-window * {
+        transition: none;
+        animation: none;
+    }
+}

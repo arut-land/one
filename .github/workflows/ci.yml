@@ -17,9 +17,11 @@ jobs:
   linux:
     name: Linux
     runs-on: ubuntu-latest
-    # The Linux surface needs GTK >= 4.20 (ADR 0013, ADR 0020) for the portal
-    # color-scheme reading; Ubuntu 24.04 ships 4.14, so the job runs in a
-    # Fedora container, which tracks current GTK.
+    # The Linux surface needs GTK >= 4.22 (ADR 0013, ADR 0020) for the
+    # color-scheme, contrast and reduced-motion settings GTK reads from the
+    # portal itself; Ubuntu 24.04 ships 4.14, so the job runs in a Fedora
+    # container, which tracks current GTK. fedora:latest is Fedora 44 and
+    # ships gtk4-devel 4.22.5.
     container: fedora:latest
     # GitHub sets HOME=/github/home inside containers while the process runs as
     # root; rustup refuses that mismatch, so the job pins HOME to root's home.

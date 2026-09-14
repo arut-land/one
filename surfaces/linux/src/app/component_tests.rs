@@ -529,7 +529,7 @@ fn shell_availability_and_search_follow_the_session() {
 #[ignore = "requires a GTK display; run with --ignored --test-threads=1"]
 // `GtkShortcutsWindow` is deprecated in GTK 4.18; see the contract note on
 // `shell::install_overlay` for why this surface still uses it.
-#[allow(deprecated)]
+#[expect(deprecated)]
 fn every_shortcut_reaches_an_action_the_menu_and_the_overlay_name() {
     let Some(fixture) = fixture("every_shortcut_reaches_an_action_the_menu_and_the_overlay_name")
     else {

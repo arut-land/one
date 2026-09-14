@@ -51,8 +51,7 @@ public sealed partial class ChatView : UserControl, IAsyncDisposable
 
     private void FollowMessages()
     {
-        if (messages is not null)
-            messages.CollectionChanged -= MessagesChanged;
+        messages?.CollectionChanged -= MessagesChanged;
         messages = ViewModel.Conversation.Messages;
         messages.CollectionChanged += MessagesChanged;
     }
@@ -205,8 +204,7 @@ public sealed partial class ChatView : UserControl, IAsyncDisposable
             return;
         disposed = true;
         ViewModel.PropertyChanged -= ConversationChanged;
-        if (messages is not null)
-            messages.CollectionChanged -= MessagesChanged;
+        messages?.CollectionChanged -= MessagesChanged;
         await ViewModel.DisposeAsync();
     }
 }

@@ -42,8 +42,7 @@ public sealed class MainWindow : Window
         };
         view.Unloaded += (_, _) =>
         {
-            if (root is not null)
-                root.Changed -= RootChanged;
+            root?.Changed -= RootChanged;
             root = null;
         };
         ExtendsContentIntoTitleBar = true;

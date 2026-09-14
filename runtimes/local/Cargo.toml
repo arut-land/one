@@ -13,16 +13,16 @@ arut-protocol.workspace = true
 arut-rpc.workspace = true
 arut-storage = { workspace = true, features = ["redb"] }
 arut-transport.workspace = true
-axum = "0.8.4"
+axum = "0.8.9"
 thiserror = "2.0.20"
-tokio = { version = "1.47.1", features = ["macros", "net", "rt-multi-thread", "signal", "process", "io-util", "io-std"] }
+tokio = { version = "1.53.1", features = ["macros", "net", "rt-multi-thread", "signal", "process", "io-util", "io-std"] }
 process-wrap = { version = "10", default-features = false, features = ["tokio1", "process-group", "job-object", "kill-on-drop"] }
 
 [target.'cfg(unix)'.dependencies]
 rustix = { version = "1.1.4", features = ["process"] }
 
 [dev-dependencies]
-futures-util = "0.3.31"
+futures-util = "0.3.34"
 
 [[bin]]
 name = "arutd"

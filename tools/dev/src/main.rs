@@ -33,8 +33,8 @@ fn main() -> ExitCode {
     let command = std::env::args().nth(1);
     let result: Result<(), Box<dyn Error>> = match command.as_deref() {
         Some("generate") => generate().map_err(Into::into),
-        Some("check") => check::run(&std::env::args().collect::<Vec<_>>()),
-        _ => Err("usage: arut-dev <generate|check [--strict-surfaces]>".into()),
+        Some("check") => check::run(),
+        _ => Err("usage: arut-dev <generate|check>".into()),
     };
     match result {
         Ok(()) => ExitCode::SUCCESS,
