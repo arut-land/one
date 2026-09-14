@@ -13,6 +13,7 @@ mod log;
 mod memory;
 #[cfg(feature = "redb")]
 mod redb;
+pub use arut_protocol::storage::v1::Snapshot;
 pub use memory::{MemoryLog, MemoryStore};
 #[cfg(feature = "redb")]
 pub use redb::{Redb, RedbLog};
@@ -27,17 +28,6 @@ pub struct Record<F> {
     pub epoch: u64,
     pub command_id: String,
     pub fact: F,
-}
-
-/// The projection a log can resume from, stored as its own Protobuf row.
-#[derive(Clone, PartialEq, prost::Message)]
-pub struct Snapshot {
-    #[prost(uint64, tag = "1")]
-    pub sequence: u64,
-    #[prost(uint64, tag = "2")]
-    pub epoch: u64,
-    #[prost(bytes = "vec", tag = "3")]
-    pub data: Vec<u8>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
@@ -69,7 +59,7 @@ pub type Result<T> = std::result::Result<T, StorageError>;
 
 /// A synchronous decision over the current sequence, unread facts, and retry outcome.
 pub type CommitDecision<'a, F> =
-    dyn FnMut(u64, &[Record<F>], Option<Record<F>>) -> Result<Option<F>> + 'a;
+    dyn FnOnce(u64, &[Record<F>], Option<Record<F>>) -> Result<Option<F>> + 'a;
 
 pub trait FactLog<F: Fact>: Send + Sync {
     /// Refresh, inspect a retry, and optionally append under one storage lock.
@@ -81,7 +71,7 @@ pub trait FactLog<F: Fact>: Send + Sync {
         cursor: Option<u64>,
         epoch: u64,
         command_id: &str,
-        decide: &mut CommitDecision<'_, F>,
+        decide: Box<CommitDecision<'_, F>>,
     ) -> Result<Option<Record<F>>>;
     fn outcome_of(&self, command_id: &str) -> Result<Option<Record<F>>>;
     /// Reads records strictly after the acknowledged cursor.
@@ -91,28 +81,61 @@ pub trait FactLog<F: Fact>: Send + Sync {
     fn compact(&self, through: u64) -> Result<()>;
 }
 pub trait BlobStore: Send + Sync {
-    fn put_blob(&self, bytes: &[u8]) -> Result<String>;
-    /// Rejects anything that is not a BLAKE3 digest; verifies what it returns.
-    fn get_blob(&self, digest: &str) -> Result<Option<Vec<u8>>>;
+    fn put_blob(&self, bytes: &[u8]) -> Result<BlobDigest>;
+    fn get_blob(&self, digest: &BlobDigest) -> Result<Option<Vec<u8>>>;
 }
 pub trait KeyValue: Send + Sync {
     fn get(&self, key: &str) -> Result<Option<Vec<u8>>>;
     fn put(&self, key: &str, value: &[u8]) -> Result<()>;
     fn remove(&self, key: &str) -> Result<()>;
 }
-/// The address of a blob: BLAKE3, lowercase hex, 64 characters. It is also what
-/// `iroh-blobs` addresses by, so the two agree without a translation table.
-pub fn digest(bytes: &[u8]) -> String {
-    blake3::hash(bytes).to_hex().to_string()
-}
-pub(crate) fn checked_digest(id: &str) -> Result<&str> {
-    if id.len() == 64
-        && id
-            .bytes()
-            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
-    {
-        Ok(id)
-    } else {
-        Err(StorageError::Corrupt)
+/// A canonical lowercase BLAKE3 content address.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct BlobDigest(String);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct InvalidBlobDigest;
+
+impl std::fmt::Display for InvalidBlobDigest {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str("a blob digest must be 64 lowercase hexadecimal characters")
     }
+}
+
+impl std::error::Error for InvalidBlobDigest {}
+
+impl std::str::FromStr for BlobDigest {
+    type Err = InvalidBlobDigest;
+
+    fn from_str(value: &str) -> std::result::Result<Self, Self::Err> {
+        (value.len() == 64
+            && value
+                .bytes()
+                .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte)))
+        .then(|| Self(value.to_owned()))
+        .ok_or(InvalidBlobDigest)
+    }
+}
+
+impl AsRef<str> for BlobDigest {
+    fn as_ref(&self) -> &str {
+        &self.0
+    }
+}
+
+impl std::borrow::Borrow<str> for BlobDigest {
+    fn borrow(&self) -> &str {
+        self.as_ref()
+    }
+}
+
+impl std::fmt::Display for BlobDigest {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(self.as_ref())
+    }
+}
+
+/// The content address of `bytes`.
+pub fn digest(bytes: &[u8]) -> BlobDigest {
+    BlobDigest(blake3::hash(bytes).to_hex().to_string())
 }

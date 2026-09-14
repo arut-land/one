@@ -26,7 +26,7 @@ pub(crate) fn commit_policy<F: Fact, S: LogStore<F>>(
     cursor: Option<u64>,
     epoch: u64,
     command_id: &str,
-    decide: &mut CommitDecision<'_, F>,
+    decide: Box<CommitDecision<'_, F>>,
 ) -> Result<Option<Record<F>>> {
     let through = store.watermark()?;
     if cursor.is_some_and(|cursor| cursor < through) {

@@ -20,6 +20,7 @@ public sealed partial class ChatViewModel : ObservableObject, IAsyncDisposable
     private readonly ConversationsHandle list;
     private readonly Projection<ChatSummary[]> summaries;
     private readonly EchoGuard echo = new();
+    private readonly CancellationTokenSource lifetime = new();
     /// <summary>Most recently shown last: the eviction order.</summary>
     private readonly List<ConversationViewModel> resident = [];
     private ConversationViewModel pending;
@@ -80,6 +81,62 @@ public sealed partial class ChatViewModel : ObservableObject, IAsyncDisposable
         }
         list.Select(id);
         Show(model);
+    }
+
+    public async Task<bool> RenameAsync(string id, string title)
+    {
+        if (disposed || string.IsNullOrWhiteSpace(title))
+            return false;
+        try
+        {
+            var accepted = await list.Rename(id, title, lifetime.Token);
+            if (accepted)
+                summaries.Refresh();
+            return accepted;
+        }
+        catch (OperationCanceledException) when (lifetime.IsCancellationRequested)
+        {
+            return false;
+        }
+        catch (Exception exception)
+        {
+            System.Diagnostics.Trace.TraceError(exception.ToString());
+            return false;
+        }
+    }
+
+    public async Task<bool> DeleteAsync(string id)
+    {
+        if (disposed)
+            return false;
+        try
+        {
+            if (!await list.Delete(id, lifetime.Token))
+                return false;
+
+            if (Conversation.Id == id)
+                NewConversation();
+            else if (pending.Id == id)
+                pending = Track(new ConversationViewModel(session.NewChat()));
+
+            var deleted = resident.Where(model => model.Id == id).ToArray();
+            foreach (var model in deleted)
+            {
+                resident.Remove(model);
+                await model.DisposeAsync();
+            }
+            summaries.Refresh();
+            return true;
+        }
+        catch (OperationCanceledException) when (lifetime.IsCancellationRequested)
+        {
+            return false;
+        }
+        catch (Exception exception)
+        {
+            System.Diagnostics.Trace.TraceError(exception.ToString());
+            return false;
+        }
     }
 
     // Rust narrows the list; writing the query is the whole search here.
@@ -166,10 +223,12 @@ public sealed partial class ChatViewModel : ObservableObject, IAsyncDisposable
         if (disposed)
             return;
         disposed = true;
+        lifetime.Cancel();
         await summaries.DisposeAsync();
         foreach (var model in resident)
             await model.DisposeAsync();
         resident.Clear();
         list.Dispose();
+        lifetime.Dispose();
     }
 }

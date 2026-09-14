@@ -3,10 +3,13 @@
 <resources>
     <string name="action_about">About Arut</string>
     <string name="action_app_help">Arut Help</string>
+    <string name="action_cancel">Cancel</string>
     <string name="action_clear_search">Clear the search</string>
     <string name="action_close_history">Close chat history</string>
     <string name="action_collapse_sidebar">Collapse sidebar</string>
+    <string name="action_conversation_options">More options for %1$s</string>
     <string name="action_copy_message">Copy message</string>
+    <string name="action_delete_conversation">Delete</string>
     <string name="action_expand_sidebar">Expand sidebar</string>
     <string name="action_focus_composer">Focus message field</string>
     <string name="action_main_menu">Main menu</string>
@@ -18,7 +21,9 @@
     <string name="action_open_history">Open chat history</string>
     <string name="action_previous_conversation">Previous conversation</string>
     <string name="action_quit">Quit</string>
+    <string name="action_rename_conversation">Rename</string>
     <string name="action_retry">Retry</string>
+    <string name="action_save">Save</string>
     <string name="action_scroll_to_latest">Scroll to latest message</string>
     <string name="action_search_conversations">Search conversations</string>
     <string name="action_send">Send</string>
@@ -60,9 +65,13 @@
     <string name="composer_placeholder">Message Arut</string>
     <string name="composer_status_connecting">Connecting draft…</string>
     <string name="composer_status_failed">Could not synchronize the draft. Check the node connection.</string>
+    <string name="conversation_delete_message">This conversation and its messages will be permanently deleted.</string>
+    <string name="conversation_delete_title">Delete conversation?</string>
+    <string name="conversation_rename_title">Rename conversation</string>
     <string name="conversation_search_empty">No matching conversations</string>
     <string name="conversation_search_placeholder">Search conversations</string>
     <string name="label_chat_history">Chat history</string>
+    <string name="label_conversation_title">Conversation title</string>
     <string name="label_conversations">Conversations</string>
     <string name="label_draft">Message draft</string>
     <string name="label_draft_sync">Draft synchronization</string>

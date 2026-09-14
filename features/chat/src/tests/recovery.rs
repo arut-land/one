@@ -18,7 +18,7 @@ fn transcript(service: &ChatServiceImpl, chat_id: &str) -> usize {
 }
 
 #[test]
-fn restart_recovers_transcript_operations_drafts_and_send_deduplication() {
+fn restart_recovers_transcript_drafts_and_send_deduplication() {
     let path = std::env::temp_dir().join(format!("arut-recovery-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&path);
     std::fs::create_dir_all(&path).unwrap();
@@ -82,7 +82,6 @@ fn restart_recovers_transcript_operations_drafts_and_send_deduplication() {
             .all(|message| message.accepted_at_ms == 123)
     );
     assert_eq!(transcript(&recovered, &first.chat_id), 4);
-    assert_eq!(recovered.projection().completed_operations.len(), 2);
     assert_eq!(
         recovered_composer
             .snapshot(&ComposerScope::chat(&first.chat_id))

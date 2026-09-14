@@ -81,7 +81,7 @@ impl SimpleComponent for Conversations {
         let selection = gtk::SingleSelection::new(Some(store.clone()));
         selection.set_autoselect(false);
         selection.set_can_unselect(true);
-        let list = gtk::ListView::new(Some(selection.clone()), Some(row_factory()));
+        let list = gtk::ListView::new(Some(selection.clone()), Some(row_factory(session.clone())));
         list.add_css_class("navigation-sidebar");
         list.set_single_click_activate(true);
         list.update_property(&[gtk::accessible::Property::Label(&strings::show(
@@ -190,9 +190,9 @@ fn select_row(selection: &gtk::SingleSelection, selected: Option<&str>) {
     selection.set_selected(position.unwrap_or(gtk::INVALID_LIST_POSITION));
 }
 
-fn row_factory() -> gtk::SignalListItemFactory {
+fn row_factory(session: Rc<Session>) -> gtk::SignalListItemFactory {
     let factory = gtk::SignalListItemFactory::new();
-    factory.connect_setup(|_, item| {
+    factory.connect_setup(move |_, item| {
         let item = item.downcast_ref::<gtk::ListItem>().unwrap();
         let row = gtk::Box::new(gtk::Orientation::Horizontal, 8);
         row.add_css_class("arut-conversation-row");
@@ -219,6 +219,92 @@ fn row_factory() -> gtk::SignalListItemFactory {
         labels.append(&preview);
         row.append(&labels);
         row.append(&unread);
+        let menu = gio::Menu::new();
+        menu.append(
+            Some(&strings::show(&Message::ActionRenameConversation)),
+            Some("conversation.rename"),
+        );
+        menu.append(
+            Some(&strings::show(&Message::ActionDeleteConversation)),
+            Some("conversation.delete"),
+        );
+        let menu_button = gtk::MenuButton::builder()
+            .icon_name("arut-menu-symbolic")
+            .menu_model(&menu)
+            .valign(gtk::Align::Center)
+            .build();
+        menu_button.add_css_class("flat");
+        menu_button.update_property(&[gtk::accessible::Property::Label(&strings::show(
+            &Message::ActionMainMenu,
+        ))]);
+        row.append(&menu_button);
+
+        let actions = gio::SimpleActionGroup::new();
+        let rename = gio::SimpleAction::new("rename", None);
+        rename.connect_activate({
+            let (item, row, session) = (item.downgrade(), row.downgrade(), session.clone());
+            move |_, _| {
+                let (Some(item), Some(row)) = (item.upgrade(), row.upgrade()) else {
+                    return;
+                };
+                let Some(conversation) = item
+                    .item()
+                    .and_then(|item| item.downcast::<ConversationItem>().ok())
+                else {
+                    return;
+                };
+                show_rename_dialog(&row, conversation, session.clone());
+            }
+        });
+        actions.add_action(&rename);
+        let delete = gio::SimpleAction::new("delete", None);
+        delete.connect_activate({
+            let (item, row, session) = (item.downgrade(), row.downgrade(), session.clone());
+            move |_, _| {
+                let (Some(item), Some(row)) = (item.upgrade(), row.upgrade()) else {
+                    return;
+                };
+                let Some(conversation) = item
+                    .item()
+                    .and_then(|item| item.downcast::<ConversationItem>().ok())
+                else {
+                    return;
+                };
+                confirm_delete(&row, conversation.id(), session.clone());
+            }
+        });
+        actions.add_action(&delete);
+        row.insert_action_group("conversation", Some(&actions));
+
+        let open_menu = gio::SimpleAction::new("menu", None);
+        open_menu.connect_activate({
+            let menu_button = menu_button.downgrade();
+            move |_, _| {
+                if let Some(popover) = menu_button.upgrade().and_then(|button| button.popover()) {
+                    popover.popup();
+                }
+            }
+        });
+        actions.add_action(&open_menu);
+        let shortcuts = gtk::ShortcutController::new();
+        for trigger in ["Menu", "<Shift>F10"] {
+            shortcuts.add_shortcut(gtk::Shortcut::new(
+                gtk::ShortcutTrigger::parse_string(trigger),
+                Some(gtk::NamedAction::new("conversation.menu")),
+            ));
+        }
+        row.add_controller(shortcuts);
+        let secondary_click = gtk::GestureClick::new();
+        secondary_click.set_button(gtk::gdk::BUTTON_SECONDARY);
+        secondary_click.connect_pressed({
+            let menu_button = menu_button.downgrade();
+            move |_, _, _, _| {
+                if let Some(popover) = menu_button.upgrade().and_then(|button| button.popover()) {
+                    popover.popup();
+                }
+            }
+        });
+        row.add_controller(secondary_click);
         // Expressions follow ListItem.item on recycling; no signal handlers
         // or bindings accumulate when an existing row is rebound.
         let expression = gtk::PropertyExpression::new(
@@ -239,4 +325,88 @@ fn row_factory() -> gtk::SignalListItemFactory {
         item.set_child(Some(&row));
     });
     factory
+}
+
+#[expect(
+    deprecated,
+    reason = "plain GTK has no non-deprecated dialog with an entry"
+)]
+fn show_rename_dialog(row: &gtk::Box, conversation: ConversationItem, session: Rc<Session>) {
+    let Some(window) = row
+        .root()
+        .and_then(|root| root.downcast::<gtk::Window>().ok())
+    else {
+        return;
+    };
+    let dialog = gtk::Dialog::with_buttons(
+        Some(&strings::show(&Message::ConversationRenameTitle)),
+        Some(&window),
+        gtk::DialogFlags::MODAL | gtk::DialogFlags::DESTROY_WITH_PARENT,
+        &[
+            (
+                &strings::show(&Message::ActionCancel),
+                gtk::ResponseType::Cancel,
+            ),
+            (
+                &strings::show(&Message::ActionSave),
+                gtk::ResponseType::Accept,
+            ),
+        ],
+    );
+    dialog.set_default_response(gtk::ResponseType::Accept);
+    let entry = gtk::Entry::new();
+    entry.set_text(&conversation.title());
+    entry.set_activates_default(true);
+    entry.set_hexpand(true);
+    entry.set_margin_top(12);
+    entry.set_margin_bottom(12);
+    entry.set_margin_start(12);
+    entry.set_margin_end(12);
+    entry.update_property(&[gtk::accessible::Property::Label(&strings::show(
+        &Message::ConversationRenameTitle,
+    ))]);
+    dialog.content_area().append(&entry);
+    if let Some(save) = dialog.widget_for_response(gtk::ResponseType::Accept) {
+        save.add_css_class("suggested-action");
+        save.set_sensitive(!entry.text().trim().is_empty());
+        entry.connect_changed(move |entry| save.set_sensitive(!entry.text().trim().is_empty()));
+    }
+    dialog.connect_response(move |dialog, response| {
+        if response == gtk::ResponseType::Accept {
+            let title = entry.text().trim().to_owned();
+            if !title.is_empty() {
+                let (id, session) = (conversation.id(), session.clone());
+                gtk::glib::spawn_future_local(async move {
+                    session.rename(id, title).await;
+                });
+            }
+        }
+        dialog.close();
+    });
+    dialog.present();
+}
+
+fn confirm_delete(row: &gtk::Box, id: String, session: Rc<Session>) {
+    let Some(window) = row
+        .root()
+        .and_then(|root| root.downcast::<gtk::Window>().ok())
+    else {
+        return;
+    };
+    let dialog = gtk::AlertDialog::builder()
+        .modal(true)
+        .message(strings::show(&Message::ConversationDeleteTitle))
+        .detail(strings::show(&Message::ConversationDeleteMessage))
+        .buttons([
+            strings::show(&Message::ActionCancel),
+            strings::show(&Message::ActionDeleteConversation),
+        ])
+        .cancel_button(0)
+        .default_button(0)
+        .build();
+    gtk::glib::spawn_future_local(async move {
+        if dialog.choose_future(Some(&window)).await == Ok(1) {
+            session.delete(id).await;
+        }
+    });
 }

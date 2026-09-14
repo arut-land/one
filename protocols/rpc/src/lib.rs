@@ -171,30 +171,22 @@ impl From<std::io::Error> for Status {
     }
 }
 
-/// A typed reason carried in [`Status::details`] as a single tag byte.
-///
-/// The tag is the variant's index in `ALL`, so one const drives the wire byte,
-/// `Display`, and the locale test. Both ends of a `Status` carrying one come
-/// from the same build, so the index is stable where it is read; a tag this
-/// binary does not know about reads back as `None` and the caller falls back to
-/// [`Self::CODE`] and the message.
+/// A typed reason carried in [`Status::details`] as a Protobuf message.
 pub trait StatusDetail: Copy + PartialEq + Sized + 'static {
     /// The coarse code a caller that does not know this type still handles.
     const CODE: Code;
-    /// Every variant, in tag order.
-    const ALL: &'static [Self];
+    type Wire: Message + Default;
+
+    fn into_wire(self) -> Self::Wire;
+    fn from_wire(detail: Self::Wire) -> Option<Self>;
 
     /// Wrap this reason in a `Status`.
     #[must_use]
     fn into_status(self, message: impl Into<String>) -> Status {
-        let tag = Self::ALL
-            .iter()
-            .position(|variant| *variant == self)
-            .expect("every variant of a StatusDetail is listed in ALL");
         Status {
             code: Self::CODE,
             message: message.into(),
-            details: vec![u8::try_from(tag).expect("a StatusDetail has at most 256 variants")],
+            details: self.into_wire().encode_to_vec(),
         }
     }
 
@@ -204,10 +196,9 @@ pub trait StatusDetail: Copy + PartialEq + Sized + 'static {
         if status.code != Self::CODE {
             return None;
         }
-        match status.details.as_slice() {
-            [tag] => Self::ALL.get(usize::from(*tag)).copied(),
-            _ => None,
-        }
+        Self::Wire::decode(status.details.as_slice())
+            .ok()
+            .and_then(Self::from_wire)
     }
 }
 
@@ -581,9 +572,29 @@ mod tests {
         First,
         Second,
     }
+    #[derive(Clone, PartialEq, Message)]
+    struct ReasonDetail {
+        #[prost(uint32, tag = "1")]
+        reason: u32,
+    }
     impl StatusDetail for Reason {
         const CODE: Code = Code::Unavailable;
-        const ALL: &'static [Self] = &[Self::First, Self::Second];
+        type Wire = ReasonDetail;
+        fn into_wire(self) -> Self::Wire {
+            ReasonDetail {
+                reason: match self {
+                    Self::First => 1,
+                    Self::Second => 2,
+                },
+            }
+        }
+        fn from_wire(detail: Self::Wire) -> Option<Self> {
+            match detail.reason {
+                1 => Some(Self::First),
+                2 => Some(Self::Second),
+                _ => None,
+            }
+        }
     }
 
     #[test]
@@ -622,8 +633,8 @@ mod tests {
     }
 
     #[test]
-    fn every_status_detail_variant_round_trips_through_its_tag() {
-        for &reason in Reason::ALL {
+    fn every_status_detail_variant_round_trips_through_protobuf() {
+        for reason in [Reason::First, Reason::Second] {
             let status = reason.into_status("test");
             assert_eq!(status.code, Code::Unavailable);
             assert_eq!(Reason::from_status(&status), Some(reason));

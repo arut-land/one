@@ -67,4 +67,3 @@ message WatchComposerRequest {
 message WatchComposerResponse {
   ComposerSnapshot snapshot = 2;
 }
-

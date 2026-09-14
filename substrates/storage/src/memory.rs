@@ -1,7 +1,6 @@
 use crate::log::{LogStore, commit_policy, compaction_allowed, snapshot_allowed};
 use crate::{
-    BlobStore, Fact, FactLog, KeyValue, Record, Result, Snapshot, StorageError, checked_digest,
-    digest,
+    BlobDigest, BlobStore, Fact, FactLog, KeyValue, Record, Result, Snapshot, StorageError, digest,
 };
 use std::{
     collections::BTreeMap,
@@ -62,7 +61,7 @@ impl<F: Fact> FactLog<F> for MemoryLog<F> {
         cursor: Option<u64>,
         epoch: u64,
         id: &str,
-        decide: &mut crate::CommitDecision<'_, F>,
+        decide: Box<crate::CommitDecision<'_, F>>,
     ) -> Result<Option<Record<F>>> {
         commit_policy(self.state()?, cursor, epoch, id, decide)
     }
@@ -98,7 +97,7 @@ impl<F: Fact> FactLog<F> for MemoryLog<F> {
 #[derive(Default)]
 struct MemoryState {
     values: BTreeMap<String, Vec<u8>>,
-    blobs: BTreeMap<String, Vec<u8>>,
+    blobs: BTreeMap<BlobDigest, Vec<u8>>,
 }
 #[derive(Default)]
 pub struct MemoryStore(Mutex<MemoryState>);
@@ -121,12 +120,12 @@ impl KeyValue for MemoryStore {
     }
 }
 impl BlobStore for MemoryStore {
-    fn put_blob(&self, bytes: &[u8]) -> Result<String> {
+    fn put_blob(&self, bytes: &[u8]) -> Result<BlobDigest> {
         let id = digest(bytes);
         self.state()?.blobs.insert(id.clone(), bytes.to_vec());
         Ok(id)
     }
-    fn get_blob(&self, id: &str) -> Result<Option<Vec<u8>>> {
-        Ok(self.state()?.blobs.get(checked_digest(id)?).cloned())
+    fn get_blob(&self, id: &BlobDigest) -> Result<Option<Vec<u8>>> {
+        Ok(self.state()?.blobs.get(id).cloned())
     }
 }

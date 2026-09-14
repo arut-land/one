@@ -5,6 +5,7 @@ using global::Windows.System;
 using global::Windows.UI.Core;
 using Microsoft.UI.Input;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Automation.Peers;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
@@ -96,6 +97,79 @@ public sealed partial class ChatView : UserControl, IAsyncDisposable
         if (disposed)
             return;
         FocusComposer();
+    }
+
+    private async void RenameConversation(object sender, RoutedEventArgs args)
+    {
+        if (disposed || sender is not MenuFlyoutItem { CommandParameter: ConversationRow row })
+            return;
+
+        var title = new TextBox
+        {
+            Header = Labels.RenameConversationTitle,
+            Text = row.Title,
+            SelectionStart = 0,
+            SelectionLength = row.Title.Length,
+        };
+        AutomationProperties.SetName(title, Labels.RenameConversationTitle);
+        var dialog = new ContentDialog
+        {
+            XamlRoot = XamlRoot,
+            Title = Labels.RenameConversationTitle,
+            Content = title,
+            PrimaryButtonText = Labels.Save,
+            CloseButtonText = Labels.Cancel,
+            DefaultButton = ContentDialogButton.Primary,
+            IsPrimaryButtonEnabled = !string.IsNullOrWhiteSpace(row.Title),
+        };
+        title.TextChanged += (_, _) =>
+            dialog.IsPrimaryButtonEnabled = !string.IsNullOrWhiteSpace(title.Text);
+
+        if (await dialog.ShowAsync() == ContentDialogResult.Primary)
+            await ViewModel.RenameAsync(row.Id, title.Text);
+    }
+
+    private async void DeleteConversation(object sender, RoutedEventArgs args)
+    {
+        if (disposed || sender is not MenuFlyoutItem { CommandParameter: ConversationRow row })
+            return;
+
+        var dialog = new ContentDialog
+        {
+            XamlRoot = XamlRoot,
+            Title = Labels.DeleteConversationTitle,
+            Content = $"{row.Title}\n\n{Labels.DeleteConversationMessage}",
+            PrimaryButtonText = Labels.DeleteConversation,
+            CloseButtonText = Labels.Cancel,
+            DefaultButton = ContentDialogButton.Close,
+        };
+        if (await dialog.ShowAsync() == ContentDialogResult.Primary)
+            await ViewModel.DeleteAsync(row.Id);
+    }
+
+    private void HistoryKeyDown(object sender, KeyRoutedEventArgs args)
+    {
+        if (
+            args.Key != VirtualKey.Application
+            && (args.Key != VirtualKey.F10 || !IsDown(VirtualKey.Shift))
+        )
+            return;
+
+        var focused = FocusManager.GetFocusedElement(XamlRoot) as DependencyObject;
+        while (focused is not null && focused != History)
+        {
+            if (focused is ListViewItem item)
+            {
+                var root = item.ContentTemplateRoot as FrameworkElement;
+                if (root?.ContextFlyout is { } flyout)
+                {
+                    flyout.ShowAt(root);
+                    args.Handled = true;
+                }
+                return;
+            }
+            focused = VisualTreeHelper.GetParent(focused);
+        }
     }
 
     private void AnnounceMessage(MessageRow row) =>

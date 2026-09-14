@@ -279,6 +279,7 @@
               SelectedIndex="{x:Bind ViewModel.SelectedIndex, Mode=TwoWay}"
               IsItemClickEnabled="True"
               ItemClick="ChatActivated"
+              KeyDown="HistoryKeyDown"
             >
               <ListView.ItemContainerTransitions>
                 <TransitionCollection>
@@ -297,7 +298,36 @@
               </ListView.ItemContainerStyle>
               <ListView.ItemTemplate>
                 <DataTemplate x:DataType="local:ConversationRow">
-                  <Grid ColumnSpacing="12">
+                  <Grid
+                    ColumnSpacing="12"
+                    AutomationProperties.Name="{x:Bind Title, Mode=OneWay}"
+                  >
+                    <Grid.ContextFlyout>
+                      <MenuFlyout>
+                        <MenuFlyoutItem
+                          Text="{x:Bind local:Labels.RenameConversation}"
+                          AutomationProperties.Name="{x:Bind local:Labels.RenameConversation}"
+                          CommandParameter="{x:Bind}"
+                          Click="RenameConversation"
+                        >
+                          <MenuFlyoutItem.Icon>
+                            <FontIcon Glyph="&#xE70F;" />
+                          </MenuFlyoutItem.Icon>
+                        </MenuFlyoutItem>
+                        <MenuFlyoutSeparator />
+                        <MenuFlyoutItem
+                          Text="{x:Bind local:Labels.DeleteConversation}"
+                          AutomationProperties.Name="{x:Bind local:Labels.DeleteConversation}"
+                          CommandParameter="{x:Bind}"
+                          Click="DeleteConversation"
+                          Foreground="{ThemeResource SystemFillColorCriticalBrush}"
+                        >
+                          <MenuFlyoutItem.Icon>
+                            <FontIcon Glyph="&#xE74D;" />
+                          </MenuFlyoutItem.Icon>
+                        </MenuFlyoutItem>
+                      </MenuFlyout>
+                    </Grid.ContextFlyout>
                     <Grid.ColumnDefinitions>
                       <ColumnDefinition Width="32" />
                       <ColumnDefinition Width="*" />

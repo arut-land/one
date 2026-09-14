@@ -12,8 +12,10 @@
 //! exiting; the node lease needs no code of its own; closing every file
 //! descriptor, which is how a process ends whichever way it ends, releases it.
 use arut_product_session::feature::{Chat, ComposeSet, Services};
+use arut_protocol::runtime::local::v1::ReadinessDetail;
 use arut_runtime_local::readiness::Readiness;
-use std::{env, path::PathBuf};
+use prost::Message;
+use std::{env, io::Write, path::PathBuf};
 
 /// What this daemon serves. One line per feature; the manifest, the routers and
 /// the session's clients all follow from it (ADR 0025).
@@ -21,8 +23,13 @@ type Features = (Chat,);
 
 /// The handshake `ChildHost` reads on this process's stdout; one table names
 /// both ends (`arut_runtime_local::readiness`).
-fn report(state: Readiness) {
-    println!("{}", state.line());
+fn report(state: Readiness) -> std::io::Result<()> {
+    let payload = ReadinessDetail::from(state).encode_to_vec();
+    let length = u32::try_from(payload.len()).expect("a readiness detail is bounded");
+    let mut stdout = std::io::stdout().lock();
+    stdout.write_all(&length.to_be_bytes())?;
+    stdout.write_all(&payload)?;
+    stdout.flush()
 }
 
 /// Best-effort: ask Linux to send `SIGTERM` when our parent dies, so an
@@ -104,11 +111,11 @@ async fn serve() -> Result<(), Box<dyn std::error::Error>> {
         // A held `try_lock` surfaces as exactly this `io::ErrorKind` (ADR
         // 0011): another node is already running against this data directory.
         Err(arut_storage::StorageError::Io(std::io::ErrorKind::WouldBlock)) => {
-            report(Readiness::LeaseHeld);
+            report(Readiness::LeaseHeld)?;
             return Err(Box::<dyn std::error::Error>::from(Readiness::LeaseHeld));
         }
         Err(error) => {
-            report(Readiness::SpawnFailed);
+            report(Readiness::SpawnFailed)?;
             return Err(Box::<dyn std::error::Error>::from(error));
         }
     };
@@ -123,19 +130,19 @@ async fn serve() -> Result<(), Box<dyn std::error::Error>> {
         let listener = match tokio::net::UnixListener::bind(socket) {
             Ok(listener) => listener,
             Err(error) => {
-                report(Readiness::SocketUnreachable);
+                report(Readiness::SocketUnreachable)?;
                 return Err(Box::<dyn std::error::Error>::from(error));
             }
         };
         std::fs::set_permissions(socket, std::fs::Permissions::from_mode(0o600))?;
-        report(Readiness::Ready);
+        report(Readiness::Ready)?;
         axum::serve(listener, app).await?;
         let _ = std::fs::remove_file(socket);
         return Ok(());
     }
     let address = env::var("ARUT_ADDRESS").unwrap_or_else(|_| "127.0.0.1:8787".into());
     let listener = tokio::net::TcpListener::bind(&address).await?;
-    report(Readiness::Ready);
+    report(Readiness::Ready)?;
     axum::serve(listener, app).await?;
     Ok(())
 }

@@ -82,6 +82,8 @@ export function useChat(port: ChatPort) {
       conversations.select(id);
       choose({ id, fresh: 0 });
     },
+    renameChat: (id: string, title: string) => conversations.rename(id, title),
+    deleteChat: (id: string) => conversations.delete(id),
   };
 }
 

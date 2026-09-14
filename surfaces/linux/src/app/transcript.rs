@@ -324,6 +324,17 @@ fn day(stamp: &glib::DateTime) -> String {
     format("%x")
 }
 
+fn group_header(stamp: &glib::DateTime, previous_at_ms: Option<u64>) -> String {
+    let previous = previous_at_ms
+        .and_then(|millis| i64::try_from(millis / 1000).ok())
+        .and_then(|seconds| glib::DateTime::from_unix_local(seconds).ok());
+    if previous.is_some_and(|previous| previous.ymd() == stamp.ymd()) {
+        clock(stamp)
+    } else {
+        day(stamp)
+    }
+}
+
 fn message_factory(fresh: Rc<Cell<(u64, i64)>>) -> gtk::SignalListItemFactory {
     let factory = gtk::SignalListItemFactory::new();
     factory.connect_setup(|_, item| {
@@ -419,7 +430,7 @@ fn message_factory(fresh: Rc<Cell<(u64, i64)>>) -> gtk::SignalListItemFactory {
             || (String::new(), String::new(), String::new()),
             |stamp| {
                 (
-                    day(stamp),
+                    group_header(stamp, message.previous_time_group_at_ms),
                     clock(stamp),
                     stamp
                         .format("%x %X")
@@ -462,4 +473,29 @@ fn message_factory(fresh: Rc<Cell<(u64, i64)>>) -> gtk::SignalListItemFactory {
         );
     });
     factory
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn later_time_group_on_same_local_day_uses_only_the_clock() {
+        let stamp = glib::DateTime::from_local(2026, 9, 15, 14, 30, 0.0).unwrap();
+        let previous = glib::DateTime::from_local(2026, 9, 15, 9, 0, 0.0).unwrap();
+        assert_eq!(
+            group_header(&stamp, Some(previous.to_unix() as u64 * 1000)),
+            clock(&stamp)
+        );
+    }
+
+    #[test]
+    fn first_time_group_in_local_day_uses_the_date() {
+        let stamp = glib::DateTime::from_local(2026, 9, 15, 14, 30, 0.0).unwrap();
+        let previous = glib::DateTime::from_local(2026, 9, 14, 23, 0, 0.0).unwrap();
+        assert_eq!(
+            group_header(&stamp, Some(previous.to_unix() as u64 * 1000)),
+            day(&stamp)
+        );
+    }
 }

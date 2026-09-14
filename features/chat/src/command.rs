@@ -1,6 +1,10 @@
+use crate::ConversationTitle;
 use crate::facts::ChatProjection;
 use arut_authority::Command;
-use arut_protocol::chat::v1::{ChatFact, ChatMessage, ChatRole, OperationFact, OperationPhase};
+use arut_protocol::chat::v1::{
+    ChatFact, ChatMessage, ChatRole, ChatStarted, ConversationDeleted, ConversationRenamed,
+    MessagesSent, chat_fact,
+};
 use arut_rpc::Status;
 
 /// A command's retry key, which ADR 0004 makes the surface's own identity for
@@ -32,16 +36,34 @@ impl From<CommandId> for String {
     }
 }
 
+#[derive(Clone)]
 pub(crate) struct PendingDraft {
     pub(crate) scope_id: String,
     pub(crate) revision: u64,
 }
 
-pub(crate) struct ChatCommand {
-    pub(crate) command_id: CommandId,
-    pub(crate) chat_id: String,
-    pub(crate) pending_scope: Option<PendingDraft>,
-    pub(crate) text: String,
+#[derive(Clone)]
+pub(crate) enum ChatCommand {
+    Start {
+        command_id: CommandId,
+        chat_id: String,
+        pending: PendingDraft,
+        text: String,
+    },
+    Send {
+        command_id: CommandId,
+        chat_id: String,
+        text: String,
+    },
+    Rename {
+        command_id: CommandId,
+        chat_id: String,
+        title: ConversationTitle,
+    },
+    Delete {
+        command_id: CommandId,
+        chat_id: String,
+    },
 }
 /// Why the chat authority refused a command, before any surface wording.
 #[derive(Debug)]
@@ -60,58 +82,137 @@ impl Command for ChatCommand {
     type Projection = ChatProjection;
     type Rejection = Rejection;
     fn command_id(&self) -> &str {
-        self.command_id.as_str()
+        self.command_id().as_str()
     }
     fn epoch(&self) -> u64 {
         1
     }
     fn apply(self, current: &ChatProjection, now: u64) -> Result<ChatFact, Rejection> {
-        let exists = current.conversation(&self.chat_id).is_some();
-        if self.pending_scope.is_none() && !exists {
-            return Err(Rejection::ConversationMissing);
+        match self {
+            Self::Start {
+                chat_id,
+                pending,
+                text,
+                ..
+            } => {
+                if current.conversation(&chat_id).is_some() {
+                    return Err(Rejection::ConversationExists);
+                }
+                Ok(message_fact(current, chat_id, Some(pending), text, now))
+            }
+            Self::Send { chat_id, text, .. } => {
+                if current.conversation(&chat_id).is_none() {
+                    return Err(Rejection::ConversationMissing);
+                }
+                Ok(message_fact(current, chat_id, None, text, now))
+            }
+            Self::Rename { chat_id, title, .. } => {
+                if current.conversation(&chat_id).is_none() {
+                    return Err(Rejection::ConversationMissing);
+                }
+                Ok(mutation_fact(
+                    chat_id,
+                    chat_fact::Change::Renamed(ConversationRenamed {
+                        title: title.into(),
+                    }),
+                    now,
+                ))
+            }
+            Self::Delete { chat_id, .. } => {
+                if current.conversation(&chat_id).is_none() {
+                    return Err(Rejection::ConversationMissing);
+                }
+                Ok(mutation_fact(
+                    chat_id,
+                    chat_fact::Change::Deleted(ConversationDeleted {}),
+                    now,
+                ))
+            }
         }
-        if self.pending_scope.is_some() && exists {
-            return Err(Rejection::ConversationExists);
-        }
-        Ok(Self::exchange(
-            current,
-            self.chat_id,
-            self.pending_scope,
-            self.text,
-            self.command_id.into(),
-            now,
-        ))
     }
 }
 
 impl ChatCommand {
-    /// One command commits an atomic batch of transcript and operation facts.
-    fn exchange(
-        current: &ChatProjection,
-        chat_id: String,
-        pending: Option<PendingDraft>,
-        text: String,
-        operation_id: String,
-        accepted_at_ms: u64,
-    ) -> ChatFact {
-        let next = current
-            .conversation(&chat_id)
-            .map_or(0, |conversation| conversation.messages.len()) as u64;
-        let reply = format!("You said: {text}");
-        ChatFact {
-            accepted_at_ms,
-            chat_id,
-            pending_revision: pending.as_ref().map(|pending| pending.revision),
-            pending_scope_id: pending.map_or_else(String::new, |pending| pending.scope_id),
-            messages: vec![
-                message(next + 1, ChatRole::User, text, accepted_at_ms),
-                message(next + 2, ChatRole::Assistant, reply, accepted_at_ms),
-            ],
-            operations: vec![
-                operation(&operation_id, OperationPhase::Started),
-                operation(&operation_id, OperationPhase::Completed),
-            ],
+    pub(crate) fn command_id(&self) -> &CommandId {
+        match self {
+            Self::Start { command_id, .. }
+            | Self::Send { command_id, .. }
+            | Self::Rename { command_id, .. }
+            | Self::Delete { command_id, .. } => command_id,
         }
+    }
+
+    pub(crate) fn chat_id(&self) -> &str {
+        match self {
+            Self::Start { chat_id, .. }
+            | Self::Send { chat_id, .. }
+            | Self::Rename { chat_id, .. }
+            | Self::Delete { chat_id, .. } => chat_id,
+        }
+    }
+
+    /// A duplicate command ID is valid only when it names the same operation,
+    /// not merely the same conversation.
+    pub(crate) fn matches(&self, fact: &ChatFact) -> bool {
+        if fact.chat_id != self.chat_id() {
+            return false;
+        }
+        match (self, &fact.change) {
+            (Self::Start { pending, text, .. }, Some(chat_fact::Change::Started(started))) => {
+                started.pending_scope_id == pending.scope_id
+                    && started.pending_revision == pending.revision
+                    && started
+                        .messages
+                        .first()
+                        .is_some_and(|message| message.text == *text)
+            }
+            (Self::Send { text, .. }, Some(chat_fact::Change::Sent(sent))) => sent
+                .messages
+                .first()
+                .is_some_and(|message| message.text == *text),
+            (Self::Rename { title, .. }, Some(chat_fact::Change::Renamed(renamed))) => {
+                title.as_ref() == renamed.title
+            }
+            (Self::Delete { .. }, Some(chat_fact::Change::Deleted(_))) => true,
+            _ => false,
+        }
+    }
+}
+
+fn message_fact(
+    current: &ChatProjection,
+    chat_id: String,
+    pending: Option<PendingDraft>,
+    text: String,
+    accepted_at_ms: u64,
+) -> ChatFact {
+    let next = current
+        .conversation(&chat_id)
+        .map_or(0, |conversation| conversation.messages.len()) as u64;
+    let reply = format!("You said: {text}");
+    let messages = vec![
+        message(next + 1, ChatRole::User, text, accepted_at_ms),
+        message(next + 2, ChatRole::Assistant, reply, accepted_at_ms),
+    ];
+    ChatFact {
+        accepted_at_ms,
+        chat_id,
+        change: Some(match pending {
+            Some(pending) => chat_fact::Change::Started(ChatStarted {
+                pending_revision: pending.revision,
+                pending_scope_id: pending.scope_id,
+                messages,
+            }),
+            None => chat_fact::Change::Sent(MessagesSent { messages }),
+        }),
+    }
+}
+
+fn mutation_fact(chat_id: String, change: chat_fact::Change, accepted_at_ms: u64) -> ChatFact {
+    ChatFact {
+        accepted_at_ms,
+        chat_id,
+        change: Some(change),
     }
 }
 
@@ -121,12 +222,5 @@ fn message(id: u64, role: ChatRole, text: String, accepted_at_ms: u64) -> ChatMe
         id,
         role: role as i32,
         text,
-    }
-}
-
-fn operation(id: &str, phase: OperationPhase) -> OperationFact {
-    OperationFact {
-        operation_id: id.to_owned(),
-        phase: phase as i32,
     }
 }

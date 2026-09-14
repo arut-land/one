@@ -87,7 +87,7 @@ The chat feature requires four ports in `features/chat/src/ports.rs`:
 
 Chat invokes `execute_with_clock`. The authority reads the supplied clock inside the transaction after deduplication. The accepted `ChatFact` batch and its transcript messages carry `accepted_at_ms`. `ChatMessage` in the projection and generated FFI bindings preserves that timestamp. The Protobuf additions are field 6 on `ChatFact` and field 4 on `ChatMessage`; older rows decode with zero. A retry returns the original timestamp.
 
-Each accepted mock exchange records a user message, an echo response, and started/completed operation facts. Records also carry sequence, authority epoch, and command ID. Chat currently uses epoch 1. Canonical UUIDv7 command IDs deduplicate starts and sends. Operation execution, model streaming, replication, and authority hand-off are not implemented.
+Each accepted command records exactly one typed conversation change: a start, message exchange, rename, or deletion. Log records also carry sequence, authority epoch, and command ID. Chat currently uses epoch 1. Canonical UUIDv7 command IDs deduplicate every durable command, including retries after an uncertain rename or deletion response. Operation execution, model streaming, replication, and authority hand-off are not implemented.
 
 `ChatProjection` is an internal pure reducer. Authority startup replays facts after an optional snapshot. Explicit checkpoint and compaction methods exist; the daemon does not schedule maintenance automatically. Retry outcomes survive compaction and currently have no expiry.
 
@@ -136,9 +136,9 @@ The capability service derives its manifest from typed service markers (ADR 0025
 | Android | Compose, ViewModel-owned memory FFI session | foreground service and persistent node |
 | Windows | WinUI, in-process memory FFI session | child hosting and persistent node |
 | Web, Chromium | wasm memory session in the page, rendering `@arut/chat-ui` | worker/lifecycle integration and remote routes |
-| VS Code | wasm session in the extension host; the webview renders `@arut/chat-ui` over a `postMessage` port and receives whole projections | native extension-host composition or daemon route |
+| VS Code | wasm memory session in the webview, rendering `@arut/chat-ui`; the extension host only owns the panel | daemon route over a browser-capable channel |
 
-`runtimes/browser` is the pnpm package `@arut/runtime-browser`. Web, Chromium, and VS Code import its UUIDv7 callback through the package export and supply wall time to the binding. `surfaces/chat-ui` is `@arut/chat-ui`: the React chat view, the `ChatPort` interface shaped like the generated session handle, `wasmPort` (the session itself) and `bridgePort` (a webview over posted projections), and `mountChat`. Each browser root is a few lines that pick a port and mount the view. Relative TypeScript paths cannot escape surface or runtime packages; `pnpm check` runs one browser `tsc` project, one Node project for the extension host, and the store tests.
+`runtimes/browser` is the pnpm package `@arut/runtime-browser`. Web, Chromium, and VS Code import its UUIDv7 callback through the package export and supply wall time to the binding. `surfaces/chat-ui` is `@arut/chat-ui`: the React chat view, the `ChatPort` interface shaped like the generated session handle, `wasmPort` (the session itself), and `mountChat`. Each browser root is a few lines that creates a session and mounts the view. Relative TypeScript paths cannot escape surface or runtime packages; `pnpm check` runs one browser `tsc` project, one Node project for the extension host, and the store tests.
 
 Terminal, JetBrains, watch, and messaging surfaces have no directories yet.
 

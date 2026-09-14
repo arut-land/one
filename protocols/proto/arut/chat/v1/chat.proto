@@ -8,6 +8,8 @@ service ChatService {
   rpc SendMessage(SendMessageRequest) returns (SendMessageResponse);
   rpc StartChat(StartChatRequest) returns (StartChatResponse);
   rpc ListConversations(ListConversationsRequest) returns (ListConversationsResponse);
+  rpc RenameConversation(RenameConversationRequest) returns (RenameConversationResponse);
+  rpc DeleteConversation(DeleteConversationRequest) returns (DeleteConversationResponse);
 }
 
 message SendMessageRequest {
@@ -51,30 +53,49 @@ message ListConversationsRequest {}
 message Conversation {
   string id = 1;
   repeated ChatMessage messages = 2;
+  optional string title = 3;
+}
+message ChatProjectionSnapshot {
+  repeated Conversation conversations = 1;
+  map<string, uint64> consumed_drafts = 2;
 }
 message ListConversationsResponse {
   repeated Conversation conversations = 1;
 }
 
-// One command commits an atomic batch of transcript and operation facts.
+// One command commits exactly one durable conversation change.
 message ChatFact {
   string chat_id = 1;
-  string pending_scope_id = 2;
-  repeated ChatMessage messages = 3;
-  repeated OperationFact operations = 4;
-  // Pending draft revision consumed by this accepted start, when recorded.
-  optional uint64 pending_revision = 5;
-  // Authority acceptance time for this atomic batch, in Unix milliseconds.
+  oneof change {
+    ChatStarted started = 2;
+    MessagesSent sent = 3;
+    ConversationRenamed renamed = 4;
+    ConversationDeleted deleted = 5;
+  }
   uint64 accepted_at_ms = 6;
 }
 
-message OperationFact {
-  string operation_id = 1;
-  OperationPhase phase = 2;
+message ChatStarted {
+  string pending_scope_id = 1;
+  uint64 pending_revision = 2;
+  repeated ChatMessage messages = 3;
 }
+message MessagesSent {
+  repeated ChatMessage messages = 1;
+}
+message ConversationRenamed {
+  string title = 1;
+}
+message ConversationDeleted {}
 
-enum OperationPhase {
-  OPERATION_PHASE_UNSPECIFIED = 0;
-  OPERATION_PHASE_STARTED = 1;
-  OPERATION_PHASE_COMPLETED = 2;
+message RenameConversationRequest {
+  string chat_id = 1;
+  string title = 2;
+  string command_id = 3;
 }
+message RenameConversationResponse {}
+message DeleteConversationRequest {
+  string chat_id = 1;
+  string command_id = 2;
+}
+message DeleteConversationResponse {}

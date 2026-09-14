@@ -1,9 +1,6 @@
 //! Renderable chat metadata and immutable transcript rows.
 use crate::errors::ChatError;
-use std::{
-    collections::BTreeMap,
-    ops::Bound::{Excluded, Unbounded},
-};
+use std::collections::BTreeMap;
 
 #[boltffi::data]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -22,6 +19,9 @@ pub struct ChatMessage {
     pub accepted_at_ms: u64,
     /// Starts a timestamp group after at least five minutes, or at transcript start.
     pub starts_time_group: bool,
+    /// Start time of the preceding timestamp group. A surface compares its
+    /// local calendar day with this instant before repeating a date label.
+    pub previous_time_group_at_ms: Option<u64>,
     /// Starts a speaker group at a role change or timestamp group boundary.
     pub starts_speaker_group: bool,
     /// Ends a speaker group: the next row starts one, or this is the last row
@@ -39,13 +39,11 @@ pub(crate) fn transcript_after(
     messages: &BTreeMap<u64, ChatMessage>,
     after_id: u64,
 ) -> Vec<ChatMessage> {
-    let mut previous = messages
-        .range(..=after_id)
-        .next_back()
-        .map(|(_, message)| message);
+    let mut previous: Option<&ChatMessage> = None;
+    let mut previous_time_group_at_ms: Option<u64> = None;
     let mut rows: Vec<ChatMessage> = messages
-        .range((Excluded(after_id), Unbounded))
-        .map(|(_, message)| {
+        .iter()
+        .filter_map(|(id, message)| {
             let mut row = message.clone();
             row.starts_time_group = previous.is_none_or(|previous| {
                 message
@@ -53,10 +51,18 @@ pub(crate) fn transcript_after(
                     .saturating_sub(previous.accepted_at_ms)
                     >= 300_000
             });
+            row.previous_time_group_at_ms = if row.starts_time_group {
+                previous_time_group_at_ms
+            } else {
+                None
+            };
             row.starts_speaker_group = row.starts_time_group
                 || previous.is_none_or(|previous| previous.role != message.role);
+            if row.starts_time_group {
+                previous_time_group_at_ms = Some(message.accepted_at_ms);
+            }
             previous = Some(message);
-            row
+            (*id > after_id).then_some(row)
         })
         .collect();
     for index in (0..rows.len()).rev() {
@@ -120,6 +126,7 @@ mod tests {
             accepted_at_ms,
             text: id.to_string(),
             starts_time_group: false,
+            previous_time_group_at_ms: None,
             starts_speaker_group: false,
             ends_speaker_group: false,
         }
@@ -155,6 +162,8 @@ mod tests {
                 (false, true)
             ]
         );
+        assert_eq!(full[0].previous_time_group_at_ms, None);
+        assert_eq!(full[4].previous_time_group_at_ms, Some(0));
         for cursor in 0..=15 {
             assert_eq!(
                 transcript_after(&messages, cursor),

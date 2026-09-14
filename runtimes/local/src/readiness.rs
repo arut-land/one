@@ -12,6 +12,7 @@
 //! about it still gets `Code::Unavailable` and a message, and one that does
 //! recovers the typed reason with [`arut_rpc::StatusDetail::from_status`].
 use arut_i18n_macros::Localized;
+use arut_protocol::runtime::local::v1::{ReadinessDetail, ReadinessState};
 use arut_rpc::{Code, StatusDetail};
 use thiserror::Error;
 
@@ -31,49 +32,67 @@ pub enum Readiness {
 }
 
 impl Readiness {
-    /// The handshake line `arutd` prints for each state it can report. The two
-    /// states only the parent can observe have no line, and `parse` never
-    /// returns them.
-    const LINES: [&'static str; 5] = [
-        "READY",
-        "NOTREADY lease",
-        "NOTREADY bind",
-        "NOTREADY spawn",
-        "",
-    ];
-
-    /// The line to print, empty where this state never reaches the handshake.
-    #[must_use]
-    pub fn line(self) -> &'static str {
-        Self::LINES[Self::ALL
-            .iter()
-            .position(|state| *state == self)
-            .expect("every variant is listed in ALL")]
-    }
-
-    /// The state a handshake line reports. An unrecognized line means the
-    /// daemon died saying something else, which is [`Self::SpawnFailed`].
-    #[must_use]
-    pub fn parse(line: &str) -> Self {
-        if line.is_empty() {
-            return Self::SpawnFailed;
-        }
-        Self::LINES
-            .iter()
-            .position(|known| *known == line)
-            .map_or(Self::SpawnFailed, |index| Self::ALL[index])
-    }
-}
-
-impl StatusDetail for Readiness {
-    const CODE: Code = Code::Unavailable;
-    const ALL: &'static [Self] = &[
+    pub const ALL: [Self; 5] = [
         Self::Ready,
         Self::LeaseHeld,
         Self::SocketUnreachable,
         Self::SpawnFailed,
         Self::TimedOut,
     ];
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct InvalidReadinessDetail;
+
+impl std::fmt::Display for InvalidReadinessDetail {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str("invalid readiness detail")
+    }
+}
+
+impl std::error::Error for InvalidReadinessDetail {}
+
+impl From<Readiness> for ReadinessDetail {
+    fn from(readiness: Readiness) -> Self {
+        Self {
+            state: match readiness {
+                Readiness::Ready => ReadinessState::Ready,
+                Readiness::LeaseHeld => ReadinessState::LeaseHeld,
+                Readiness::SocketUnreachable => ReadinessState::SocketUnreachable,
+                Readiness::SpawnFailed => ReadinessState::SpawnFailed,
+                Readiness::TimedOut => ReadinessState::TimedOut,
+            }
+            .into(),
+        }
+    }
+}
+
+impl TryFrom<ReadinessDetail> for Readiness {
+    type Error = InvalidReadinessDetail;
+
+    fn try_from(detail: ReadinessDetail) -> Result<Self, Self::Error> {
+        match ReadinessState::try_from(detail.state).map_err(|_| InvalidReadinessDetail)? {
+            ReadinessState::Ready => Ok(Self::Ready),
+            ReadinessState::LeaseHeld => Ok(Self::LeaseHeld),
+            ReadinessState::SocketUnreachable => Ok(Self::SocketUnreachable),
+            ReadinessState::SpawnFailed => Ok(Self::SpawnFailed),
+            ReadinessState::TimedOut => Ok(Self::TimedOut),
+            ReadinessState::Unspecified => Err(InvalidReadinessDetail),
+        }
+    }
+}
+
+impl StatusDetail for Readiness {
+    const CODE: Code = Code::Unavailable;
+    type Wire = ReadinessDetail;
+
+    fn into_wire(self) -> Self::Wire {
+        self.into()
+    }
+
+    fn from_wire(detail: Self::Wire) -> Option<Self> {
+        detail.try_into().ok()
+    }
 }
 
 #[cfg(test)]
@@ -83,7 +102,7 @@ mod tests {
 
     #[test]
     fn every_variant_round_trips_through_a_status() {
-        for &state in Readiness::ALL {
+        for state in Readiness::ALL {
             let status = state.into_status("test");
             assert_eq!(status.code, Code::Unavailable);
             assert_eq!(Readiness::from_status(&status), Some(state));
@@ -99,18 +118,13 @@ mod tests {
     }
 
     #[test]
-    fn every_printed_line_parses_back_to_the_state_that_printed_it() {
-        for &state in Readiness::ALL {
-            let line = state.line();
-            if line.is_empty() {
-                continue;
-            }
-            assert_eq!(Readiness::parse(line), state);
+    fn every_readiness_state_round_trips_through_its_wire_detail() {
+        for state in Readiness::ALL {
+            assert_eq!(Readiness::try_from(ReadinessDetail::from(state)), Ok(state));
         }
         assert_eq!(
-            Readiness::parse("NOTREADY something else"),
-            Readiness::SpawnFailed
+            Readiness::try_from(ReadinessDetail { state: 99 }),
+            Err(InvalidReadinessDetail)
         );
-        assert_eq!(Readiness::parse(""), Readiness::SpawnFailed);
     }
 }

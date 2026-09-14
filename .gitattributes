@@ -9,3 +9,41 @@
 *.jpg binary
 *.woff2 binary
 *.gresource binary
+
+# Repository prose is documentation, not implementation language.
+*.md linguist-documentation
+
+# Agent skills and their bundled references, scripts, and templates are support
+# material sourced independently from the product.
+.agents/skills/** linguist-vendored -linguist-documentation
+.agents/upstream/** linguist-vendored -linguist-documentation
+.agents/README.md linguist-documentation
+surfaces/linux/data/icons/lucide/** linguist-vendored
+
+# Deterministic outputs checked in for consumers that cannot run the generators.
+bindings/ffi/src/generated/handles.rs linguist-generated
+bindings/kotlin/src/main/kotlin/dev/arut/bindings/generated/Messages.kt linguist-generated
+bindings/kotlin/src/main/res/**/strings.xml linguist-generated
+bindings/typescript/src/generated/*.ts linguist-generated
+surfaces/apple/shared/Sources/ArutSurface/Generated/L10n.swift linguist-generated
+surfaces/apple/shared/Sources/ArutSurface/Resources/Localizable.xcstrings linguist-generated
+surfaces/windows/Generated/L10n.cs linguist-generated
+surfaces/windows/Strings/**/Resources.resw linguist-generated
+tools/dev/tests/handles/chat.rs linguist-generated
+
+# Platform icon derivatives produced from product/brand/arut-master.png.
+product/brand/arut-desktop.png linguist-generated
+product/brand/arut-mark.png linguist-generated
+product/brand/arut.icns linguist-generated
+surfaces/android/src/main/res/mipmap-*/ic_launcher.png linguist-generated
+surfaces/android/src/main/res/drawable-nodpi/ic_launcher_foreground.png linguist-generated
+surfaces/apple/shared/app/Assets.xcassets/Contents.json linguist-generated
+surfaces/apple/shared/app/Assets.xcassets/AppIcon.appiconset/** linguist-generated
+surfaces/chromium/public/icons/arut-*.png linguist-generated
+surfaces/linux/data/icons/hicolor/**/dev.arut.Arut.png linguist-generated
+surfaces/vscode/media/arut.png linguist-generated
+surfaces/web/public/favicon.ico linguist-generated
+surfaces/web/public/apple-touch-icon.png linguist-generated
+surfaces/web/public/icons/arut-*.png linguist-generated
+surfaces/windows/Assets/Arut.ico linguist-generated
+surfaces/windows/Assets/Arut.png linguist-generated

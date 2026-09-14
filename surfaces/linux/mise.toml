@@ -5,7 +5,10 @@
 alias = "surface:linux"
 description = "Run the Linux GTK4 surface"
 dir = "{{config_root}}/../.."
-run = "cargo run -p arut-linux"
+run = [
+  "cargo build -p arut-runtime-local --bin arutd",
+  "cargo run -p arut-linux",
+]
 
 [tasks.review]
 alias = "review:linux"

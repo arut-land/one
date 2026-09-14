@@ -22,4 +22,11 @@ internal static class Labels
     public static string Latest => L10n.Get(L10n.ActionScrollToLatest);
     public static string Copy => L10n.Get(L10n.ActionCopyMessage);
     public static string Unread => L10n.Get(L10n.LabelUnreadMessages);
+    public static string RenameConversation => L10n.Get(L10n.ActionRenameConversation);
+    public static string DeleteConversation => L10n.Get(L10n.ActionDeleteConversation);
+    public static string RenameConversationTitle => L10n.Get(L10n.ConversationRenameTitle);
+    public static string DeleteConversationTitle => L10n.Get(L10n.ConversationDeleteTitle);
+    public static string DeleteConversationMessage => L10n.Get(L10n.ConversationDeleteMessage);
+    public static string Cancel => L10n.Get(L10n.ActionCancel);
+    public static string Save => L10n.Get(L10n.ActionSave);
 }

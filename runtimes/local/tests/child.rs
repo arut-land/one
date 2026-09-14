@@ -6,6 +6,7 @@ use arut_product_session::{ProductSession, hosting::Host};
 use arut_rpc::StatusDetail;
 use arut_runtime_host_polled::NativeIds;
 use arut_runtime_local::{child::ChildHost, hosting::TokioSpawner, readiness::Readiness};
+use prost::Message;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -63,12 +64,20 @@ async fn a_daemon_exits_once_its_parents_stdin_pipe_closes() {
         .spawn()
         .unwrap();
     let stdin = child.stdin.take().unwrap();
-    let stdout = child.stdout.take().unwrap();
-    let mut line = String::new();
-    tokio::io::AsyncBufReadExt::read_line(&mut tokio::io::BufReader::new(stdout), &mut line)
+    let mut stdout = child.stdout.take().unwrap();
+    let length = tokio::io::AsyncReadExt::read_u32(&mut stdout)
         .await
         .unwrap();
-    assert_eq!(line.trim(), "READY");
+    let mut payload = vec![0; length as usize];
+    tokio::io::AsyncReadExt::read_exact(&mut stdout, &mut payload)
+        .await
+        .unwrap();
+    let readiness: Readiness =
+        arut_protocol::runtime::local::v1::ReadinessDetail::decode(payload.as_slice())
+            .unwrap()
+            .try_into()
+            .unwrap();
+    assert_eq!(readiness, Readiness::Ready);
 
     drop(stdin);
 

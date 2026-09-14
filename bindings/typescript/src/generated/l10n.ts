@@ -13,10 +13,13 @@ export interface L10nBundle {
 export type MessageKey =
   | "action-about"
   | "action-app-help"
+  | "action-cancel"
   | "action-clear-search"
   | "action-close-history"
   | "action-collapse-sidebar"
+  | "action-conversation-options"
   | "action-copy-message"
+  | "action-delete-conversation"
   | "action-expand-sidebar"
   | "action-focus-composer"
   | "action-main-menu"
@@ -28,7 +31,9 @@ export type MessageKey =
   | "action-open-history"
   | "action-previous-conversation"
   | "action-quit"
+  | "action-rename-conversation"
   | "action-retry"
+  | "action-save"
   | "action-scroll-to-latest"
   | "action-search-conversations"
   | "action-send"
@@ -70,9 +75,13 @@ export type MessageKey =
   | "composer-placeholder"
   | "composer-status-connecting"
   | "composer-status-failed"
+  | "conversation-delete-message"
+  | "conversation-delete-title"
+  | "conversation-rename-title"
   | "conversation-search-empty"
   | "conversation-search-placeholder"
   | "label-chat-history"
+  | "label-conversation-title"
   | "label-conversations"
   | "label-draft"
   | "label-draft-sync"
@@ -103,6 +112,7 @@ export type MessageKey =
 
 /** The arguments each parameterised message interpolates. */
 export interface Args {
+  "action-conversation-options": { title: string };
   "action-new-chat-shortcut": { shortcut: string };
   "action-new-conversation-shortcut": { shortcut: string };
   "action-toggle-history-shortcut": { shortcut: string };
@@ -117,10 +127,13 @@ export interface Args {
 export const placeables: Record<MessageKey, readonly string[]> = {
   "action-about": [],
   "action-app-help": [],
+  "action-cancel": [],
   "action-clear-search": [],
   "action-close-history": [],
   "action-collapse-sidebar": [],
+  "action-conversation-options": ["title"],
   "action-copy-message": [],
+  "action-delete-conversation": [],
   "action-expand-sidebar": [],
   "action-focus-composer": [],
   "action-main-menu": [],
@@ -132,7 +145,9 @@ export const placeables: Record<MessageKey, readonly string[]> = {
   "action-open-history": [],
   "action-previous-conversation": [],
   "action-quit": [],
+  "action-rename-conversation": [],
   "action-retry": [],
+  "action-save": [],
   "action-scroll-to-latest": [],
   "action-search-conversations": [],
   "action-send": [],
@@ -174,9 +189,13 @@ export const placeables: Record<MessageKey, readonly string[]> = {
   "composer-placeholder": [],
   "composer-status-connecting": [],
   "composer-status-failed": [],
+  "conversation-delete-message": [],
+  "conversation-delete-title": [],
+  "conversation-rename-title": [],
   "conversation-search-empty": [],
   "conversation-search-placeholder": [],
   "label-chat-history": [],
+  "label-conversation-title": [],
   "label-conversations": [],
   "label-draft": [],
   "label-draft-sync": [],

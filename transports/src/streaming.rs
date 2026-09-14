@@ -1,5 +1,5 @@
 //! Connect stream termination and framing, independent of the HTTP client/server.
-use crate::framing::{self, Envelope};
+use crate::framing::{self, Envelope, EnvelopeKind};
 use arut_rpc::{Code, RpcStream, Status};
 use bytes::BytesMut;
 use futures_util::{Stream, StreamExt, stream};
@@ -15,8 +15,10 @@ pub(crate) fn decode<B: AsRef<[u8]> + Send + 'static>(
             let (mut input, mut buffer) = state?;
             loop {
                 match Envelope.decode(&mut buffer) {
-                    Ok(Some((0, body))) => return Some((Ok(body), Some((input, buffer)))),
-                    Ok(Some((_, body))) => {
+                    Ok(Some((EnvelopeKind::Message, body))) => {
+                        return Some((Ok(body), Some((input, buffer))));
+                    }
+                    Ok(Some((EnvelopeKind::End, body))) => {
                         let end: serde_json::Value = match serde_json::from_slice(&body) {
                             Ok(end) => end,
                             Err(_) => {
@@ -55,7 +57,7 @@ pub(crate) fn encode(input: RpcStream<Vec<u8>>) -> impl Stream<Item = Result<Vec
     stream::unfold(Some(input), |state| async move {
         let mut input = state?;
         let error = match input.next().await {
-            Some(Ok(body)) => match framing::envelope(0, &body) {
+            Some(Ok(body)) => match framing::envelope(EnvelopeKind::Message, &body) {
                 Ok(envelope) => return Some((Ok(envelope), Some(input))),
                 Err(error) => Some(error),
             },
@@ -118,7 +120,10 @@ mod tests {
         for (wire, code) in [
             (vec![], Code::Internal),
             (vec![0, 0, 0], Code::Internal),
-            (framing::envelope(2, b"{").unwrap(), Code::Internal),
+            (
+                framing::envelope(EnvelopeKind::End, b"{").unwrap(),
+                Code::Internal,
+            ),
             (oversized, Code::ResourceExhausted),
         ] {
             let results = collect(decode(stream::iter([Ok(wire)])));

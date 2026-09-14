@@ -41,6 +41,18 @@ impl ChatService for AcceptThenLoseResponse {
     ) -> RpcFuture<Response<ListConversationsResponse>> {
         unreachable!()
     }
+    fn rename_conversation(
+        &self,
+        _: Request<RenameConversationRequest>,
+    ) -> RpcFuture<Response<RenameConversationResponse>> {
+        unreachable!()
+    }
+    fn delete_conversation(
+        &self,
+        _: Request<DeleteConversationRequest>,
+    ) -> RpcFuture<Response<DeleteConversationResponse>> {
+        unreachable!()
+    }
 }
 
 /// A composer whose disk refuses the empty write that clears a sent draft.

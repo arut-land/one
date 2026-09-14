@@ -5,6 +5,9 @@ import {
   useEffect,
   useRef,
   useState,
+  type FormEvent,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type MouseEvent,
   type ReactNode,
   type TouchEvent,
 } from "react";
@@ -27,6 +30,10 @@ const spinner = <span className="spinner" />;
  * instant reads, which is the one half of a timestamp that is never shared.
  */
 const stamp = new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" });
+const time = new Intl.DateTimeFormat(undefined, { timeStyle: "short" });
+
+type ConversationAction = { kind: "rename" | "delete"; chat: ChatSummary };
+type ConversationMenu = { chat: ChatSummary; x: number; y: number };
 
 export function ChatView(props: ChatViewProps) {
   const strings = use(Strings);
@@ -36,7 +43,11 @@ export function ChatView(props: ChatViewProps) {
   const touchStart = useRef(0);
   const composer = useRef<HTMLTextAreaElement>(null);
   const announcer = useRef<HTMLParagraphElement>(null);
+  const menuElement = useRef<HTMLDivElement>(null);
+  const menuTrigger = useRef<HTMLElement | null>(null);
   const announced = useRef({ chat: "", id: 0n });
+  const [menu, setMenu] = useState<ConversationMenu | null>(null);
+  const [action, setAction] = useState<ConversationAction | null>(null);
 
   useEffect(() => {
     const desktop = globalThis.matchMedia?.("(min-width: 760px)");
@@ -84,6 +95,71 @@ export function ChatView(props: ChatViewProps) {
     announced.current = { chat: props.chatKey, id: latest.id };
     region.textContent = latest.text;
   }, [props.chatKey, props.messages]);
+
+  useEffect(() => {
+    if (menu === null) return;
+    menuElement.current?.querySelector<HTMLButtonElement>("button")?.focus();
+    const dismiss = (event: PointerEvent) => {
+      if (!menuElement.current?.contains(event.target as Node)) closeMenu();
+    };
+    const escape = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.stopPropagation();
+      closeMenu(true);
+    };
+    globalThis.addEventListener("pointerdown", dismiss, true);
+    globalThis.addEventListener("keydown", escape, true);
+    return () => {
+      globalThis.removeEventListener("pointerdown", dismiss, true);
+      globalThis.removeEventListener("keydown", escape, true);
+    };
+  }, [menu]);
+
+  function closeMenu(restoreFocus = false): void {
+    setMenu(null);
+    if (restoreFocus) requestAnimationFrame(() => menuTrigger.current?.focus());
+  }
+
+  function showMenu(chat: ChatSummary, x: number, y: number, trigger: HTMLElement): void {
+    menuTrigger.current = trigger;
+    setMenu({
+      chat,
+      x: Math.max(8, Math.min(x, globalThis.innerWidth - 188)),
+      y: Math.max(8, Math.min(y, globalThis.innerHeight - 104)),
+    });
+  }
+
+  function contextMenu(event: MouseEvent<HTMLElement>, chat: ChatSummary): void {
+    event.preventDefault();
+    const trigger = event.target instanceof HTMLElement ? event.target.closest<HTMLElement>("button") : null;
+    showMenu(chat, event.clientX, event.clientY, trigger ?? event.currentTarget);
+  }
+
+  function contextKey(event: ReactKeyboardEvent<HTMLElement>, chat: ChatSummary): void {
+    if (event.key !== "ContextMenu" && !(event.shiftKey && event.key === "F10")) return;
+    event.preventDefault();
+    const trigger = document.activeElement instanceof HTMLElement ? document.activeElement : event.currentTarget;
+    const bounds = trigger.getBoundingClientRect();
+    showMenu(chat, bounds.right, bounds.top + 8, trigger);
+  }
+
+  function chooseAction(kind: ConversationAction["kind"]): void {
+    if (menu === null) return;
+    setAction({ kind, chat: menu.chat });
+    closeMenu();
+  }
+
+  function moveInMenu(event: ReactKeyboardEvent<HTMLDivElement>): void {
+    if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) return;
+    event.preventDefault();
+    const items = [...event.currentTarget.querySelectorAll<HTMLButtonElement>("[role=menuitem]")];
+    const current = items.indexOf(document.activeElement as HTMLButtonElement);
+    const next = event.key === "Home" ? 0
+      : event.key === "End" ? items.length - 1
+      : event.key === "ArrowDown" ? (current + 1) % items.length
+      : (current - 1 + items.length) % items.length;
+    items[next]?.focus();
+  }
 
   function selectChat(chatId: string): void {
     props.selectChat(chatId);
@@ -163,22 +239,41 @@ export function ChatView(props: ChatViewProps) {
             </span>
           )}
           {props.history.map(chat => (
-            <button
-              aria-current={props.chatId === chat.id ? "page" : undefined}
-              className={props.chatId === chat.id ? "active" : ""}
-              type="button"
+            <div
+              className={`history-item ${props.chatId === chat.id ? "active" : ""}`}
               key={chat.id}
-              title={chat.title}
-              onClick={() => selectChat(chat.id)}
+              onContextMenu={event => contextMenu(event, chat)}
+              onKeyDown={event => contextKey(event, chat)}
             >
-              <span className="history-dot" aria-hidden="true" />
-              <span className="history-title">{highlighted(chat)}</span>
-              {chat.unread && (
-                <span className="unread">
-                  <span className="visually-hidden">{t(strings, "label-unread-messages")}</span>
-                </span>
-              )}
-            </button>
+              <button
+                aria-current={props.chatId === chat.id ? "page" : undefined}
+                className="history-select"
+                type="button"
+                title={chat.title}
+                onClick={() => selectChat(chat.id)}
+              >
+                <span className="history-dot" aria-hidden="true" />
+                <span className="history-title">{highlighted(chat)}</span>
+                {chat.unread && (
+                  <span className="unread">
+                    <span className="visually-hidden">{t(strings, "label-unread-messages")}</span>
+                  </span>
+                )}
+              </button>
+              <button
+                aria-label={t(strings, "action-conversation-options", { title: chat.title })}
+                aria-haspopup="menu"
+                aria-expanded={menu?.chat.id === chat.id}
+                className="history-more"
+                type="button"
+                onClick={event => {
+                  const bounds = event.currentTarget.getBoundingClientRect();
+                  showMenu(chat, bounds.right, bounds.bottom + 4, event.currentTarget);
+                }}
+              >
+                <MoreIcon />
+              </button>
+            </div>
           ))}
         </nav>
 
@@ -269,7 +364,100 @@ export function ChatView(props: ChatViewProps) {
           <small>{t(strings, "composer-hint-multiline")}</small>
         </div>
       </main>
+      {menu !== null && (
+        <div
+          aria-label={menu.chat.title}
+          className="conversation-menu"
+          ref={menuElement}
+          role="menu"
+          style={{ left: menu.x, top: menu.y }}
+          onKeyDown={moveInMenu}
+        >
+          <button role="menuitem" type="button" onClick={() => chooseAction("rename")}>
+            {t(strings, "action-rename-conversation")}
+          </button>
+          <button className="destructive" role="menuitem" type="button" onClick={() => chooseAction("delete")}>
+            {t(strings, "action-delete-conversation")}
+          </button>
+        </div>
+      )}
+      {action?.kind === "rename" && (
+        <RenameDialog
+          chat={action.chat}
+          rename={props.renameChat}
+          onClose={() => {
+            setAction(null);
+            menuTrigger.current?.focus();
+          }}
+        />
+      )}
+      {action?.kind === "delete" && (
+        <DeleteDialog
+          chat={action.chat}
+          remove={props.deleteChat}
+          onClose={() => {
+            setAction(null);
+            menuTrigger.current?.focus();
+          }}
+        />
+      )}
     </section>
+  );
+}
+
+function RenameDialog({ chat, rename, onClose }: { chat: ChatSummary; rename: (id: string, title: string) => Promise<boolean>; onClose: () => void }) {
+  const strings = use(Strings);
+  const dialog = useRef<HTMLDialogElement>(null);
+  const [title, setTitle] = useState(chat.title);
+  const [pending, setPending] = useState(false);
+  useEffect(() => dialog.current?.showModal(), []);
+
+  async function submit(event: FormEvent): Promise<void> {
+    event.preventDefault();
+    if (title.trim() === "") return;
+    setPending(true);
+    if (await rename(chat.id, title.trim())) onClose();
+    else setPending(false);
+  }
+
+  return (
+    <dialog className="conversation-dialog" ref={dialog} aria-labelledby="rename-title" onCancel={onClose} onClick={event => { if (event.target === event.currentTarget) onClose(); }}>
+      <form onSubmit={event => void submit(event)}>
+        <h2 id="rename-title">{t(strings, "conversation-rename-title")}</h2>
+        <input autoFocus aria-labelledby="rename-title" value={title} onChange={event => setTitle(event.target.value)} />
+        <div className="dialog-actions">
+          <button type="button" onClick={onClose}>{t(strings, "action-cancel")}</button>
+          <button className="primary" disabled={pending || title.trim() === ""}>{t(strings, "action-save")}</button>
+        </div>
+      </form>
+    </dialog>
+  );
+}
+
+function DeleteDialog({ chat, remove, onClose }: { chat: ChatSummary; remove: (id: string) => Promise<boolean>; onClose: () => void }) {
+  const strings = use(Strings);
+  const dialog = useRef<HTMLDialogElement>(null);
+  const [pending, setPending] = useState(false);
+  useEffect(() => dialog.current?.showModal(), []);
+
+  async function submit(event: FormEvent): Promise<void> {
+    event.preventDefault();
+    setPending(true);
+    if (await remove(chat.id)) onClose();
+    else setPending(false);
+  }
+
+  return (
+    <dialog className="conversation-dialog" ref={dialog} aria-labelledby="delete-title" aria-describedby="delete-message" onCancel={onClose} onClick={event => { if (event.target === event.currentTarget) onClose(); }}>
+      <form onSubmit={event => void submit(event)}>
+        <h2 id="delete-title">{t(strings, "conversation-delete-title")}</h2>
+        <p id="delete-message">{t(strings, "conversation-delete-message")}</p>
+        <div className="dialog-actions">
+          <button autoFocus type="button" onClick={onClose}>{t(strings, "action-cancel")}</button>
+          <button className="destructive" disabled={pending}>{t(strings, "action-delete-conversation")}</button>
+        </div>
+      </form>
+    </dialog>
   );
 }
 
@@ -278,9 +466,11 @@ function Row({ message }: { message: ChatMessage }) {
   const strings = use(Strings);
   const mine = message.role === userRole;
   const at = message.startsTimeGroup ? acceptedAt(message.acceptedAtMs) : null;
+  const previous = message.previousTimeGroupAtMs === null ? null : acceptedAt(message.previousTimeGroupAtMs);
+  const label = at === null ? null : previous !== null && sameLocalDay(at, previous) ? time.format(at) : stamp.format(at);
   return (
     <Fragment>
-      {at !== null && <p className="time-group">{stamp.format(at)}</p>}
+      {label !== null && <p className="time-group">{label}</p>}
       <article
         className={`message ${mine ? "user" : "assistant"}${message.endsSpeakerGroup ? " ends-group" : ""}`}
       >
@@ -298,6 +488,12 @@ function Row({ message }: { message: ChatMessage }) {
       </article>
     </Fragment>
   );
+}
+
+function sameLocalDay(left: Date, right: Date): boolean {
+  return left.getFullYear() === right.getFullYear()
+    && left.getMonth() === right.getMonth()
+    && left.getDate() === right.getDate();
 }
 
 /**
@@ -348,6 +544,14 @@ function SendIcon() {
   return (
     <svg aria-hidden="true" viewBox="0 0 24 24">
       <path d="m5 12 14-7-4 14-3-6-7-1Zm7 1 7-8" />
+    </svg>
+  );
+}
+
+function MoreIcon() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 24 24">
+      <circle cx="5" cy="12" r="1" /><circle cx="12" cy="12" r="1" /><circle cx="19" cy="12" r="1" />
     </svg>
   );
 }

@@ -64,6 +64,15 @@ composer-hint-multiline = Enter to send, Shift+Enter for a new line
 
 ## Conversation controls
 
+action-rename-conversation = Rename
+action-delete-conversation = Delete
+action-conversation-options = More options for { $title }
+action-cancel = Cancel
+action-save = Save
+label-conversation-title = Conversation title
+conversation-rename-title = Rename conversation
+conversation-delete-title = Delete conversation?
+conversation-delete-message = This conversation and its messages will be permanently deleted.
 action-copy-message = Copy message
 action-scroll-to-latest = Scroll to latest message
 action-focus-composer = Focus message field

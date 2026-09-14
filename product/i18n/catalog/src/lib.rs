@@ -83,7 +83,7 @@ pub struct Argument {
 }
 
 /// The CLDR plural categories Fluent, Apple and Android all share.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Category {
     /// CLDR `zero`.
     Zero,
@@ -108,22 +108,38 @@ impl Category {
         Self::Many,
         Self::Other,
     ];
+}
 
-    fn parse(name: &str) -> Option<Self> {
+/// An unrecognized CLDR plural category.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct UnknownPluralCategory;
+
+impl fmt::Display for UnknownPluralCategory {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str("unknown plural category")
+    }
+}
+
+impl std::error::Error for UnknownPluralCategory {}
+
+impl std::str::FromStr for Category {
+    type Err = UnknownPluralCategory;
+
+    fn from_str(name: &str) -> Result<Self, Self::Err> {
         match name {
-            "zero" => Some(Self::Zero),
-            "one" => Some(Self::One),
-            "two" => Some(Self::Two),
-            "few" => Some(Self::Few),
-            "many" => Some(Self::Many),
-            "other" => Some(Self::Other),
-            _ => None,
+            "zero" => Ok(Self::Zero),
+            "one" => Ok(Self::One),
+            "two" => Ok(Self::Two),
+            "few" => Ok(Self::Few),
+            "many" => Ok(Self::Many),
+            "other" => Ok(Self::Other),
+            _ => Err(UnknownPluralCategory),
         }
     }
+}
 
-    /// The CLDR name, which is also the name every target resource uses.
-    #[must_use]
-    pub fn name(self) -> &'static str {
+impl AsRef<str> for Category {
+    fn as_ref(&self) -> &'static str {
         match self {
             Self::Zero => "zero",
             Self::One => "one",
@@ -132,6 +148,12 @@ impl Category {
             Self::Many => "many",
             Self::Other => "other",
         }
+    }
+}
+
+impl fmt::Display for Category {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(self.as_ref())
     }
 }
 
@@ -446,7 +468,7 @@ fn lower_selection(
     if !overrides.contains_key(&selector.name) {
         selector.numeric = true;
     }
-    let mut by_category: BTreeMap<&'static str, Pattern> = BTreeMap::new();
+    let mut by_category: BTreeMap<Category, Pattern> = BTreeMap::new();
     for variant in variants {
         let name = match &variant.key {
             ast::VariantKey::Identifier { name } => *name,
@@ -454,7 +476,7 @@ fn lower_selection(
                 return Err("it selects on an exact number; only the CLDR plural categories (zero, one, two, few, many, other) reach a native plural resource".to_owned());
             }
         };
-        let Some(category) = Category::parse(name) else {
+        let Ok(category) = name.parse::<Category>() else {
             return Err(format!(
                 "it has a `{name}` variant, which is not a CLDR plural category"
             ));
@@ -479,16 +501,16 @@ fn lower_selection(
                 },
             }
         }
-        by_category.insert(category.name(), body);
+        by_category.insert(category, body);
     }
-    if !by_category.contains_key("other") {
+    if !by_category.contains_key(&Category::Other) {
         return Err("it has no `other` variant, which every plural resource requires".to_owned());
     }
     let ordered = Category::ORDER
         .into_iter()
         .filter_map(|category| {
             by_category
-                .remove(category.name())
+                .remove(&category)
                 .map(|pattern| (category, pattern))
         })
         .collect();
