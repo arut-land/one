@@ -52,14 +52,24 @@ final class ConversationState {
     ///
     /// One subscription per scope: a scope revises its whole projection at once,
     /// so the state, the row cursor and the error are read together. Each
-    /// follower is a main-actor child task: the handles and this state are
-    /// main-actor values, and `observing` and `following` run on their caller's
-    /// actor, so nothing here crosses an isolation boundary.
+    /// follower is a task inheriting this method's main-actor isolation, so it
+    /// may hold this non-Sendable state; a task group's child closures may not.
+    /// The cancellation handler keeps them structured in effect: cancelling
+    /// `run()` cancels every follower.
     func run() async {
-        await withTaskGroup(of: Void.self) { group in
-            group.addTask { @MainActor in await self.followChat() }
-            group.addTask { @MainActor in await self.followComposer() }
-            group.addTask { @MainActor in await self.keepComposing() }
+        let followers = [
+            Task { await self.followChat() },
+            Task { await self.followComposer() },
+            Task { await self.keepComposing() },
+        ]
+        await withTaskCancellationHandler {
+            for follower in followers {
+                await follower.value
+            }
+        } onCancel: {
+            for follower in followers {
+                follower.cancel()
+            }
         }
     }
 
