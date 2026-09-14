@@ -85,29 +85,6 @@ suspend fun following(initialize: suspend () -> Unit, follow: suspend () -> Unit
 }
 
 /**
- * Suppresses the write-back an edit of our own caused.
- *
- * A projection echoes what the surface just wrote -- a draft, a selection -- and
- * applying that echo back to the control the person is using would fight them.
- * Anything applied inside [applying] is ours, and the collector skips it.
- */
-class EchoGuard {
-    private var depth = 0
-
-    val isApplying: Boolean
-        get() = depth > 0
-
-    fun <T> applying(block: () -> T): T {
-        depth++
-        try {
-            return block()
-        } finally {
-            depth--
-        }
-    }
-}
-
-/**
  * A text field bound to a projection the core owns.
  *
  * [edit] echoes locally and then writes, which is why it suspends: the caller's

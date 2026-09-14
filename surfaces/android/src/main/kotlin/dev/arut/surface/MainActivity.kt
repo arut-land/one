@@ -19,7 +19,7 @@ class MainActivity : ComponentActivity() {
                 viewModel { ConversationViewModel(sessions.session) }
             // The window knows its own size class; the screen never measures one.
             val windowSizeClass = currentWindowAdaptiveInfo().windowSizeClass
-            ArutTheme { ChatScreen(conversations, windowSizeClass) }
+            ArutTheme { ChatRoute(conversations, windowSizeClass) }
         }
     }
 }

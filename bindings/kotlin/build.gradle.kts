@@ -12,12 +12,6 @@ android {
         minSdk = 24
     }
 
-    // One JVM target for Java and Kotlin: built-in Kotlin takes its jvmTarget
-    // from targetCompatibility.
-    compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_17
-        targetCompatibility = JavaVersion.VERSION_17
-    }
 
 }
 
