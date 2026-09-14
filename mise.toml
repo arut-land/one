@@ -218,10 +218,10 @@ outputs = ["node_modules/.modules.yaml"]
 
 [tasks."check:proto"]
 tools.buf = "1.73.0"
-description = "Lint Protobuf contracts and reject breaking changes against master"
-# Deliberately no sources: `buf breaking` compares against the master branch,
+description = "Lint Protobuf contracts and reject breaking changes against main"
+# Deliberately no sources: `buf breaking` compares against the main branch,
 # which moves without any file in the working tree changing.
-run = ["buf lint", "buf breaking --against '.git#branch=master'"]
+run = ["buf lint", "buf breaking --against '.git#branch=main'"]
 
 [tasks."check:deps"]
 tools."aqua:EmbarkStudios/cargo-deny" = "0.20.2"

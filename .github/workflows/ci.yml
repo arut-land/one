@@ -31,7 +31,7 @@ jobs:
       - name: Install GTK4 and build prerequisites
         run: dnf install -y gtk4-devel gcc gcc-c++ pkgconf-pkg-config git curl tar gzip xz unzip which
 
-      # `buf breaking --against '.git#branch=master'` needs the baseline commit,
+      # `buf breaking --against '.git#branch=main'` needs the baseline commit,
       # and ECOSYSTEM's Phase 1 plan adds cargo-semver-checks, which needs one
       # too, so a shallow clone would have to be reverted later.
       - uses: actions/checkout@v4
@@ -41,8 +41,8 @@ jobs:
       - name: Prepare protocol baseline
         run: |
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
-          if ! git show-ref --verify --quiet refs/heads/master; then
-            git branch master origin/master
+          if ! git show-ref --verify --quiet refs/heads/main; then
+            git branch main origin/main
           fi
 
       - uses: jdx/mise-action@v2

@@ -36,7 +36,7 @@ mise watch check:ts    # re-run a task when its declared sources change
 
 Inside one of those six directories a bare task name resolves in that directory's namespace, so `mise run check` there reports `no task //surfaces/linux:check`. Write `mise run //:check` for a repository-wide task from inside a surface, or run it from the root.
 
-`mise run --affected //surfaces/android:build` runs a surface task only when the project graph says a change reaches it. The graph comes from Cargo path dependencies and the pnpm workspace; the directories no package manager describes (`bindings/kotlin`, `bindings/swift`, `bindings/dotnet`, and the three native surfaces) are declared under `[monorepo.projects]` in the root config. Revisions default to `HEAD~1...HEAD`; against a branch point use `mise run --affected --affected-base origin/master <task>`. The repository-wide gates do not take part: they belong to the root project, so run `mise run check` unconditionally.
+`mise run --affected //surfaces/android:build` runs a surface task only when the project graph says a change reaches it. The graph comes from Cargo path dependencies and the pnpm workspace; the directories no package manager describes (`bindings/kotlin`, `bindings/swift`, `bindings/dotnet`, and the three native surfaces) are declared under `[monorepo.projects]` in the root config. Revisions default to `HEAD~1...HEAD`; against a branch point use `mise run --affected --affected-base origin/main <task>`. The repository-wide gates do not take part: they belong to the root project, so run `mise run check` unconditionally.
 
 ## How caching works
 
@@ -48,7 +48,7 @@ What each task declares, and why:
 - `ffi:wasm`, `ffi:apple`, `ffi:android` and `ffi:csharp` list the BoltFFI configuration and every core crate they read, and declare `bindings/generated/<target>` as their output. Debug and Release C# packages are separate directories, so `ffi:csharp` tracks them separately.
 - `generate` lists the Fluent sources, the handle descriptors, and the generator's own code, and declares every resource file it writes.
 - `install` and the TypeScript tasks list the workspace manifests, lockfile, and sources; `install` declares `node_modules/.modules.yaml`, so deleting `node_modules` re-installs even when the lockfile has not moved.
-- `check:proto` and `check:deps` declare no sources and always run. `buf breaking` compares against the master branch and `cargo deny` against an advisory database; neither moves when a working-tree file does.
+- `check:proto` and `check:deps` declare no sources and always run. `buf breaking` compares against the main branch and `cargo deny` against an advisory database; neither moves when a working-tree file does.
 
 A skip is only as trustworthy as the declared sources. When a gate starts reading a kind of file that no input group mentions, add it to the group in `mise.toml`; `mise run --force <task>` ignores freshness in the meantime. Deleting a declared output also re-runs its task.
 
